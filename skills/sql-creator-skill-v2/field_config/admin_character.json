@@ -1,0 +1,32 @@
+{
+  "table_name": "admin_character",
+  
+  "field_aliases": {
+    "characterName": ["角色名称"],
+    "is_system_reserved": ["是否系统保留"]
+  },
+  
+  "field_enums": {
+    "platform": {
+      "1": {"label": "机构", "description": "之前叫学通"},
+      "2": {"label": "学校", "description": "之前叫科桥"}
+    },
+    "org": {
+      "0": {"label": "学通(默认)", "description": "学通的一级部门"},
+      "1": {"label": "科桥", "description": "科桥的一级部门"},
+      "2": {"label": "克勒", "description": "克勒的一级部门"}
+    },
+    "is_system_reserved": {
+      "0": {"label": "否", "description": "不保留"},
+      "1": {"label": "是", "description": "不可编辑不可见,用于MOKA同步"}
+    }
+  },
+  
+  "virtual_associations": [],
+  
+  "calculated_fields": {},
+  
+  "business_constraints": {},
+  
+  "business_rules": []
+}

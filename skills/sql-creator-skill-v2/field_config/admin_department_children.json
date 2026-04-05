@@ -1,0 +1,30 @@
+{
+  "table_name": "admin_department_children",
+  
+  "field_aliases": {
+    "department_id": ["一级部门ID", "一级部门id"]
+  },
+  
+  "field_enums": {
+  },
+  
+  "virtual_associations": [
+    {
+      "name": "关联一级部门",
+      "target_table": "admin_department",
+      "join_condition": "admin_department.id = admin_department_children.department_id",
+      "type": "one_to_one",
+      "description": "1个二级部门对应1个一级部门",
+      "fields_mapping": {
+        "id": "department_id"
+      },
+      "business_rule": ""
+    }
+  ],
+  
+  "calculated_fields": {},
+  
+  "business_constraints": {},
+  
+  "business_rules": []
+}

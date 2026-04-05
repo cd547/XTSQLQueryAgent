@@ -1,0 +1,19 @@
+{
+  "table_name": "admin_department_type",
+  
+  "field_aliases": {
+    "id": ["ID", "编号"],
+    "name": ["权限名称"]
+  },
+  
+  "field_enums": {},
+  
+  "virtual_associations": [
+  ],
+  
+  "calculated_fields": {},
+  
+  "business_constraints": {},
+  
+  "business_rules": []
+}

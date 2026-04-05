@@ -1,0 +1,54 @@
+{
+  "table_name": "admin_user",
+  
+  "field_aliases": {
+    "parent_id": ["上级ID"],
+    "character_id": ["角色ID"],
+    "department_id": ["部门ID", "二级部门ID"]
+  },
+  
+  "field_enums": {
+  },
+  
+  "virtual_associations": [
+    {
+      "name": "关联角色",
+      "target_table": "admin_character",
+      "join_condition": "admin_character.id = admin_user.character_id",
+      "type": "one_to_one",
+      "description": "1个用户对应1个角色",
+      "fields_mapping": {
+        "id": "character_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联二级部门",
+      "target_table": "admin_department_children",
+      "join_condition": "admin_department_children.id = admin_user.department_id",
+      "type": "one_to_one",
+      "description": "1个用户对应1个二级部门",
+      "fields_mapping": {
+        "id": "department_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "自关联-父子关系",
+      "target_table": "admin_user",
+      "alias": "parent_admin_user",
+      "join_condition": "admin_user.parent_id = parent_admin_user.id",
+      "type": "self_join",
+      "description": "用户父子关系自关联",
+      "fields_mapping": {
+        "id": "parent_id"
+      }
+    }
+  ],
+  
+  "calculated_fields": {},
+  
+  "business_constraints": {},
+  
+  "business_rules": []
+}

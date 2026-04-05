@@ -1,0 +1,29 @@
+{
+  "table_name": "admin_department",
+  
+  "field_aliases": {
+    "name": ["一级部门名称"],
+    "platform": ["平台"],
+    "org": ["org"]
+  },
+  
+  "field_enums": {
+    "platform": {
+      "1": {"label": "机构", "description": "之前叫学通"},
+      "2": {"label": "学校", "description": "之前叫科桥"}
+    },
+    "org": {
+      "0": {"label": "学通(默认)", "description": "学通的一级部门"},
+      "1": {"label": "科桥", "description": "科桥的一级部门"},
+      "2": {"label": "克勒", "description": "克勒的一级部门"}
+    }
+  },
+  
+  "virtual_associations": [],
+  
+  "calculated_fields": {},
+  
+  "business_constraints": {},
+  
+  "business_rules": []
+}

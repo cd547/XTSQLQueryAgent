@@ -1,0 +1,22 @@
+CREATE TABLE `tk_knowledge_course` (
+  `id` bigint(11) NOT NULL AUTO_INCREMENT,
+  `tk_knowledge_id` bigint(11) NOT NULL COMMENT '知识点id',
+  `course_id` bigint(11) NOT NULL COMMENT '课程id(一级)',
+  `exam_id` bigint(11) NOT NULL COMMENT '考试局id(二级)',
+  `subject_id` bigint(11) NOT NULL COMMENT '科目id（三级）',
+  `subject_name_id` bigint(11) DEFAULT NULL COMMENT '科目名称id(四级)',
+  `module_id` bigint(11) DEFAULT NULL COMMENT '模块id(五级)',
+  `admin_user_id` bigint(11) NOT NULL COMMENT '操作人id',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录创建时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `rel` int(1) NOT NULL DEFAULT '1' COMMENT '是否发布0未发布 1已发布',
+  `deleted` int(1) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  KEY `tk_knowledge_course_tk_knowledge_id` (`tk_knowledge_id`) USING BTREE,
+  KEY `tk_knowledge_course_course_id` (`course_id`) USING BTREE,
+  KEY `tk_knowledge_course_exam_id` (`exam_id`) USING BTREE,
+  KEY `tk_knowledge_course_subject_id` (`subject_id`) USING BTREE,
+  KEY `tk_knowledge_course_subject_name_id` (`subject_name_id`) USING BTREE,
+  KEY `tk_knowledge_course_module_id` (`module_id`) USING BTREE,
+  KEY `tk_knowledge_course_admin_user_id` (`admin_user_id`) USING BTREE
+) ENGINE=InnoDB AUTO_INCREMENT=5763 DEFAULT CHARSET=utf8mb4 COMMENT='知识点科目关联表'

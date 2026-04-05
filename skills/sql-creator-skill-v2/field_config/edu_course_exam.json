@@ -1,0 +1,31 @@
+{
+  "table_name": "edu_course_exam",
+  
+  "field_aliases": {
+    "id": ["ID", "编号", "二级科目ID", "考试局ID"],
+    "name": ["考试局名称", "二级科目名称", "考试局"]
+  },
+  
+  "field_enums": {
+  },
+  
+  "virtual_associations": [
+    {
+      "name": "关联课程",
+      "target_table": "edu_course",
+      "join_condition": "edu_course.id = edu_course_exam.course_id",
+      "type": "one_to_one",
+      "description": "1个考试局对应1个课程",
+      "fields_mapping": {
+        "id": "course_id"
+      },
+      "business_rule": ""
+    }
+  ],
+  
+  "calculated_fields": {},
+  
+  "business_constraints": {},
+  
+  "business_rules": []
+}

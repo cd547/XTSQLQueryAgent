@@ -1,0 +1,43 @@
+{
+  "table_name": "edu_course_exam_subject_name",
+  
+  "field_aliases": {
+    "id": ["ID", "编号", "四级科目ID", "科目名称ID"],
+    "name": ["四级科目名称"],
+    "rule_id": ["成绩规则ID", "规则ID"]
+  },
+  
+  "field_enums": {
+  },
+  
+  "virtual_associations": [
+    {
+      "name": "关联科目",
+      "target_table": "edu_course_exam_subject",
+      "join_condition": "edu_course_exam_subject.id = edu_course_exam_subject_name.subject_id",
+      "type": "one_to_one",
+      "description": "1个科目名称对应1个科目",
+      "fields_mapping": {
+        "id": "subject_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联成绩规则表",
+      "target_table": "t_exam_result_rule",
+      "join_condition": "t_exam_result_rule.id = edu_course_exam_subject_name.rule_id",
+      "type": "one_to_one",
+      "description": "1个科目名称对应1个成绩规则",
+      "fields_mapping": {
+        "id": "rule_id"
+      },
+      "business_rule": ""
+    }
+  ],
+  
+  "calculated_fields": {},
+  
+  "business_constraints": "tk_knowledge_id已经废弃了，如果要查科目关联知识点/知识点体系，请关联tk_knowledge_course表",
+  
+  "business_rules": []
+}

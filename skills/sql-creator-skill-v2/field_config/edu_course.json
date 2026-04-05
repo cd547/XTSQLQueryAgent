@@ -1,0 +1,30 @@
+{
+  "table_name": "edu_course",
+  
+  "field_aliases": {
+    "id": ["ID", "编号", "一级科目ID", "课程ID"],
+    "platform": ["平台"],
+    "name": ["课程名称", "一级科目名称", "课程"],
+    "org": ["组织"]
+  },
+  
+  "field_enums": {
+    "platform": {
+      "1": {"label": "机构", "description": "之前叫学通"},
+      "2": {"label": "学校", "description": "之前叫科桥"}
+    },
+    "org": {
+      "0": {"label": "学通(默认)", "description": "学通的一级科目"},
+      "1": {"label": "科桥", "description": "科桥的一级科目"},
+      "2": {"label": "克勒", "description": "克勒的一级科目"}
+    }
+  },
+  
+  "virtual_associations": [],
+  
+  "calculated_fields": {},
+  
+  "business_constraints": {},
+  
+  "business_rules": []
+}

@@ -1,0 +1,29 @@
+{
+  "table_name": "edu_campus",
+  
+  "field_aliases": {
+    "id": ["ID", "编号"],
+    "name": ["校区名称"],
+    "simple": ["编号", "合同校区识别码"],
+    "created_time": ["创建时间"],
+    "update_time": ["更新时间"],
+    "del": ["删除标记"],
+    "platform": ["平台"],
+    "manager_id": ["校区负责人ID", "负责人ID"]
+  },
+  
+  "field_enums": {
+    "platform": {
+      "1": {"label": "机构", "description": "学通"},
+      "2": {"label": "学校", "description": "科桥等其他学校"}
+    }
+  },
+  
+  "virtual_associations": [],
+  
+  "calculated_fields": {},
+  
+  "business_constraints": {},
+  
+  "business_rules": ["这里rel字段默认都是0，查询时无视这个字段"]
+}

@@ -1,0 +1,31 @@
+{
+  "table_name": "edu_course_exam_module",
+  
+  "field_aliases": {
+    "id": ["ID", "编号", "五级模块ID", "模块ID"],
+    "name": ["五级模块", "模块名称"]
+  },
+  
+  "field_enums": {
+  },
+  
+  "virtual_associations": [
+    {
+      "name": "关联科目名称",
+      "target_table": "edu_course_exam_subject_name",
+      "join_condition": "edu_course_exam_subject_name.id = edu_course_exam_module.subject_name_id",
+      "type": "one_to_one",
+      "description": "1个五级模块对应1个科目名称",
+      "fields_mapping": {
+        "id": "subject_name_id"
+      },
+      "business_rule": ""
+    }
+  ],
+  
+  "calculated_fields": {},
+  
+  "business_constraints": {},
+  
+  "business_rules": []
+}
