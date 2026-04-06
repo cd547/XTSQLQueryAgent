@@ -32,5 +32,29 @@ export function queryExecute(data) {
   return api.post('/query/execute', data).then(r => r.data);
 }
 
+export function getSessions() {
+  return api.get('/sessions').then(r => r.data);
+}
+
+export function createSession(name) {
+  return api.post('/sessions', { name }).then(r => r.data);
+}
+
+export function getSessionMessages(sessionId) {
+  return api.get(`/sessions/${sessionId}/messages`).then(r => r.data);
+}
+
+export function saveSessionMessage(sessionId, data) {
+  return api.post(`/sessions/${sessionId}/messages`, data).then(r => r.data);
+}
+
+export function updateSession(sessionId, name) {
+  return api.put(`/sessions/${sessionId}`, { name }).then(r => r.data);
+}
+
+export function deleteSession(sessionId) {
+  return api.delete(`/sessions/${sessionId}`).then(r => r.data);
+}
+
 export default api;
 

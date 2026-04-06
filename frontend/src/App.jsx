@@ -1,23 +1,623 @@
-import React from 'react';
-import { ConfigProvider, Layout } from 'antd';
-import ConfigPanel from './components/ConfigPanel';
-import QueryPanel from './components/QueryPanel';
+import React, { useState, useRef, useEffect } from 'react';
+import { Layout, Input, Button, Table, Card, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs } from 'antd';
+import { SettingOutlined, CloseOutlined, PlusOutlined } from '@ant-design/icons';
+import ReactMarkdown from 'react-markdown';
+import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession } from './api';
 
-const { Header, Content } = Layout;
+const { TextArea } = Input;
+const { Sider, Content } = Layout;
+
+const deleteIconStyle = {
+  color: '#999',
+  cursor: 'pointer',
+  fontSize: 12,
+  marginLeft: 8,
+  transition: 'color 0.2s'
+};
+
+function DeleteIcon({ onClick, style }) {
+  const [hover, setHover] = useState(false);
+  return (
+    <CloseOutlined 
+      style={{ ...style, color: hover ? '#ff4d4f' : style.color }}
+      onMouseEnter={() => setHover(true)}
+      onMouseLeave={() => setHover(false)}
+      onClick={onClick}
+    />
+  );
+}
+
+function ChatMessage({ role, content, isStreaming, onExecute, timestamp, collapsed, onToggleCollapse, logType, sql, onOpenSqlTab }) {
+  const isUser = role === 'user';
+  const isLog = role === 'log';
+  
+  const timeStr = timestamp ? new Date(timestamp).toLocaleString('zh-CN', { 
+    year: 'numeric', 
+    month: '2-digit', 
+    day: '2-digit',
+    hour: '2-digit', 
+    minute: '2-digit' 
+  }) : '';
+  
+  if (isLog) {
+    const typeLabel = logType === 'return' ? '工具返回' : '工具调用';
+    
+    return (
+      <div style={{
+        display: 'flex',
+        justifyContent: 'flex-start',
+        marginBottom: 8,
+        marginLeft: 20
+      }}>
+        <div style={{
+          maxWidth: '70%',
+          padding: '6px 10px',
+          borderRadius: 8,
+          background: logType === 'return' ? '#fff7e6' : '#f5f5f5',
+          color: '#666',
+          fontSize: 10,
+          border: '1px solid #ddd'
+        }}>
+          <div 
+            style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', marginBottom: collapsed ? 0 : 4 }}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onToggleCollapse) onToggleCollapse();
+            }}
+          >
+            <span style={{ marginRight: 4 }}>{collapsed ? '▶' : '▼'}</span>
+            <span style={{ fontSize: 9, color: '#999' }}>{timeStr} · {typeLabel}</span>
+          </div>
+          {!collapsed && (
+            <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 10 }}>{content}</div>
+          )}
+        </div>
+      </div>
+    );
+  }
+  
+  let messageText = '';
+  
+  if (!isUser && content) {
+    messageText = content;
+  }
+  
+  return (
+    <div style={{
+      display: 'flex',
+      justifyContent: isUser ? 'flex-end' : 'flex-start',
+      marginBottom: 16,
+      position: 'relative'
+    }}>
+      <div style={{
+        maxWidth: '75%',
+        padding: '12px 16px',
+        borderRadius: 12,
+        background: isUser ? '#1890ff' : '#f5f5f5',
+        color: isUser ? '#fff' : '#333',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.1)'
+      }}>
+        {isUser ? (
+          <div>
+            <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.7)', marginBottom: 2 }}>{timeStr}</div>
+            <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12 }}>{content}</div>
+          </div>
+        ) : (
+          <div>
+            <div style={{ fontSize: 9, color: '#999', marginBottom: 2 }}>{timeStr}</div>
+            {messageText && (
+              <div style={{ color: '#333', fontSize: 12 }}>
+                <ReactMarkdown>{messageText}</ReactMarkdown>
+              </div>
+            )}
+            {isStreaming && (
+              <Spin size="small" style={{ marginTop: 8 }} />
+            )}
+            {!isUser && sql && sql.trim() && !isStreaming && (
+              <div style={{ marginTop: 12, textAlign: 'right' }}>
+                <Button 
+                  type="primary" 
+                  size="small"
+                  onClick={() => onOpenSqlTab && onOpenSqlTab(sql)}
+                >
+                  复制到SQL查询
+                </Button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function App() {
+  const [sessions, setSessions] = useState([]);
+  const [currentSessionId, setCurrentSessionId] = useState(null);
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [schemaMode, setSchemaMode] = useState('stream');
+  const [isStreaming, setIsStreaming] = useState(false);
+  const [results, setResults] = useState([]);
+  const [rowCount, setRowCount] = useState(0);
+  const [showResults, setShowResults] = useState(false);
+  const [configOpen, setConfigOpen] = useState(false);
+  const [tabs, setTabs] = useState({ 'chat': { title: '聊天' } });
+  const [activeTabKey, setActiveTabKey] = useState('chat');
+  const [sqlInput, setSqlInput] = useState('');
+  const messageCountRef = useRef(0);
+  const messagesEndRef = useRef(null);
+  
+  useEffect(() => {
+    loadSessions();
+  }, []);
+  
+  useEffect(() => {
+    if (activeTabKey !== 'chat' && tabs[activeTabKey]?.sql) {
+      setSqlInput(tabs[activeTabKey].sql);
+    }
+  }, [activeTabKey, tabs]);
+  
+  const loadSessions = async () => {
+    try {
+      const data = await getSessions();
+      setSessions(data.sessions || []);
+      if (data.sessions && data.sessions.length > 0 && !currentSessionId) {
+        loadMessages(data.sessions[0].id);
+      }
+    } catch (e) {
+      console.error('加载会话失败:', e);
+    }
+  };
+  
+  const loadMessages = async (sessionId) => {
+    try {
+      const data = await getSessionMessages(sessionId);
+      if (data.messages) {
+        setMessages(data.messages.map(m => ({
+          role: m.role,
+          content: m.content || m.sql || '',
+          sql: m.sql || '',
+          timestamp: m.created_at
+        })));
+      }
+    } catch (e) {
+      console.error('加载消息失败:', e);
+    }
+  };
+  
+  useEffect(() => {
+    if (messages.length > messageCountRef.current) {
+      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+      messageCountRef.current = messages.length;
+    }
+  }, [messages.length]);
+  
+  const handleNewSession = async () => {
+    try {
+      const data = await createSession('新对话');
+      const newSession = { 
+        id: data.id, 
+        name: data.name || '新对话', 
+        created_at: new Date().toISOString() 
+      };
+      setSessions(prev => [newSession, ...prev]);
+      setCurrentSessionId(data.id);
+      setMessages([]);
+      setResults([]);
+      setShowResults(false);
+      messageCountRef.current = 0;
+    } catch (e) {
+      message.error('创建会话失败');
+    }
+  };
+  
+  const handleSessionClick = (sessionId) => {
+    setCurrentSessionId(sessionId);
+    loadMessages(sessionId);
+    messageCountRef.current = 0;
+  };
+  
+  const handleDeleteSession = async (sessionId, e) => {
+    e.stopPropagation();
+    try {
+      await deleteSession(sessionId);
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
+      if (currentSessionId === sessionId) {
+        setCurrentSessionId(null);
+        setMessages([]);
+      }
+      message.success('对话已删除');
+    } catch (e) {
+      message.error('删除失败');
+    }
+  };
+  
+  const handleAddTab = () => {
+    const newKey = `sql-${Date.now()}`;
+    setTabs(prev => ({ ...prev, [newKey]: { title: 'SQL查询' } }));
+    setActiveTabKey(newKey);
+  };
+  
+  const handleDeleteTab = (key) => {
+    if (key === 'chat') return;
+    setTabs(prev => {
+      const newTabs = { ...prev };
+      delete newTabs[key];
+      return newTabs;
+    });
+    if (activeTabKey === key) {
+      setActiveTabKey('chat');
+    }
+  };
+  
+  const handleOpenSqlTab = (sql) => {
+    const newKey = `sql-${Date.now()}`;
+    setTabs(prev => ({ ...prev, [newKey]: { title: 'SQL查询', sql } }));
+    setActiveTabKey(newKey);
+    setSqlInput(sql || '');
+  };
+  
+  const handleSend = async () => {
+    if (!input.trim() || loading) return;
+    
+    const userMessage = input.trim();
+    setInput('');
+    
+    const now = new Date().toISOString();
+    const newMessages = [...messages, 
+      { role: 'user', content: userMessage, timestamp: now }, 
+      { role: 'assistant', content: '', isStreaming: true, timestamp: now }
+    ];
+    setMessages(newMessages);
+    
+    setLoading(true);
+    setIsStreaming(true);
+    
+    try {
+      const response = await fetch('http://localhost:5002/api/query/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: userMessage, schemaMode: 'stream', sessionId: currentSessionId })
+      });
+      
+      if (!response.ok) {
+        throw new Error('请求失败');
+      }
+      
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullContent = '';
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const text = decoder.decode(value);
+        const lines = text.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === 'chunk') {
+                fullContent += data.content;
+                setMessages(prev => {
+                  const newMsgs = [...prev];
+                  const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+                  if (lastAssistantIdx !== -1) {
+                    newMsgs[lastAssistantIdx] = { ...newMsgs[lastAssistantIdx], content: fullContent };
+                  }
+                  return newMsgs;
+                });
+              } else if (data.type === 'log') {
+                const logContent = data.log || '';
+                const isToolReturn = logContent.startsWith('📋');
+                setMessages(prev => {
+                  const newMsgs = [...prev];
+                  const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+                  if (lastAssistantIdx !== -1) {
+                    const logMsg = { 
+                      role: 'log', 
+                      content: logContent, 
+                      timestamp: new Date().toISOString(),
+                      collapsed: true,
+                      logType: isToolReturn ? 'return' : 'call'
+                    };
+                    newMsgs.splice(lastAssistantIdx, 0, logMsg);
+                  }
+                  return newMsgs;
+                });
+              } else if (data.type === 'error') {
+                message.error(data.content);
+                setMessages(prev => {
+                  const newMsgs = [...prev];
+                  const lastIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+                  if (lastIdx !== -1) {
+                    newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: '错误: ' + data.content, isStreaming: false };
+                  }
+                  return newMsgs;
+                });
+              } else if (data.type === 'done') {
+                setMessages(prev => {
+                  const newMsgs = [...prev];
+                  const lastIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+                  if (lastIdx !== -1) {
+                    newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: data.message || '', sql: data.sql || '', isStreaming: false };
+                  }
+                  return newMsgs;
+                });
+              }
+            } catch (e) {
+              console.warn('Parse SSE error:', e);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      message.error(error.message);
+      setMessages(prev => {
+        const newMsgs = [...prev];
+        const lastIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+        if (lastIdx !== -1) {
+          newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: '错误: ' + error.message, isStreaming: false };
+        }
+        return newMsgs;
+      });
+    } finally {
+      setLoading(false);
+      setIsStreaming(false);
+    }
+  };
+  
+  const handleExecute = async (sql) => {
+    setLoading(true);
+    try {
+      const res = await queryExecute({ sql });
+      if (res.error) {
+        message.error(res.error);
+      } else {
+        setResults(res.results || []);
+        setRowCount(res.rowCount || 0);
+        setShowResults(true);
+        message.success(`查询成功，${res.rowCount} 条结果`);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
+  
+  const columns = results.length > 0
+    ? Object.keys(results[0]).map(key => ({ title: key, dataIndex: key, key }))
+    : [];
+  
+  useEffect(() => {
+    if (currentSessionId) {
+      loadMessages(currentSessionId);
+    }
+  }, [currentSessionId]);
+  
   return (
     <ConfigProvider>
-      <Layout style={{ minHeight: '100vh' }}>
-        <Header style={{ background: '#001529', padding: '0 24px', color: '#fff' }}>
-          <h1 style={{ color: '#fff', margin: 0 }}>数据查询助手</h1>
-        </Header>
-        <Content style={{ padding: '24px' }}>
-          <ConfigPanel />
-          <QueryPanel />
-        </Content>
+      <Layout style={{ height: '100vh', background: '#fff', overflow: 'hidden' }}>
+        <Sider width={260} style={{ background: '#fafafa', borderRight: '1px solid #e8e8e8' }} collapsible={false}>
+          <div style={{ padding: 16, borderBottom: '1px solid #e8e8e8' }}>
+            <Button type="primary" onClick={handleNewSession} style={{ width: '100%', marginBottom: 12 }}>
+              新对话
+            </Button>
+            <Button icon={<SettingOutlined />} onClick={() => setConfigOpen(true)} style={{ width: '100%' }}>
+              配置
+            </Button>
+          </div>
+          <div style={{ height: 'calc(100vh - 104px)', overflow: 'auto' }}>
+            <List
+              dataSource={sessions}
+              renderItem={item => (
+                <List.Item
+                  key={item.id}
+                  style={{ padding: '8px 12px', cursor: 'pointer', background: currentSessionId === item.id ? '#e6f7ff' : 'transparent', borderLeft: currentSessionId === item.id ? '3px solid #1890ff' : '3px solid transparent' }}
+                  onClick={() => handleSessionClick(item.id)}
+                  actions={[
+                    <Popconfirm
+                      key="delete"
+                      title="确定删除此对话？"
+                      onConfirm={(e) => handleDeleteSession(item.id, e)}
+                      okText="确定"
+                      cancelText="取消"
+                    >
+                      <DeleteIcon style={deleteIconStyle} />
+                    </Popconfirm>
+                  ]}
+                >
+                  <List.Item.Meta
+                    title={<span style={{ fontSize: 12 }}>{item.name} #{item.id}</span>}
+                    description={<span style={{ fontSize: 10, color: '#999' }}>{item.created_at ? new Date(item.created_at).toLocaleString() : ''}</span>}
+                  />
+                </List.Item>
+              )}
+            />
+          </div>
+        </Sider>
+        
+        <Layout>
+          <Content style={{ display: 'flex', flexDirection: 'column', padding: 0 }}>
+            <div style={{ padding: '8px 16px 0', borderBottom: '1px solid #e8e8e8', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <Tabs 
+                activeKey={activeTabKey} 
+                onChange={setActiveTabKey} 
+                type="card" 
+                size="small"
+                style={{ flex: 1 }}
+                hideAdd
+                items={Object.keys(tabs).map(key => ({
+                  key,
+                  label: (
+                    <span>
+                      {tabs[key].title || (key === 'chat' ? '聊天' : 'SQL查询')}
+                      {key !== 'chat' && (
+                        <DeleteIcon 
+                          style={{ marginLeft: 8, color: '#999', cursor: 'pointer', fontSize: 10 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleDeleteTab(key);
+                          }}
+                        />
+                      )}
+                    </span>
+                  )
+                }))}
+              />
+              <Button 
+                type="text" 
+                icon={<PlusOutlined />} 
+                onClick={handleAddTab}
+                size="small"
+                title="添加SQL查询标签"
+              />
+            </div>
+            
+            <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px', background: '#fff' }}>
+              {activeTabKey === 'chat' ? (
+                messages.length === 0 ? (
+                  <Empty description="开始新对话吧" style={{ marginTop: 100 }}>
+                    <div style={{ color: '#999', fontSize: 14 }}>例如: "查询2024年的课程销售额"</div>
+                  </Empty>
+                ) : (
+                  messages.map((msg, idx) => (
+                    <ChatMessage 
+                      key={idx}
+                      role={msg.role}
+                      content={msg.content}
+                      isStreaming={msg.isStreaming}
+                      onExecute={handleExecute}
+                      timestamp={msg.timestamp}
+                      collapsed={msg.collapsed !== undefined ? msg.collapsed : true}
+                      onToggleCollapse={() => {
+                        setMessages(prev => {
+                          const newMsgs = [...prev];
+                          newMsgs[idx] = { ...newMsgs[idx], collapsed: !newMsgs[idx].collapsed };
+                          return newMsgs;
+                        });
+                      }}
+                      logType={msg.logType}
+                      sql={msg.sql}
+                      onOpenSqlTab={handleOpenSqlTab}
+                    />
+                  ))
+                )
+              ) : (
+                <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
+                  <TextArea
+                    value={sqlInput}
+                    onChange={e => setSqlInput(e.target.value)}
+                    placeholder="输入SQL语句"
+                    autoSize={{ minRows: 10, maxRows: 20 }}
+                    style={{ 
+                      flex: 1,
+                      fontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace', 
+                      fontSize: 12,
+                      background: '#1e1e1e',
+                      color: '#d4d4d4',
+                      border: '1px solid #333',
+                      borderRadius: 6,
+                      resize: 'none',
+                      lineHeight: 1.6
+                    }}
+                  />
+                  <Button type="primary" disabled={!sqlInput.trim()} style={{ marginTop: 12 }}>查询</Button>
+                </div>
+              )}
+              {activeTabKey === 'chat' && <div ref={messagesEndRef} />}
+            </div>
+            
+            {activeTabKey === 'chat' && (
+              <>
+                <div style={{ padding: '16px 24px', borderTop: '1px solid #e8e8e8', background: '#fff' }}>
+                  <div style={{ display: 'flex', gap: 12, alignItems: 'flex-end' }}>
+                    <Select value={schemaMode} onChange={setSchemaMode} style={{ width: 100 }} options={[{ value: 'stream', label: '流式' }]} />
+                    <TextArea
+                      value={input}
+                      onChange={e => setInput(e.target.value)}
+                      onPressEnter={e => { if (!e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                      placeholder="输入自然语言查询，按Enter发送，Shift+Enter换行"
+                      autoSize={{ minRows: 1, maxRows: 4 }}
+                      style={{ flex: 1 }}
+                    />
+                    <Button type="primary" onClick={handleSend} loading={loading} disabled={!input.trim()}>发送</Button>
+                  </div>
+                </div>
+                
+                {showResults && results.length > 0 && (
+                  <div style={{ borderTop: '1px solid #e8e8e8', maxHeight: 300, overflow: 'auto' }}>
+                    <div style={{ padding: '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e8e8e8', background: '#fafafa' }}>
+                      <span style={{ fontWeight: 500 }}>查询结果 ({rowCount} 条)</span>
+                      <Button size="small" onClick={() => setShowResults(false)}>关闭</Button>
+                    </div>
+                    <Table dataSource={results} columns={columns} pagination={{ pageSize: 20 }} scroll={{ x: 'max-content' }} size="small" />
+                  </div>
+                )}
+              </>
+            )}
+          </Content>
+        </Layout>
+        
+        <Drawer title="配置" placement="right" width={400} onClose={() => setConfigOpen(false)} open={configOpen}>
+          <div style={{ padding: '0 10px' }}>
+            <ConfigPanel compact />
+          </div>
+        </Drawer>
       </Layout>
     </ConfigProvider>
+  );
+}
+
+function ConfigPanel({ compact }) {
+  const [dbConfig, setDbConfig] = useState({ host: 'localhost', port: 3306, user: 'root', password: '', database: '' });
+  const [llmConfig, setLlmConfig] = useState({ provider: 'deepseek', apiKey: '', model: 'deepseek-chat' });
+  const [testing, setTesting] = useState(false);
+  const [testingLlm, setTestingLlm] = useState(false);
+  
+  const testDb = async () => {
+    setTesting(true);
+    try {
+      const res = await fetch('http://localhost:5002/api/config/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dbConfig) });
+      const data = await res.json();
+      message[data.success ? 'success' : 'error'](data.message);
+    } catch (e) { message.error('连接失败'); }
+    finally { setTesting(false); }
+  };
+  
+  const saveLlm = async () => {
+    setTestingLlm(true);
+    try {
+      const res = await fetch('http://localhost:5002/api/config/llm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(llmConfig) });
+      const data = await res.json();
+      message[data.success ? 'success' : 'error'](data.success ? '保存成功' : '保存失败');
+    } catch (e) { message.error('保存失败'); }
+    finally { setTestingLlm(false); }
+  };
+  
+  return (
+    <div>
+      <h3 style={{ marginBottom: 16 }}>数据库配置</h3>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <Input addonBefore="Host" value={dbConfig.host} onChange={e => setDbConfig({...dbConfig, host: e.target.value})} />
+        <Input addonBefore="Port" value={dbConfig.port} onChange={e => setDbConfig({...dbConfig, port: parseInt(e.target.value)})} />
+        <Input addonBefore="User" value={dbConfig.user} onChange={e => setDbConfig({...dbConfig, user: e.target.value})} />
+        <Input.Password addonBefore="Password" value={dbConfig.password} onChange={e => setDbConfig({...dbConfig, password: e.target.value})} />
+        <Input addonBefore="Database" value={dbConfig.database} onChange={e => setDbConfig({...dbConfig, database: e.target.value})} />
+        <Button onClick={testDb} loading={testing}>测试连接</Button>
+      </div>
+      
+      <h3 style={{ marginTop: 24, marginBottom: 16 }}>LLM 配置</h3>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <Select value={llmConfig.provider} onChange={v => setLlmConfig({...llmConfig, provider: v})} options={[{ value: 'deepseek', label: 'DeepSeek' }, { value: 'openai', label: 'OpenAI' }, { value: 'minimax', label: 'MiniMax' }]} />
+        <Input.Password placeholder="API Key" value={llmConfig.apiKey} onChange={e => setLlmConfig({...llmConfig, apiKey: e.target.value})} />
+        <Input placeholder="模型名称" value={llmConfig.model} onChange={e => setLlmConfig({...llmConfig, model: e.target.value})} />
+        <Button onClick={saveLlm} loading={testingLlm}>保存LLM配置</Button>
+      </div>
+    </div>
   );
 }
 

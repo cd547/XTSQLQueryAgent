@@ -22,9 +22,17 @@ export function initDatabase() {
     CREATE TABLE IF NOT EXISTS sessions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT,
+      sort_order INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // 如果 sort_order 列不存在，添加它
+  try {
+    db.exec(`ALTER TABLE sessions ADD COLUMN sort_order INTEGER DEFAULT 0`);
+  } catch (e) {
+    // 列已存在，忽略
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS messages (

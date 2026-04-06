@@ -9,6 +9,7 @@
   },
   "dependencies": {
     "@langchain/core": "^1.1.38",
+    "@langchain/deepseek": "^1.0.22",
     "better-sqlite3": "^11.1.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",

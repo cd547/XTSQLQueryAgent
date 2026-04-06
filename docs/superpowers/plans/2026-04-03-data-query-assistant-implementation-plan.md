@@ -1597,3 +1597,62 @@ git commit -M5: add unit tests"
 **实现内容**:
 - [x] 预留流式输出扩展点（TODO注释）
 - 后续可通过 `?stream=true` 参数启用SSE流式输出
+
+---
+
+### Task 9: SSE流式输出 + Agent日志 ✅
+
+**完成时间**: 2026-04-06
+
+**Files:**
+- Modify: `backend/src/services/llm.js` - 添加 `generateSQLWithLangChainStreamGen` 生成器函数
+- Modify: `backend/src/routes/query.js` - stream 模式支持
+- Modify: `frontend/src/App.jsx` - 显示工具调用日志
+
+**实现内容**:
+- [x] SSE 流式输出：chunk, log, done, error 事件类型
+- [x] Agent 工具调用日志实时显示
+- [x] 解析 ```json ... ``` 代码块提取 sql 和 message
+- [x] 修复 done 事件数据传递问题
+
+**前端显示**:
+- 工具调用：蓝色日志样式显示
+- 最终结果：显示 message 说明 + SQL 代码块
+
+---
+
+### Task 10: 文档同步更新 ✅
+
+**完成时间**: 2026-04-06
+
+**Files:**
+- Modify: `docs/superpowers/specs/2026-04-03-data-query-assistant-design.md`
+- Modify: `docs/superpowers/plans/2026-04-03-data-query-assistant-implementation-plan.md`
+
+**实现内容**:
+- [x] 更新设计文档：流式输出与Agent日志部分
+- [x] 更新实现计划：添加 Task 9 和 Task 10
+
+---
+
+### Task 11: 界面优化与 Tab 功能 ✅
+
+**完成时间**: 2026-04-06
+
+**Files:**
+- Modify: `frontend/src/App.jsx`
+- Modify: `backend/src/routes/query.js`
+- Modify: `backend/src/services/llm.js`
+
+**实现内容**:
+- [x] 修复左侧边栏滚动条问题（移除固定高度和 overflow: hidden）
+- [x] 实现 Tab 功能：固定"聊天"标签 + 可添加删除的"SQL查询"标签
+- [x] 删除按钮改为 CloseOutlined 图标，hover 变红效果
+- [x] 聊天与 SQL 查询使用独立状态管理（sqlInput）
+- [x] 添加"复制到SQL查询"按钮功能
+- [x] 后端消息保存逻辑改为后端处理（不再依赖前端 saveSessionMessage）
+- [x] 返回格式改为 markdown（不再返回 JSON）
+- [x] 加载历史消息时同时加载 sql 字段
+
+**前端依赖**:
+- [x] 安装 react-markdown 用于渲染 markdown 内容

@@ -7,7 +7,7 @@ import mysql from 'mysql2/promise';
 import { getDb } from '../db/sqlite.js';
 import { getConfig, getLlmConfig } from '../services/config.js';
 import { logger } from '../logger.js';
-import { generateSQLWithLangChain, loadSkillMd } from '../services/llm.js';
+import { generateSQLWithLangChain, generateSQLWithLangChainStreamGen, generateSQLWithLangChainStreamGen_BAK, loadSkillMd, generateSQLWithLangChainStreamGenV2} from '../services/llm.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = Router();
@@ -190,7 +190,17 @@ router.post('/generate', async (req, res) => {
   const { question, sessionId, schemaMode } = req.body;
 
   try {
-    // 强制流程：先读取 SKILL.md 并理解改入口
+    // 保存用户消息到数据库
+    if (sessionId && question) {
+      try {
+        const db = getDb();
+        db.prepare('INSERT INTO messages (session_id, role, content, sql, results) VALUES (?, ?, ?, ?, ?)')
+          .run(sessionId, 'user', question, '', '');
+      } catch (e) {
+        logger.error('保存用户消息失败', { error: e.message });
+      }
+    }
+
     const skillMd = loadSkillMd();
     logger.info('Skill.md loaded at generate request', { length: skillMd.length });
 
@@ -201,16 +211,15 @@ router.post('/generate', async (req, res) => {
       const db = getDb();
       const messages = db.prepare(`
         SELECT content, sql FROM messages
-        WHERE session_id = ?
-        ORDER BY id DESC LIMIT 10
+        WHERE session_id = ? AND role IN ('user', 'assistant')
+        ORDER BY id ASC LIMIT 20
       `).all(sessionId);
-      historyText = messages.reverse().map(m => `用户: ${m.content}\n助手: ${m.sql || ''}`).join('\n');
+      historyText = messages.map(m => `用户: ${m.content}\n助手: ${m.sql || ''}`).join('\n');
     }
 
     if (schemaMode === 'langchain') {
       logger.info('Query: langchain mode', { question, sessionId });
       try {
-        console.log("ll");
         const result = await generateSQLWithLangChain(question, historyText);
         logger.info('Query result', { sql: result.sql, message: result.message });
         return res.json(result);
@@ -218,6 +227,93 @@ router.post('/generate', async (req, res) => {
         logger.error('LangChain query failed', { error: error.message, stack: error.stack });
         return res.json({ error: error.message, sql: '' });
       }
+    } else if (schemaMode === 'stream') {
+      logger.info('Query: stream mode', { question, sessionId });
+      res.setHeader('Content-Type', 'text/event-stream');
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      res.flushHeaders();
+
+      try {
+        const generator = generateSQLWithLangChainStreamGen_BAK(question, historyText);
+        let fullContent = '';
+        let finalSql = '';
+        let finalMessage = '';
+        const allLogs = [];
+
+        for await (const chunk of generator) {
+          if (chunk.type === 'chunk') {
+            fullContent += chunk.content;
+            res.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk.content })}\n\n`);
+          } else if (chunk.type === 'log') {
+            const logContent = chunk.log || '';
+            allLogs.push(logContent);
+            res.write(`data: ${JSON.stringify({ type: 'log', log: logContent })}\n\n`);
+            
+            // 实时保存每条日志到数据库
+            if (sessionId && logContent) {
+              try {
+                const db = getDb();
+                db.prepare('INSERT INTO messages (session_id, role, content, sql, results) VALUES (?, ?, ?, ?, ?)')
+                  .run(sessionId, 'log', logContent, '', '');
+              } catch (e) {
+                logger.error('保存单条日志失败', { error: e.message });
+              }
+            }
+          } else if (chunk.type === 'error') {
+            res.write(`data: ${JSON.stringify({ type: 'error', content: chunk.content })}\n\n`);
+          } else if (chunk.type === 'done') {
+            finalSql = chunk.sql || '';
+            finalMessage = chunk.message || '';
+          }
+        }
+
+        // 保留合并保存（兼容）
+        if (sessionId && allLogs.length > 0) {
+          try {
+            const db = getDb();
+            const logContent = allLogs.join('\n---\n');
+            logger.info('保存日志', { sessionId: String(sessionId), logLength: logContent.length, logCount: allLogs.length });
+          } catch (e) {
+            logger.error('保存日志失败', { error: e.message, stack: e.stack });
+          }
+        }
+
+        let sql = '';
+        let message = finalMessage || fullContent;
+        
+        // 从 markdown 中提取 SQL
+        const sqlMatch = message.match(/```sql\s*([\s\S]*?)```/i) || message.match(/```mysql\s*([\s\S]*?)```/i);
+        if (sqlMatch) {
+          sql = sqlMatch[1].trim();
+        } else {
+          const sqlLineMatch = message.match(/SQL[:：]\s*[\n\r]?([\s\S]*?)(?:\n\n|\n$|$)/i);
+          if (sqlLineMatch) {
+            sql = sqlLineMatch[1].trim();
+          }
+        }
+
+        logger.info('Stream done, sending final result', { sql: sql?.substring(0, 50), message: message?.substring(0, 50) });
+        
+        // 保存最终消息到数据库
+        if (sessionId && message) {
+          try {
+            const db = getDb();
+            db.prepare('INSERT INTO messages (session_id, role, content, sql, results) VALUES (?, ?, ?, ?, ?)')
+              .run(sessionId, 'assistant', message, sql || '', '');
+          } catch (e) {
+            logger.error('保存最终消息失败', { error: e.message });
+          }
+        }
+        
+        res.write(`data: ${JSON.stringify({ type: 'done', sql, message })}\n\n`);
+      } catch (error) {
+        logger.error('Stream query failed', { error: error.message, stack: error.stack });
+        res.write(`data: ${JSON.stringify({ type: 'error', content: error.message })}\n\n`);
+      }
+
+      res.end();
+      return;
     } else if (schemaMode === 'skill' || schemaMode === undefined) {
       loadSkillV2();
       schema = buildSchemaFromSkillV2(question, cachedSkill.tableIndex);
@@ -244,6 +340,7 @@ router.post('/generate', async (req, res) => {
     }
 
     const llmConfig = getLlmConfig();
+    console.log("===>>",llmConfig);
     const { provider, apiKey, model } = llmConfig;
 
     const prompt = `你是一个SQL查询专家。根据以下数据库表结构，回答用户的问题并生成对应的SQL查询。

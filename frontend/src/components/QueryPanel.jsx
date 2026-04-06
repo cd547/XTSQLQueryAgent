@@ -1,63 +1,240 @@
-import React, { useState } from 'react';
-import { Form, Input, Button, Table, Space, Card, Modal, message, Select, Tooltip } from 'antd';
+import React, { useState, useRef, useEffect } from 'react';
+import { Input, Button, Table, Space, Card, message, Select, Spin, Empty } from 'antd';
 import ReactMarkdown from 'react-markdown';
-import { queryGenerate, queryExecute } from '../api';
+import { queryExecute } from '../api';
+
+const { TextArea } = Input;
+
+function ChatMessage({ role, content, isStreaming, onExecute }) {
+  const isUser = role === 'user';
+  
+  let sql = '';
+  let messageText = '';
+  
+  // 流式输出时直接显示完整内容
+  if (!isUser && content) {
+    // 只有流式结束后才尝试解析JSON
+    if (!isStreaming) {
+      try {
+        // 尝试匹配 ```json ``` 包裹的 JSON
+        const codeBlockMatch = content.match(/```json\s*(\{[\s\S]*?\})\s*```/);
+        if (codeBlockMatch) {
+          const parsed = JSON.parse(codeBlockMatch[1]);
+          sql = parsed.sql || '';
+          messageText = parsed.message || '';
+        } 
+        // 尝试直接匹配 JSON 对象
+        else if (content.includes('"sql"') || content.includes('"message"')) {
+          const match = content.match(/\{[\s\S]*\}/);
+          if (match) {
+            const parsed = JSON.parse(match[0]);
+            sql = parsed.sql || '';
+            messageText = parsed.message || '';
+          }
+        }
+      } catch (e) {
+        console.warn('JSON解析失败:', e);
+        // 解析失败直接显示内容
+        sql = content;
+      }
+      
+      // 如果 sql 和 message 都为空，直接显示内容
+      if (!sql && !messageText) {
+        sql = content;
+      }
+    } else {
+      // 流式输出中，直接显示所有内容
+      sql = content;
+    }
+  }
+
+  return (
+    <div style={{
+      display: 'flex',
+      justifyContent: isUser ? 'flex-end' : 'flex-start',
+      marginBottom: 16,
+      padding: '0 16px'
+    }}>
+      <div style={{
+        maxWidth: '70%',
+        padding: '12px 16px',
+        borderRadius: 12,
+        background: isUser ? '#1890ff' : '#f0f0f0',
+        color: isUser ? '#fff' : '#333'
+      }}>
+        {isUser ? (
+          <div>{content}</div>
+        ) : (
+          <div>
+            {messageText && (
+              <div style={{ marginBottom: 8 }}>
+                <ReactMarkdown>{messageText}</ReactMarkdown>
+              </div>
+            )}
+            {(sql || content) && !messageText && (
+              <div>
+                <div style={{ 
+                  background: '#1e1e1e', 
+                  color: '#d4d4d4', 
+                  padding: '8px 12px', 
+                  borderRadius: 6,
+                  fontFamily: 'monospace',
+                  fontSize: 13,
+                  whiteSpace: 'pre-wrap',
+                  wordBreak: 'break-word',
+                  maxHeight: 200,
+                  overflow: 'auto'
+                }}>
+                  {sql || content}
+                </div>
+                {!isStreaming && sql && (
+                  <Button 
+                    type="primary" 
+                    size="small" 
+                    style={{ marginTop: 8 }}
+                    onClick={() => onExecute(sql)}
+                  >
+                    执行SQL
+                  </Button>
+                )}
+              </div>
+            )}
+            {isStreaming && (
+              <Spin size="small" style={{ marginTop: 8 }} />
+            )}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
 
 function QueryPanel() {
+  const [messages, setMessages] = useState([]);
+  const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [sql, setSql] = useState('');
+  const [schemaMode, setSchemaMode] = useState('stream');
+  const [isStreaming, setIsStreaming] = useState(false);
   const [results, setResults] = useState([]);
   const [rowCount, setRowCount] = useState(0);
-  const [showSqlModal, setShowSqlModal] = useState(false);
-  const [schemaMode, setSchemaMode] = useState('langchain');
-  const [question, setQuestion] = useState('');
-  const [currentSql, setCurrentSql] = useState('');
-  const [currentMessage, setCurrentMessage] = useState('');
+  const [showResults, setShowResults] = useState(false);
+  const messagesEndRef = useRef(null);
 
-  const handleGenerate = async () => {
-    if (!question.trim()) return;
+  useEffect(() => {
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, [messages]);
+
+  const handleSend = async () => {
+    if (!input.trim() || loading) return;
+    
+    const userMessage = input.trim();
+    setInput('');
+    
+    setMessages(prev => [...prev, { role: 'user', content: userMessage }]);
+    setMessages(prev => [...prev, { role: 'assistant', content: '', isStreaming: true }]);
     setLoading(true);
-    try {
-      const res = await queryGenerate({ question, schemaMode });
-      if (res.error) {
-        message.error(res.error);
-      } else {
-        let finalSql = res.sql || '';
-        let finalMessage = res.message || '';
+    setIsStreaming(true);
 
-        // 解析嵌套 JSON（如果存在）
-        if (finalSql.includes('```json')) {
-          const jsonMatch = finalSql.match(/```json\s*(\{[\s\S]*?\})\s*```/);
-          if (jsonMatch) {
+    try {
+      const response = await fetch('http://localhost:5002/api/query/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: userMessage, schemaMode: 'stream' })
+      });
+
+      if (!response.ok) {
+        throw new Error('请求失败');
+      }
+
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      let fullContent = '';
+      let lastMsgIndex = messages.length; // 保存当前消息的索引
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        const text = decoder.decode(value);
+        console.log('收到 SSE 数据:', text.substring(0, 200));
+        const lines = text.split('\n');
+
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
             try {
-              const nested = JSON.parse(jsonMatch[1]);
-              finalSql = nested.sql || finalSql;
-              finalMessage = nested.message || finalMessage;
+              const data = JSON.parse(line.slice(6));
+              if (data.type === 'chunk') {
+                fullContent += data.content;
+                setMessages(prev => {
+                  const newMsgs = [...prev];
+                  // 找到最后一条助手消息并更新
+                  const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+                  if (lastAssistantIdx !== -1) {
+                    newMsgs[lastAssistantIdx] = {
+                      ...newMsgs[lastAssistantIdx],
+                      content: fullContent
+                    };
+                  }
+                  return newMsgs;
+                });
+              } else if (data.type === 'error') {
+                message.error(data.content);
+                setMessages(prev => {
+                  const newMsgs = [...prev];
+                  const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+                  if (lastAssistantIdx !== -1) {
+                    newMsgs[lastAssistantIdx] = {
+                      ...newMsgs[lastAssistantIdx],
+                      content: '错误: ' + data.content,
+                      isStreaming: false
+                    };
+                  }
+                  return newMsgs;
+                });
+              } else if (data.type === 'done') {
+                setMessages(prev => {
+                  const newMsgs = [...prev];
+                  const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+                  if (lastAssistantIdx !== -1) {
+                    newMsgs[lastAssistantIdx] = {
+                      ...newMsgs[lastAssistantIdx],
+                      content: data.sql || data.message || fullContent,
+                      isStreaming: false
+                    };
+                  }
+                  return newMsgs;
+                });
+              }
             } catch (e) {
-              console.warn('解析嵌套 JSON 失败:', e);
+              console.warn('Parse SSE error:', e);
             }
           }
         }
-
-        setCurrentSql(finalSql);
-        setCurrentMessage(finalMessage);
-        setShowSqlModal(true);
       }
+    } catch (error) {
+      message.error(error.message);
+      setMessages(prev => {
+        const newMsgs = [...prev];
+        newMsgs[newMsgs.length - 1].content = '错误: ' + error.message;
+        newMsgs[newMsgs.length - 1].isStreaming = false;
+        return newMsgs;
+      });
     } finally {
       setLoading(false);
+      setIsStreaming(false);
     }
   };
 
-  const handleExecute = async () => {
+  const handleExecute = async (sql) => {
     setLoading(true);
-    setShowSqlModal(false);
     try {
-      const res = await queryExecute({ sql: currentSql });
+      const res = await queryExecute({ sql });
       if (res.error) {
         message.error(res.error);
       } else {
         setResults(res.results || []);
         setRowCount(res.rowCount || 0);
+        setShowResults(true);
         message.success(`查询成功，${res.rowCount} 条结果`);
       }
     } finally {
@@ -70,54 +247,100 @@ function QueryPanel() {
     : [];
 
   return (
-    <Card>
-      <Space direction="vertical" style={{ width: '100%' }}>
-        <Space>
-          <Tooltip title="LangChain: LLM动态调用skill获取表结构（推荐）| Skill静态: 注入所有匹配表 | 本地存储: SQLite中的表结构 | 自动获取: 实时连接数据库">
-            <Select value={schemaMode} onChange={setSchemaMode} style={{ width: 150 }}>
-              <Select.Option value="langchain">LangChain (推荐)</Select.Option>
-              <Select.Option value="skill">Skill静态</Select.Option>
-              <Select.Option value="manual">本地存储</Select.Option>
-              <Select.Option value="auto">自动获取</Select.Option>
-            </Select>
-          </Tooltip>
-          <Input.Search
-            placeholder="输入自然语言查询，如：查询2024年销售额"
-            enterButton="生成SQL"
-            value={question}
-            onChange={e => setQuestion(e.target.value)}
-            onSearch={handleGenerate}
-            loading={loading}
-            style={{ width: 500 }}
+    <div style={{ display: 'flex', flexDirection: 'column', height: 'calc(100vh - 200px)' }}>
+      <Card 
+        title="SQL智能助手" 
+        style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}
+        extra={
+          <Select 
+            value={schemaMode} 
+            onChange={setSchemaMode} 
+            style={{ width: 120 }}
+            options={[
+              { value: 'stream', label: '流式' },
+              { value: 'langchain', label: 'LangChain' },
+              { value: 'skill', label: 'Skill静态' },
+              { value: 'manual', label: '本地存储' },
+              { value: 'auto', label: '自动获取' },
+            ]}
           />
-        </Space>
+        }
+      >
+        <div style={{
+          flex: 1,
+          overflow: 'auto',
+          padding: '16px 0',
+          background: '#fff'
+        }}>
+          {messages.length === 0 ? (
+            <Empty description="开始对话吧，描述你想要查询的数据">
+              <div style={{ color: '#999', fontSize: 14 }}>
+                例如: "查询2024年的课程销售额"
+              </div>
+            </Empty>
+          ) : (
+            messages.map((msg, idx) => (
+              <ChatMessage 
+                key={idx}
+                role={msg.role}
+                content={msg.content}
+                isStreaming={msg.isStreaming}
+                onExecute={handleExecute}
+              />
+            ))
+          )}
+          <div ref={messagesEndRef} />
+        </div>
 
-        {rowCount > 0 && (
+        <div style={{ 
+          display: 'flex', 
+          gap: 8, 
+          padding: '16px 0 0',
+          borderTop: '1px solid #f0f0f0'
+        }}>
+          <TextArea
+            value={input}
+            onChange={e => setInput(e.target.value)}
+            onPressEnter={e => {
+              if (!e.shiftKey) {
+                e.preventDefault();
+                handleSend();
+              }
+            }}
+            placeholder="输入自然语言查询，按Enter发送，Shift+Enter换行"
+            autoSize={{ minRows: 1, maxRows: 4 }}
+            style={{ flex: 1 }}
+          />
+          <Button 
+            type="primary" 
+            onClick={handleSend}
+            loading={loading}
+            disabled={!input.trim()}
+          >
+            发送
+          </Button>
+        </div>
+      </Card>
+
+      {showResults && results.length > 0 && (
+        <Card 
+          title={`查询结果 (${rowCount} 条)`} 
+          size="small"
+          style={{ marginTop: 16 }}
+          extra={
+            <Button size="small" onClick={() => setShowResults(false)}>关闭</Button>
+          }
+        >
           <Table
             dataSource={results}
             columns={columns}
-            pagination={{ pageSize: 100 }}
+            pagination={{ pageSize: 50 }}
             scroll={{ x: 'max-content' }}
             size="small"
           />
-        )}
-      </Space>
-
-      <Modal
-        title="生成的SQL"
-        open={showSqlModal}
-        onOk={handleExecute}
-        onCancel={() => setShowSqlModal(false)}
-        width={800}
-      >
-        <div>
-          <h3>说明：</h3>
-          <ReactMarkdown>{currentMessage}</ReactMarkdown>
-          <h3>SQL：</h3>
-          <ReactMarkdown>{`\`\`\`sql\n${currentSql}\n\`\`\``}</ReactMarkdown>
-        </div>
-      </Modal>
-    </Card>
+        </Card>
+      )}
+    </div>
   );
 }
 

@@ -534,10 +534,14 @@ skills/sql-creator-skill-v2/
 **定义的Tools**：
 - `get_tables`: 获取所有可用表列表
 - `get_table_schema(table_name)`: 获取指定表详细信息
+- `get_table_ddl(table_name)`: 获取指定表DDL建表语句
+- `get_output_format`: 获取SQL输出格式模板
+- `get_mysql_limits`: 获取MySQL 5.7限制信息
 
-**后续扩展**：
-- TODO: 支持流式输出 (SSE)
-- TODO: 用户可选LLM调用方式（直接API / LangChain）
+**LLM Provider 支持**：
+- OpenAI (`ChatOpenAI`)
+- DeepSeek (`ChatDeepSeek`)
+- MiniMax (`ChatOpenAI` with custom baseURL)
 
 ### 10.4 编码问题修复
 
@@ -546,10 +550,68 @@ skills/sql-creator-skill-v2/
 - `frontend/src/App.jsx`
 - `frontend/src/components/ConfigPanel.jsx`
 
-### 10.5 前端更新
+### 10.6 流式输出与Agent日志 (2026-04-06)
 
-**文件**：`frontend/src/components/QueryPanel.jsx`
+**实现文件**：`backend/src/routes/query.js` (stream mode)
 
-- 新增模式选择下拉框
-- 默认模式改为 `langchain`
-- 选项：LangChain (推荐)、Skill静态、本地存储、自动获取
+**SSE 事件类型**：
+- `type: 'chunk'` - LLM 输出的文本片段
+- `type: 'log'` - Agent 工具调用日志
+  - `🔧 调用工具: xxx...` - 工具开始调用
+  - `📋 工具 xxx 返回: ...` - 工具返回结果
+- `type: 'done'` - 完成，返回 sql 和 message
+- `type: 'error'` - 错误信息
+
+**前端处理**：接收 SSE 事件，实时显示 Agent 思考过程和工具调用日志
+
+### 10.7 前端更新
+
+**文件**：`frontend/src/App.jsx`
+
+- 新增左侧边栏：会话列表、新建会话、配置按钮
+- 聊天区域：显示用户消息、Agent 思考日志、最终 SQL 结果
+- 支持流式输出和工具调用日志展示
+
+### 10.8 界面优化与 Tab 功能 (2026-04-06)
+
+**前端更新**：
+
+1. **左侧边栏滚动条修复**
+   - 移除固定高度和 overflow: hidden
+   - 会话列表使用固定高度计算：`calc(100vh - 104px)`
+
+2. **Tab 功能**
+   - 固定"聊天"标签，不可删除
+   - 添加按钮可创建新的"SQL查询"标签
+   - 新标签可独立删除
+   - Tab 使用 antd Tabs 组件的 items 属性
+
+3. **删除按钮样式**
+   - 使用 CloseOutlined 图标替代 DeleteOutlined
+   - 默认灰色 (#999)，鼠标悬停变红 (#ff4d4f)
+   - 自定义 DeleteIcon 组件实现 hover 效果
+
+4. **聊天与 SQL 查询分离**
+   - 聊天 tab：自然语言输入框 + 流式输出
+   - SQL 查询 tab：独立暗色输入框（monospace 字体，12px）
+   - 使用独立的 sqlInput 状态管理
+
+5. **复制到 SQL 查询功能**
+   - Agent 回复中如有 sql 字段，显示"复制到SQL查询"按钮
+   - 点击后创建新 SQL 查询 tab 并填入 SQL
+   - 按钮放置在回复框内最后一行右下角
+
+6. **Markdown 渲染**
+   - 使用 react-markdown 渲染 Agent 返回的 markdown 内容
+   - 用户消息和助手消息区分显示
+
+**后端更新**：
+
+1. **消息保存逻辑**
+   - 用户消息：在 `/api/query/generate` 入口处保存
+   - 助手消息：在流式输出完成时保存
+   - 不再依赖前端 saveSessionMessage
+
+2. **返回格式变更**
+   - 不再返回 JSON 格式，改为直接返回 markdown
+   - done 事件返回 `{ sql, message }`，其中 message 为完整 markdown
