@@ -92,7 +92,7 @@ function ConfigPanel() {
           </Form.Item>
           <Form.Item style={{ marginTop: 30 }}>
             <Space>
-              <Button onClick={handleTest} loading={loading}>测试连接</Button>
+              <Button onClick={handleTest} loading={loading}>测试连接1</Button>
               <Button type="primary" onClick={handleSaveDb}>保存</Button>
             </Space>
           </Form.Item>

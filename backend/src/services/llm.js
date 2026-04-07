@@ -10,6 +10,16 @@ import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_V2_PATH = path.join(__dirname, '../../../skills/sql-creator-skill-v2');
+const LOGS_PATH = path.join(__dirname, '../../../logs');
+
+function writeLlmLog(content) {
+  const now = new Date();
+  const dateStr = now.toISOString().slice(0, 10);
+  const logFile = path.join(LOGS_PATH, `llm_${dateStr}.log`);
+  const timestamp = now.toISOString();
+  const logLine = `${timestamp}: ${content}\n`;
+  fs.appendFileSync(logFile, logLine, 'utf-8');
+}
 
 let cachedTableIndex = null;
 let cachedSkillMd = null;
@@ -71,14 +81,30 @@ function getMysqlLimits() {
 const tools = [
   new DynamicTool({
     name: "get_tables",
-    description: "获取所有可用的表列表。每个表包含name(表名)、description(描述)、tags(标签)。用于了解数据库中有哪些表可用。",
+    description: "获取所有可用的表列表。每个表包含name(表名)、description(描述)、tags(标签)、related_tables(关联表)、business_constraints(业务约束)、business_rules(业务规则)。用于了解数据库中有哪些表可用。",
     func: () => {
       const tableIndex = loadTableIndex();
       if (!tableIndex || !tableIndex.tables) return '暂无表数据';
       
-      return tableIndex.tables.map(t => 
-        `- ${t.name}: ${t.description} (标签: ${t.tags?.join(', ')})`
-      ).join('\n');
+      return tableIndex.tables.map(t => {
+        let info = `- ${t.name}: ${t.description || ''}`;
+        if (t.tags?.length) info += `\n  标签: ${t.tags.join(', ')}`;
+        if (t.related_tables?.length) info += `\n  关联表: ${t.related_tables.join(', ')}`;
+        if (t.business_constraints?.length) {
+          info += `\n  业务约束:`;
+          t.business_constraints.forEach(c => {
+            info += `\n    - ${c.name}: ${c.description}`;
+          });
+        }
+        if (t.business_rules?.length) {
+          info += `\n  业务规则:`;
+          t.business_rules.forEach(r => {
+            info += `\n    - ${r.rule || r.description}: ${r.description}`;
+            if (r.query) info += `\n      示例: ${r.query}`;
+          });
+        }
+        return info;
+      }).join('\n\n');
     }
   }),
   new DynamicTool({
@@ -361,18 +387,15 @@ export async function* generateSQLWithLangChainStreamGen_BAK(question, history =
   }
   
   const skillMd = loadSkillMd();
-  const tableIndex = loadTableIndex();
+  //const tableIndex = loadTableIndex();
 
   const systemMessage = `你是一个SQL查询专家。必须先读取并严格遵守 skills/sql-creator-skill-v2/SKILL.md 的规范，随后根据用户问题生成SQL。
 
 ## SKILL.md 内容（只读，严格执行）
 ${skillMd}
 
-## 表索引数据（table_index.json）
-${JSON.stringify(tableIndex, null, 2)}
-
 ## 可用Tools
-- get_tables: 获取所有可用表列表
+- get_tables: 获取可以使用列表的基本信息，即table_index.json中可用列表基本信息。
 - get_table_schema(table_name): 获取指定表的详细信息
 - get_table_ddl(table_name): 获取指定表的DDL建表语句
 - get_output_format: 获取SQL输出的格式规范和模板
@@ -393,11 +416,11 @@ ${history}
     { role: 'user', content: question }
   ];
 
-  let maxToolCalls = 15;
+  let maxToolCalls = 30;
   let responseText = '';
   
   while (maxToolCalls > 0) {
-    console.log(`第${16 - maxToolCalls}次调用`);
+    console.log(`第${31 - maxToolCalls}次调用`);
     
     const requestParams = {
       model: llmModel,
@@ -417,6 +440,8 @@ ${history}
       }))
     };
     
+    writeLlmLog('generateSQLWithLangChainStreamGen_BAK Round ' + (31 - maxToolCalls) + ' Request:\n' + JSON.stringify(requestParams, null, 2));
+    
     try {
       const fetchResponse = await fetch(`${baseURL}/chat/completions`, {
         method: 'POST',
@@ -428,9 +453,16 @@ ${history}
       });
       
       const json = await fetchResponse.json();
-      
+      writeLlmLog(`LLM响应: ${JSON.stringify(json, null, 2)}` );
+
       const assistantMessage = json.choices?.[0]?.message;
       responseText = assistantMessage?.content || '';
+      
+      // 输出LLM的思考过程（reasoning）
+      const reasoning = json.choices?.[0]?.message?.content;
+      if (reasoning) {
+        yield { type: 'LLM', log: `💭 LLM思考过程:\n${reasoning.slice(0, 10000)}` };
+      }
       
       messages.push({ 
         role: 'assistant', 
@@ -440,6 +472,7 @@ ${history}
 
       if (assistantMessage?.tool_calls && assistantMessage.tool_calls.length > 0) {
         for (const toolCall of assistantMessage.tool_calls) {
+          writeLlmLog(`🔧 调用工具: ${toolCall.function.name} 参数:${JSON.stringify(toolCall.function.arguments)}` );
           const toolName = toolCall.function.name;
           const toolArgs = toolCall.function.arguments || '{}';
           
@@ -450,7 +483,7 @@ ${history}
               logMsg += `\n参数: ${JSON.stringify(parsedArgs)}`;
             }
           } catch (e) {}
-          yield { type: 'log', log: logMsg };
+          yield { type: 'tool', log: logMsg };
           
           const tool = tools.find(t => t.name === toolName);
           if (tool) {
@@ -459,7 +492,7 @@ ${history}
               const paramValue = parsedArgs.table_name || parsedArgs[Object.keys(parsedArgs)[0]] || '';
               const toolResult = tool.func(paramValue);
               
-              yield { type: 'log', log: `📋 工具 ${toolName} 返回:\n${toolResult}` };
+              yield { type: 'tool_return', log: `📋 工具 ${toolName} 返回:\n${toolResult}` };
               
               messages.push({
                 role: 'tool',

@@ -245,17 +245,17 @@ router.post('/generate', async (req, res) => {
           if (chunk.type === 'chunk') {
             fullContent += chunk.content;
             res.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk.content })}\n\n`);
-          } else if (chunk.type === 'log') {
+          } else if (chunk.type === 'LLM' || chunk.type === 'tool' || chunk.type === 'tool_return') {
             const logContent = chunk.log || '';
             allLogs.push(logContent);
-            res.write(`data: ${JSON.stringify({ type: 'log', log: logContent })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: chunk.type, log: logContent })}\n\n`);
             
             // 实时保存每条日志到数据库
             if (sessionId && logContent) {
               try {
                 const db = getDb();
                 db.prepare('INSERT INTO messages (session_id, role, content, sql, results) VALUES (?, ?, ?, ?, ?)')
-                  .run(sessionId, 'log', logContent, '', '');
+                  .run(sessionId, chunk.type, logContent, '', '');
               } catch (e) {
                 logger.error('保存单条日志失败', { error: e.message });
               }
@@ -463,14 +463,18 @@ router.post('/execute', async (req, res) => {
   }
 
   const upper = sql.toUpperCase().trim();
+  
+  // 去除SQL开头的注释（-- 和 /* */）
+  let cleanSql = upper.replace(/^--.*$/gm, '').replace(/^\/\*.*\*\//, '').trim();
+  
   const forbidden = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE'];
   for (const word of forbidden) {
-    if (upper.includes(word)) {
+    if (cleanSql.includes(word)) {
       return res.json({ error: `不允许执行 ${word} 操作`, rowCount: 0 });
     }
   }
 
-  if (!upper.startsWith('SELECT')) {
+  if (!cleanSql.startsWith('SELECT')) {
     return res.json({ error: '只允许SELECT查询', rowCount: 0 });
   }
 
@@ -478,8 +482,10 @@ router.post('/execute', async (req, res) => {
     const config = getConfig();
     const connection = await mysql.createConnection(config);
 
-    const countSql = sql.includes('LIMIT') ? sql : sql + ' LIMIT 1000';
-    const [rows] = await connection.query(countSql);
+    // 去除SQL末尾的分号，避免拼接LIMIT出错
+    const cleanSql = sql.replace(/;$/, '').trim();
+    const execSql = cleanSql.includes('LIMIT') ? cleanSql : cleanSql + ' LIMIT 1000';
+    const [rows] = await connection.query(execSql);
     await connection.end();
 
     if (sessionId) {

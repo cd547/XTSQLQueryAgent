@@ -1,5 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Layout, Input, Button, Table, Card, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs } from 'antd';
+import { Layout, Input, Button, Table, Card, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse } from 'antd';
+const { Panel } = Collapse;
 import { SettingOutlined, CloseOutlined, PlusOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession } from './api';
@@ -29,7 +30,7 @@ function DeleteIcon({ onClick, style }) {
 
 function ChatMessage({ role, content, isStreaming, onExecute, timestamp, collapsed, onToggleCollapse, logType, sql, onOpenSqlTab }) {
   const isUser = role === 'user';
-  const isLog = role === 'log';
+  const isLog = role === 'log' || role === 'LLM' || role === 'tool' || role === 'tool_return';
   
   const timeStr = timestamp ? new Date(timestamp).toLocaleString('zh-CN', { 
     year: 'numeric', 
@@ -40,7 +41,17 @@ function ChatMessage({ role, content, isStreaming, onExecute, timestamp, collaps
   }) : '';
   
   if (isLog) {
-    const typeLabel = logType === 'return' ? '工具返回' : '工具调用';
+    const typeLabel = logType === 'return' ? '工具返回' : logType === 'llm' ? 'LLM思考' : '工具调用';
+    const bgColors = {
+      llm: '#e6f7ff',
+      call: '#f5f5f5',
+      return: '#fff7e6'
+    };
+    const borderColors = {
+      llm: '#1890ff',
+      call: '#ddd',
+      return: '#faad14'
+    };
     
     return (
       <div style={{
@@ -53,19 +64,18 @@ function ChatMessage({ role, content, isStreaming, onExecute, timestamp, collaps
           maxWidth: '70%',
           padding: '6px 10px',
           borderRadius: 8,
-          background: logType === 'return' ? '#fff7e6' : '#f5f5f5',
+          background: bgColors[logType] || '#f5f5f5',
           color: '#666',
           fontSize: 10,
-          border: '1px solid #ddd'
+          border: `1px solid ${borderColors[logType] || '#ddd'}`
         }}>
           <div 
             style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', marginBottom: collapsed ? 0 : 4 }}
-            onClick={(e) => {
-              e.stopPropagation();
-              if (onToggleCollapse) onToggleCollapse();
-            }}
+            onClick={() => { if (onToggleCollapse) onToggleCollapse(); }}
           >
-            <span style={{ marginRight: 4 }}>{collapsed ? '▶' : '▼'}</span>
+            <span style={{ marginRight: 4 }}>
+              {collapsed ? '▶' : '▼'}
+            </span>
             <span style={{ fontSize: 9, color: '#999' }}>{timeStr} · {typeLabel}</span>
           </div>
           {!collapsed && (
@@ -145,7 +155,11 @@ function App() {
   const [configOpen, setConfigOpen] = useState(false);
   const [tabs, setTabs] = useState({ 'chat': { title: '聊天' } });
   const [activeTabKey, setActiveTabKey] = useState('chat');
+  const [currentSessionName, setCurrentSessionName] = useState('聊天');
   const [sqlInput, setSqlInput] = useState('');
+  const [sqlKey, setSqlKey] = useState(['sql']);
+  const [resultKey, setResultKey] = useState(['result']);
+  const [pageSize, setPageSize] = useState(20);
   const messageCountRef = useRef(0);
   const messagesEndRef = useRef(null);
   
@@ -164,7 +178,10 @@ function App() {
       const data = await getSessions();
       setSessions(data.sessions || []);
       if (data.sessions && data.sessions.length > 0 && !currentSessionId) {
-        loadMessages(data.sessions[0].id);
+        const firstSession = data.sessions[0];
+        setCurrentSessionId(firstSession.id);
+        setCurrentSessionName(firstSession.name ? `${firstSession.name}#${firstSession.id}` : '聊天');
+        loadMessages(firstSession.id);
       }
     } catch (e) {
       console.error('加载会话失败:', e);
@@ -179,7 +196,8 @@ function App() {
           role: m.role,
           content: m.content || m.sql || '',
           sql: m.sql || '',
-          timestamp: m.created_at
+          timestamp: m.created_at,
+          logType: m.role === 'LLM' ? 'llm' : m.role === 'tool_return' ? 'return' : 'call'
         })));
       }
     } catch (e) {
@@ -213,9 +231,11 @@ function App() {
     }
   };
   
-  const handleSessionClick = (sessionId) => {
-    setCurrentSessionId(sessionId);
-    loadMessages(sessionId);
+  const handleSessionClick = (session) => {
+    setCurrentSessionId(session.id);
+    const newName = session.name ? `${session.name}#${session.id}` : '聊天';
+    setCurrentSessionName(newName);
+    loadMessages(session.id);
     messageCountRef.current = 0;
   };
   
@@ -311,9 +331,13 @@ function App() {
                   }
                   return newMsgs;
                 });
-              } else if (data.type === 'log') {
+              } else if (data.type === 'LLM' || data.type === 'tool' || data.type === 'tool_return') {
                 const logContent = data.log || '';
-                const isToolReturn = logContent.startsWith('📋');
+                let logType = 'call';
+                if (data.type === 'LLM') logType = 'llm';
+                else if (data.type === 'tool_return') logType = 'return';
+                else logType = 'call';
+                
                 setMessages(prev => {
                   const newMsgs = [...prev];
                   const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
@@ -323,7 +347,7 @@ function App() {
                       content: logContent, 
                       timestamp: new Date().toISOString(),
                       collapsed: true,
-                      logType: isToolReturn ? 'return' : 'call'
+                      logType: logType
                     };
                     newMsgs.splice(lastAssistantIdx, 0, logMsg);
                   }
@@ -378,9 +402,15 @@ function App() {
       if (res.error) {
         message.error(res.error);
       } else {
-        setResults(res.results || []);
-        setRowCount(res.rowCount || 0);
-        setShowResults(true);
+        // 将结果存储在当前tab中
+        setTabs(prev => ({
+          ...prev,
+          [activeTabKey]: {
+            ...prev[activeTabKey],
+            results: res.results || [],
+            rowCount: res.rowCount || 0
+          }
+        }));
         message.success(`查询成功，${res.rowCount} 条结果`);
       }
     } finally {
@@ -388,8 +418,41 @@ function App() {
     }
   };
   
-  const columns = results.length > 0
-    ? Object.keys(results[0]).map(key => ({ title: key, dataIndex: key, key }))
+  const exportToExcel = async (data, cols) => {
+    try {
+      const XLSX = await import('xlsx');
+      const worksheet = XLSX.utils.json_to_sheet(data);
+      const workbook = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(workbook, worksheet, '查询结果');
+      XLSX.writeFile(workbook, `查询结果_${Date.now()}.xlsx`);
+      message.success('导出成功');
+    } catch (e) {
+      // Fallback to CSV
+      const headers = cols.map(c => c.title).join(',');
+      const rows = data.map(row => cols.map(c => row[c.dataIndex] ?? '').join(','));
+      const csv = [headers, ...rows].join('\n');
+      const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `查询结果_${Date.now()}.csv`;
+      a.click();
+      message.success('导出CSV成功');
+    }
+  };
+  
+  // 获取当前tab的结果
+  const currentResults = activeTabKey !== 'chat' && tabs[activeTabKey]?.results ? tabs[activeTabKey].results : results;
+  const currentRowCount = activeTabKey !== 'chat' && tabs[activeTabKey]?.rowCount ? tabs[activeTabKey].rowCount : rowCount;
+  
+  const columns = currentResults.length > 0
+    ? Object.keys(currentResults[0]).map(key => ({ 
+      title: key, 
+      dataIndex: key, 
+      key,
+      ellipsis: true,
+      style: { fontSize: 8 }
+    }))
     : [];
   
   useEffect(() => {
@@ -417,7 +480,7 @@ function App() {
                 <List.Item
                   key={item.id}
                   style={{ padding: '8px 12px', cursor: 'pointer', background: currentSessionId === item.id ? '#e6f7ff' : 'transparent', borderLeft: currentSessionId === item.id ? '3px solid #1890ff' : '3px solid transparent' }}
-                  onClick={() => handleSessionClick(item.id)}
+                  onClick={() => handleSessionClick(item)}
                   actions={[
                     <Popconfirm
                       key="delete"
@@ -431,7 +494,7 @@ function App() {
                   ]}
                 >
                   <List.Item.Meta
-                    title={<span style={{ fontSize: 12 }}>{item.name} #{item.id}</span>}
+                    title={<span style={{ fontSize: 12 }}>{item.name} <span style={{ color: '#999' }}>#{item.id}</span></span>}
                     description={<span style={{ fontSize: 10, color: '#999' }}>{item.created_at ? new Date(item.created_at).toLocaleString() : ''}</span>}
                   />
                 </List.Item>
@@ -443,38 +506,36 @@ function App() {
         <Layout>
           <Content style={{ display: 'flex', flexDirection: 'column', padding: 0 }}>
             <div style={{ padding: '8px 16px 0', borderBottom: '1px solid #e8e8e8', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Tabs 
-                activeKey={activeTabKey} 
-                onChange={setActiveTabKey} 
-                type="card" 
-                size="small"
-                style={{ flex: 1 }}
-                hideAdd
-                items={Object.keys(tabs).map(key => ({
-                  key,
-                  label: (
-                    <span>
-                      {tabs[key].title || (key === 'chat' ? '聊天' : 'SQL查询')}
-                      {key !== 'chat' && (
-                        <DeleteIcon 
-                          style={{ marginLeft: 8, color: '#999', cursor: 'pointer', fontSize: 10 }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            handleDeleteTab(key);
-                          }}
-                        />
-                      )}
-                    </span>
-                  )
-                }))}
-              />
-              <Button 
-                type="text" 
-                icon={<PlusOutlined />} 
-                onClick={handleAddTab}
-                size="small"
-                title="添加SQL查询标签"
-              />
+              {(() => {
+                const currentChatLabel = '聊天' + (currentSessionName !== '聊天' ? ` (${currentSessionName})` : '');
+                return (
+                  <Tabs 
+                    activeKey={activeTabKey} 
+                    onChange={setActiveTabKey} 
+                    type="card" 
+                    size="small"
+                    style={{ flex: 1 }}
+                    hideAdd
+                    items={Object.keys(tabs).map(key => ({
+                      key,
+                      label: (
+                        <span>
+                          {key === 'chat' ? currentChatLabel : (tabs[key].title || 'SQL查询')}
+                          {key !== 'chat' && (
+                            <DeleteIcon 
+                              style={{ marginLeft: 8, color: '#999', cursor: 'pointer', fontSize: 10 }}
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleDeleteTab(key);
+                              }}
+                            />
+                          )}
+                        </span>
+                      )
+                    }))}
+                  />
+                );
+              })()}
             </div>
             
             <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px', background: '#fff' }}>
@@ -494,9 +555,13 @@ function App() {
                       timestamp={msg.timestamp}
                       collapsed={msg.collapsed !== undefined ? msg.collapsed : true}
                       onToggleCollapse={() => {
+                        console.log('toggle idx:', idx, 'current collapsed:', messages[idx]?.collapsed);
                         setMessages(prev => {
                           const newMsgs = [...prev];
-                          newMsgs[idx] = { ...newMsgs[idx], collapsed: !newMsgs[idx].collapsed };
+                          const current = newMsgs[idx]?.collapsed ?? true;
+                          const newCollapsed = !current;
+                          console.log('setting collapsed to:', newCollapsed);
+                          newMsgs[idx] = { ...newMsgs[idx], collapsed: newCollapsed };
                           return newMsgs;
                         });
                       }}
@@ -508,24 +573,71 @@ function App() {
                 )
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                  <TextArea
-                    value={sqlInput}
-                    onChange={e => setSqlInput(e.target.value)}
-                    placeholder="输入SQL语句"
-                    autoSize={{ minRows: 10, maxRows: 20 }}
-                    style={{ 
-                      flex: 1,
-                      fontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace', 
-                      fontSize: 12,
-                      background: '#1e1e1e',
-                      color: '#d4d4d4',
-                      border: '1px solid #333',
-                      borderRadius: 6,
-                      resize: 'none',
-                      lineHeight: 1.6
+                  <Collapse 
+                    activeKey={sqlKey}
+                    onChange={(key) => {
+                      setSqlKey(key);
+                      setResultKey(key);
                     }}
+                    items={[
+                      {
+                        key: 'sql',
+                        label: <span style={{ fontWeight: 500, fontSize: 12 }}>SQL预览</span>,
+                        children: (
+                          <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+                            <TextArea
+                              value={sqlInput}
+                              onChange={e => setSqlInput(e.target.value)}
+                              placeholder="输入SQL语句"
+                              autoSize={{ 
+                                minRows: resultKey.includes('result') ? 14 : 6, 
+                                maxRows: resultKey.includes('result') ? 20 : 12 
+                              }}
+                              style={{ 
+                                flex: 1,
+                                fontFamily: 'Menlo, Monaco, Consolas, "Courier New", monospace', 
+                                fontSize: 12,
+                                resize: 'none',
+                              }}
+                            />
+                            <Button 
+                              type="primary" 
+                              disabled={!sqlInput.trim()} 
+                              onClick={() => handleExecute(sqlInput)}
+                            >查询</Button>
+                          </div>
+                        )
+                      },
+                      {
+                        key: 'result',
+                        label: <span style={{ fontWeight: 500, fontSize: 12 }}>查询结果 ({currentRowCount} 条)</span>,
+                        children: currentResults.length > 0 ? (
+                          <div style={{ maxHeight: sqlKey.includes('sql') ? 150 : 400, overflow: 'auto' }}>
+                            <div style={{ marginBottom: 4 }}>
+                              <Button size="small" onClick={() => exportToExcel(currentResults, columns)}>导出Excel</Button>
+                            </div>
+                            <Table 
+                              dataSource={currentResults} 
+                              columns={columns} 
+                              pagination={{ 
+                                pageSize: pageSize, 
+                                showSizeChanger: true, 
+                                pageSizeOptions: ['10', '20', '50', '100'],
+                                onShowSizeChange: (_, size) => setPageSize(size)
+                              }} 
+                              scroll={{ x: 'max-content', y: 300 }} 
+                              size="small"
+                              sticky
+                              className="sql-result-table"
+                              style={{ fontSize: 8 }}
+                            />
+                          </div>
+                        ) : (
+                          <div style={{ color: '#999' }}>暂无结果</div>
+                        )
+                      }
+                    ]}
                   />
-                  <Button type="primary" disabled={!sqlInput.trim()} style={{ marginTop: 12 }}>查询</Button>
                 </div>
               )}
               {activeTabKey === 'chat' && <div ref={messagesEndRef} />}
@@ -547,16 +659,6 @@ function App() {
                     <Button type="primary" onClick={handleSend} loading={loading} disabled={!input.trim()}>发送</Button>
                   </div>
                 </div>
-                
-                {showResults && results.length > 0 && (
-                  <div style={{ borderTop: '1px solid #e8e8e8', maxHeight: 300, overflow: 'auto' }}>
-                    <div style={{ padding: '12px 24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center', borderBottom: '1px solid #e8e8e8', background: '#fafafa' }}>
-                      <span style={{ fontWeight: 500 }}>查询结果 ({rowCount} 条)</span>
-                      <Button size="small" onClick={() => setShowResults(false)}>关闭</Button>
-                    </div>
-                    <Table dataSource={results} columns={columns} pagination={{ pageSize: 20 }} scroll={{ x: 'max-content' }} size="small" />
-                  </div>
-                )}
               </>
             )}
           </Content>
@@ -588,6 +690,16 @@ function ConfigPanel({ compact }) {
     finally { setTesting(false); }
   };
   
+  const saveDb = async () => {
+    setTesting(true);
+    try {
+      const res = await fetch('http://localhost:5002/api/config/db', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dbConfig) });
+      const data = await res.json();
+      message[data.success ? 'success' : 'error'](data.success ? '数据库配置已保存' : '保存失败');
+    } catch (e) { message.error('保存失败'); }
+    finally { setTesting(false); }
+  };
+  
   const saveLlm = async () => {
     setTestingLlm(true);
     try {
@@ -607,7 +719,10 @@ function ConfigPanel({ compact }) {
         <Input addonBefore="User" value={dbConfig.user} onChange={e => setDbConfig({...dbConfig, user: e.target.value})} />
         <Input.Password addonBefore="Password" value={dbConfig.password} onChange={e => setDbConfig({...dbConfig, password: e.target.value})} />
         <Input addonBefore="Database" value={dbConfig.database} onChange={e => setDbConfig({...dbConfig, database: e.target.value})} />
-        <Button onClick={testDb} loading={testing}>测试连接</Button>
+        <div style={{ display: 'flex', gap: 8 }}>
+          <Button onClick={testDb} loading={testing}>测试连接</Button>
+          <Button type="primary" onClick={saveDb}>保存</Button>
+        </div>
       </div>
       
       <h3 style={{ marginTop: 24, marginBottom: 16 }}>LLM 配置</h3>

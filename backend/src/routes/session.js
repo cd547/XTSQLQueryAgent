@@ -22,8 +22,9 @@ router.post('/', (req, res) => {
     // 获取当前最大的 sort_order
     const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM sessions').get();
     const newOrder = (maxOrder?.max || 0) + 1;
-    const result = db.prepare('INSERT INTO sessions (name, sort_order) VALUES (?, ?)').run(name || '新对话', newOrder);
-    res.json({ id: result.lastInsertRowid, name: name || '新对话', sort_order: newOrder });
+    const sessionName = name || `新对话#${newOrder}`;
+    const result = db.prepare('INSERT INTO sessions (name, sort_order) VALUES (?, ?)').run(sessionName, newOrder);
+    res.json({ id: result.lastInsertRowid, name: sessionName, sort_order: newOrder });
   } catch (error) {
     res.json({ error: error.message });
   }
