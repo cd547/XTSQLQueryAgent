@@ -9,6 +9,15 @@ import { getConfig, getLlmConfig } from '../services/config.js';
 import { logger } from '../logger.js';
 import { generateSQLWithLangChain, generateSQLWithLangChainStreamGen, generateSQLWithLangChainStreamGen_BAK, loadSkillMd, generateSQLWithLangChainStreamGenV2} from '../services/llm.js';
 
+function ensureSession() {
+  const db = getDb();
+  const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM sessions').get();
+  const newOrder = (maxOrder?.max || 0) + 1;
+  const sessionName = `新对话#${newOrder}`;
+  const result = db.prepare('INSERT INTO sessions (name, sort_order) VALUES (?, ?)').run(sessionName, newOrder);
+  return result.lastInsertRowid;
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = Router();
 
@@ -187,7 +196,13 @@ router.get('/version', async (req, res) => {
 });
 
 router.post('/generate', async (req, res) => {
-  const { question, sessionId, schemaMode } = req.body;
+  let { question, sessionId, schemaMode } = req.body;
+
+  // 如果没有sessionId，自动创建
+  if (!sessionId) {
+    sessionId = ensureSession();
+    logger.info('Auto-created session', { sessionId });
+  }
 
   try {
     // 保存用户消息到数据库
@@ -222,10 +237,10 @@ router.post('/generate', async (req, res) => {
       try {
         const result = await generateSQLWithLangChain(question, historyText);
         logger.info('Query result', { sql: result.sql, message: result.message });
-        return res.json(result);
+        return res.json({ ...result, sessionId });
       } catch (error) {
         logger.error('LangChain query failed', { error: error.message, stack: error.stack });
-        return res.json({ error: error.message, sql: '' });
+        return res.json({ error: error.message, sql: '', sessionId });
       }
     } else if (schemaMode === 'stream') {
       logger.info('Query: stream mode', { question, sessionId });
@@ -306,7 +321,7 @@ router.post('/generate', async (req, res) => {
           }
         }
         
-        res.write(`data: ${JSON.stringify({ type: 'done', sql, message })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'done', sql, message, sessionId })}\n\n`);
       } catch (error) {
         logger.error('Stream query failed', { error: error.message, stack: error.stack });
         res.write(`data: ${JSON.stringify({ type: 'error', content: error.message })}\n\n`);
