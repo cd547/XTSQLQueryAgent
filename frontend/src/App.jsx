@@ -754,7 +754,7 @@ key: 'result',
                       const startHeight = inputHeight;
                       const handleMove = (moveEvent) => {
                         const delta = moveEvent.clientY - startY;
-                        const newHeight = Math.max(60, Math.min(300, startHeight + delta));
+                        const newHeight = Math.max(60, Math.min(300, startHeight - delta));
                         setInputHeight(newHeight);
                       };
                       const handleUp = () => {
@@ -773,7 +773,7 @@ key: 'result',
                       onChange={e => setInput(e.target.value)}
                       onPressEnter={e => { if (!e.shiftKey) { e.preventDefault(); handleSend(); } }}
                       placeholder="输入自然语言查询，按Enter发送，Shift+Enter换行"
-                      style={{ flex: 1, resize: 'none', overflow: 'auto', maxHeight: '100%' }}
+                      style={{ flex: 1, resize: 'none', height: '100%' }}
                     />
                     <Button type="primary" onClick={handleSend} loading={loading} disabled={!input.trim()}>发送</Button>
                   </div>
