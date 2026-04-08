@@ -3,7 +3,7 @@
   
   "field_aliases": {
     "id": ["ID", "编号", "五级模块ID", "模块ID"],
-    "name": ["五级模块", "模块名称"]
+    "module_name": ["五级模块", "模块名称"]
   },
   
   "field_enums": {

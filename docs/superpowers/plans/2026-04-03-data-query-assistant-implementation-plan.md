@@ -4,13 +4,15 @@
 
 **Goal:** 构建公司内部数据查询助手Web应用，通过自然语言与AI Agent对话实现对公司MySQL数据库的数据查询
 
-**Architecture:** 
+**Architecture:**
 - 前端：React + Ant Design + Vite (端口5173)
 - 后端：Express + better-sqlite3（本地存储，端口5002）
 - LLM：LangChain.js集成多provider
-- 数据库：mysql2（目标库）+ SQLite（本地配置/会话存储）
+- 数据库：mysql2/promise（目标库）+ SQLite（本地配置/会话存储）
 
-**Tech Stack:** React 18, Express, LangChain.js ^0.3, mysql2, better-sqlite3, xlsx, winston
+**Tech Stack:** React 18, Express, LangChain.js ^0.3, mysql2/promise, better-sqlite3, xlsx, winston, @langchain/openai
+
+**注意**: 实际后端端口为5002，文档中3001为早期设计值
 
 ---
 
@@ -125,10 +127,14 @@ import cors from 'cors';
 import { initDatabase } from './db/sqlite.js';
 
 const app = express();
-const PORT = process.env.PORT || 3001;
+const PORT = process.env.PORT || 5002;
 
 app.use(cors());
 app.use(express.json());
+
+app.get('/api/health', (req, res) => {
+  res.json({ status: 'ok' });
+});
 
 // 初始化SQLite
 initDatabase();
@@ -136,30 +142,33 @@ initDatabase();
 // 路由
 import configRouter from './routes/config.js';
 import queryRouter from './routes/query.js';
+import tablesRouter from './routes/tables.js';
 import sessionRouter from './routes/session.js';
 import tableSchemaRouter from './routes/tableSchema.js';
 import skillRouter from './routes/skill.js';
+import exportRouter from './routes/export.js';
 
 app.use('/api/config', configRouter);
 app.use('/api/query', queryRouter);
+app.use('/api/tables', tablesRouter);
 app.use('/api/sessions', sessionRouter);
 app.use('/api/table-schema', tableSchemaRouter);
 app.use('/api/skills', skillRouter);
+app.use('/api/export', exportRouter);
 
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log('Server running on port ' + PORT);
 });
 ```
 
 - [ ] **Step 2: 创建SQLite初始化**
-
 ```javascript
 import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dbPath = path.join(__dirname, '../../data/app.db');
+const dbPath = path.join(__dirname, '../../../data/app.db');
 
 let db;
 
@@ -173,15 +182,23 @@ export function getDb() {
 
 export function initDatabase() {
   const db = getDb();
-  
-  // 会话表
+
+  // 会话表（包含sort_order字段）
   db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT,
+      sort_order INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // 如果 sort_order 列不存在，添加它
+  try {
+    db.exec(`ALTER TABLE sessions ADD COLUMN sort_order INTEGER DEFAULT 0`);
+  } catch (e) {
+    // 列已存在，忽略
+  }
 
   // 消息表
   db.exec(`
@@ -208,7 +225,7 @@ export function initDatabase() {
     )
   `);
 
-  // 表结构存储
+  // 表结构存储表
   db.exec(`
     CREATE TABLE IF NOT EXISTS table_schemas (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -1321,43 +1338,84 @@ git commit -M4: add Excel export"
 - Create: `backend/src/routes/session.js`
 
 - [ ] **Step 1: 创建会话路由**
-
 ```javascript
-import express from 'express';
+import { Router } from 'express';
 import { getDb } from '../db/sqlite.js';
 
-const router = express.Router();
+const router = Router();
 
-// 获取会话列表
-router.get('/', async (req, res) => {
-  const db = getDb();
-  const sessions = db.prepare('SELECT * FROM sessions ORDER BY id DESC').all();
-  res.json({ sessions });
+// 获取所有会话
+router.get('/', (req, res) => {
+  try {
+    const db = getDb();
+    const sessions = db.prepare('SELECT * FROM sessions ORDER BY id DESC').all();
+    res.json({ sessions });
+  } catch (error) {
+    res.json({ error: error.message, sessions: [] });
+  }
 });
 
-// 创建会话
-router.post('/', async (req, res) => {
-  const { name } = req.body;
-  const db = getDb();
-  const result = db.prepare('INSERT INTO sessions (name) VALUES (?)').run(name || '新会话');
-  res.json({ id: result.lastInsertRowid });
-});
-
-// 删除会话
-router.delete('/:id', async (req, res) => {
-  const { id } = req.params;
-  const db = getDb();
-  db.prepare('DELETE FROM messages WHERE session_id = ?').run(id);
-  db.prepare('DELETE FROM sessions WHERE id = ?').run(id);
-  res.json({ success: true });
+// 创建新会话（自动生成sort_order）
+router.post('/', (req, res) => {
+  try {
+    const db = getDb();
+    const { name } = req.body || {};
+    const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM sessions').get();
+    const newOrder = (maxOrder?.max || 0) + 1;
+    const sessionName = name || `新对话#${newOrder}`;
+    const result = db.prepare('INSERT INTO sessions (name, sort_order) VALUES (?, ?)').run(sessionName, newOrder);
+    res.json({ id: result.lastInsertRowid, name: sessionName, sort_order: newOrder });
+  } catch (error) {
+    res.json({ error: error.message });
+  }
 });
 
 // 获取会话消息
-router.get('/:id/messages', async (req, res) => {
-  const { id } = req.params;
-  const db = getDb();
-  const messages = db.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY id').all(id);
-  res.json({ messages });
+router.get('/:id/messages', (req, res) => {
+  try {
+    const db = getDb();
+    const messages = db.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC').all(req.params.id);
+    res.json({ messages });
+  } catch (error) {
+    res.json({ error: error.message, messages: [] });
+  }
+});
+
+// 保存消息
+router.post('/:id/messages', (req, res) => {
+  try {
+    const db = getDb();
+    const { role, content, sql, results } = req.body;
+    db.prepare('INSERT INTO messages (session_id, role, content, sql, results) VALUES (?, ?, ?, ?, ?)')
+      .run(req.params.id, role, content, sql || '', results || '');
+    res.json({ success: true });
+  } catch (error) {
+    res.json({ error: error.message });
+  }
+});
+
+// 更新会话名称
+router.put('/:id', (req, res) => {
+  try {
+    const db = getDb();
+    const { name } = req.body;
+    db.prepare('UPDATE sessions SET name = ? WHERE id = ?').run(name, req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.json({ error: error.message });
+  }
+});
+
+// 删除会话
+router.delete('/:id', (req, res) => {
+  try {
+    const db = getDb();
+    db.prepare('DELETE FROM messages WHERE session_id = ?').run(req.params.id);
+    db.prepare('DELETE FROM sessions WHERE id = ?').run(req.params.id);
+    res.json({ success: true });
+  } catch (error) {
+    res.json({ error: error.message });
+  }
 });
 
 export default router;
@@ -1656,3 +1714,46 @@ git commit -M5: add unit tests"
 
 **前端依赖**:
 - [x] 安装 react-markdown 用于渲染 markdown 内容
+
+---
+
+## 阶段总结 (2026-04-08)
+
+### 实现与文档差异
+
+| 项目 | 文档原设计 | 实际实现 | 状态 |
+|------|----------|----------|------|
+| 后端端口 | 3001 | 5002 | ✅ 已更新 |
+| sessions表 | id, name, created_at | 额外 sort_order 字段 | ✅ 已更新 |
+| /api/tables | 完整实现 | 空路由 | ⚠️ 未实现 |
+| /api/table-schema | CRUD接口 | 空路由 | ⚠️ 未实现 |
+| SQL验证服务 | 独立sqlValidator.js | 内联实现 | ✅ 已更新 |
+| Skill路径 | db_schema_skill.json | sql-creator-skill-v2/ | ✅ 已更新 |
+| LLM实现 | 简单wrapper | 多版本LangChain实现 | ✅ 已更新 |
+| 查询模式 | 3种 | 5种(langchain/stream/skill/manual/auto) | ✅ 已更新 |
+| 会话管理 | 基础CRUD | 自动创建会话 | ✅ 已更新 |
+
+### Skill V2 目录结构
+实际使用的Skill结构：
+```
+skills/sql-creator-skill-v2/
+├── SKILL.md              # 技能说明
+├── table_index.json      # 表索引
+├── field_config/         # 字段配置
+│   └── *.json
+├── ddl/                  # 建表语句
+│   └── *.sql
+├── docs/
+│   └── mysql57_limits.md
+└── templates/
+    └── output_format.md
+```
+
+### 未完成的API
+- `/api/tables` - 表结构获取接口（空路由）
+- `/api/table-schema` - 表结构存储CRUD（空路由）
+
+### 建议后续工作
+1. 实现 `/api/tables` 和 `/api/table-schema` 接口
+2. 添加更完整的SQL验证服务（当前为内联简单实现）
+3. 考虑添加单元测试

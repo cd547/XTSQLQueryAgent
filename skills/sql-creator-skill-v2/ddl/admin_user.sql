@@ -11,7 +11,7 @@ CREATE TABLE `admin_user` (
   `classin_id` varchar(128) CHARACTER SET utf8 DEFAULT NULL COMMENT '老师 classinid',
   `mobile` varchar(128) CHARACTER SET big5 DEFAULT NULL COMMENT '手机',
   `nick_name` varchar(128) CHARACTER SET utf8 DEFAULT NULL COMMENT '昵称',
-  `del` int(11) NOT NULL DEFAULT '0' COMMENT '是否禁用 0 正常 1禁用',
+  `del` int(11) NOT NULL DEFAULT '0' COMMENT '是否禁用 0 正常 1禁用、离职',
   `del_time` varchar(128) CHARACTER SET utf8 DEFAULT NULL COMMENT '禁用时间',
   `crm_id` varchar(128) CHARACTER SET utf8 DEFAULT NULL COMMENT 'crmid',
   `weight` int(11) NOT NULL DEFAULT '0' COMMENT '是否有绩效0正常有绩效 1无绩效',

@@ -13,11 +13,11 @@
 
 | 层级 | 技术选型 |
 |------|----------|
-| 前端 | React 18 + JavaScript + Ant Design |
+| 前端 | React 18 + JavaScript + Ant Design + react-markdown |
 | 后端 | Express + JavaScript (端口5002) |
-| LLM框架 | LangChain.js ^0.3 |
-| SQL解析 | sql-parser |
-| 数据库驱动 | mysql2（仅MySQL） |
+| LLM框架 | LangChain.js ^0.3 (@langchain/openai, @langchain/deepseek) |
+| SQL验证 | 内联实现（字符串检查） |
+| 数据库驱动 | mysql2/promise（仅MySQL） |
 | SQLite | better-sqlite3（单用户本地存储） |
 | Excel导出 | xlsx |
 | 日志 | winston |
@@ -151,36 +151,50 @@
 
 - 使用SQLite本地存储对话历史
 - 表结构：
-  ```sql
-  CREATE TABLE sessions (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    name TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
+```sql
+CREATE TABLE sessions (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT,
+  sort_order INTEGER DEFAULT 0,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
 
-  CREATE TABLE messages (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    session_id INTEGER,
-    role TEXT,
-    content TEXT,
-    sql TEXT,
-    results TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    FOREIGN KEY (session_id) REFERENCES sessions(id)
-  );
+CREATE TABLE messages (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  session_id INTEGER,
+  role TEXT,
+  content TEXT,
+  sql TEXT,
+  results TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  FOREIGN KEY (session_id) REFERENCES sessions(id)
+);
 
-  CREATE TABLE configs (
-    id INTEGER PRIMARY KEY AUTOINCREMENT,
-    key TEXT UNIQUE,
-    value TEXT,
-    created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
-    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
-  );
-  ```
+CREATE TABLE configs (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  key TEXT UNIQUE,
+  value TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE TABLE table_schemas (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  table_name TEXT,
+  description TEXT,
+  columns TEXT,
+  version INTEGER DEFAULT 1,
+  status TEXT DEFAULT 'synced',
+  auto_schema TEXT,
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+```
 - 支持多会话，每个会话包含多条消息
 - 每次查询记录question + answer + SQL + results
 - 多轮对话时可获取历史上下文
 - 安全存储数据库密码和LLM API Key（加密存储）
+- session表增加sort_order字段用于排序
 
 ### 4.4 SQL预览与安全确认
 
@@ -292,17 +306,24 @@ Response: { success: boolean, message: string }
 
 ```
 GET /api/sessions
-Response: { sessions: [{ id, name, created_at }] }
+Response: { sessions: [{ id, name, sort_order, created_at }] }
 
 POST /api/sessions
-Body: { name: string }
-Response: { id: number }
+Body: { name?: string }
+Response: { id: number, name: string, sort_order: number }
 
 PUT /api/sessions/:id
 Body: { name: string }
 Response: { success: boolean }
 
 DELETE /api/sessions/:id
+Response: { success: boolean }
+
+GET /api/sessions/:id/messages
+Response: { messages: [{ id, role, content, sql, results, created_at }] }
+
+POST /api/sessions/:id/messages
+Body: { role, content, sql, results }
 Response: { success: boolean }
 ```
 
@@ -328,6 +349,8 @@ Header: X-Config
 Response: { schema: TableInfo[] }
 ```
 
+**注意**：此接口当前未实现（空路由）
+
 ### 5.5 表结构存储接口（模式B）
 
 ```
@@ -345,6 +368,8 @@ Response: { success: boolean }
 DELETE /api/table-schema/:id
 Response: { success: boolean }
 ```
+
+**注意**：此接口当前未实现（空路由）
 
 ### 5.6 表结构刷新同步接口
 
@@ -377,17 +402,30 @@ Response: { success: boolean }
 
 ```
 POST /api/query/generate
-Body: { 
+Body: {
   question: string,
-  sessionId: number,
-  schemaMode: 'auto' | 'manual' | 'skill'
+  sessionId?: number,
+  schemaMode: 'langchain' | 'stream' | 'skill' | 'manual' | 'auto'
 }
-Header: X-LLM-Provider, X-LLM-ApiKey
-Response: { 
+Response: {
   sql: string,
-  message: string
+  message: string,
+  sessionId: number,
+  error?: string
 }
 ```
+
+**schemaMode 说明**：
+- `langchain`（默认）：使用LangChain动态Tool调用，LLM按需获取表结构
+- `stream`：SSE流式输出，包含LLM思考过程和工具调用日志
+- `skill`：使用Skill V2静态匹配表结构（从sql-creator-skill-v2/）
+- `manual`：从SQLite table_schemas表读取
+- `auto`：实时连接数据库获取
+
+**注意**：
+- 如果不传sessionId，后端会自动创建新会话
+- 返回格式已改为markdown（不再返回纯JSON）
+- stream模式使用SSE，Content-Type为text/event-stream
 
 ### 5.9 LLM配置接口
 
@@ -401,23 +439,23 @@ Response: { success: boolean }
 
 ```
 POST /api/query/execute
-Body: { 
+Body: {
   sql: string,
-  sessionId: number
+  sessionId?: number
 }
-Header: X-Config
-Response: { 
+Response: {
   results: object[],
   rowCount: number,
   error?: string
 }
 ```
 
-安全过滤规则：
-- 使用sql-parser验证SQL语法
+安全过滤规则（内联实现）：
+- 去除SQL开头的注释（-- 和 /* */）
 - 白名单允许操作：仅SELECT语句
 - 拒绝包含 INSERT/UPDATE/DELETE/DROP/CREATE/ALTER/TRUNCATE 的SQL
-- 执行前再次校验解析后的statement type
+- 自动去除SQL末尾分号，避免LIMIT拼接问题
+- 默认添加LIMIT 1000限制结果数量
 
 ### 5.11 导出接口
 
@@ -517,31 +555,52 @@ skills/sql-creator-skill-v2/
 ```
 
 ### 10.2 Schema模式说明
-
 | 模式 | 说明 | 实现状态 |
 |------|------|----------|
-| langchain | LangChain动态Skill调用（推荐） | ✅ 已实现 |
-| skill | 静态注入匹配表结构 | ✅ 已实现 |
-| manual | SQLite存储的表结构 | ✅ 已实现 |
+| langchain | LangChain动态Skill调用（推荐） | ✅ 已实现，使用LangChain Tools |
+| stream | SSE流式输出+Agent日志 | ✅ 已实现 |
+| skill | 静态注入匹配表结构（Skill V2） | ✅ 已实现，使用sql-creator-skill-v2/ |
+| manual | SQLite存储的表结构 | ⚠️ 部分实现（后端空路由） |
 | auto | 实时连接数据库获取 | ✅ 已实现 |
 
 **默认模式**：langchain
 
+**注意**：
+- `skill` 模式实际使用 `skills/sql-creator-skill-v2/` 目录，包含：
+  - `SKILL.md` - 技能说明
+  - `table_index.json` - 表索引
+  - `field_config/` - 字段配置
+  - `ddl/` - 建表语句
+  - `docs/` - 文档
+  - `templates/` - 模板
+- `langchain` 模式使用LangChain的Tools实现动态获取表结构
+
 ### 10.3 LangChain集成
 
-**实现文件**：`backend/src/services/llm.js`
+**实现文件**：
+- `backend/src/services/llm.js` - LLM调用逻辑
+- `backend/src/services/toolFuncs.js` - 工具函数和Tools定义
 
-**定义的Tools**：
-- `get_tables`: 获取所有可用表列表
-- `get_table_schema(table_name)`: 获取指定表详细信息
-- `get_table_ddl(table_name)`: 获取指定表DDL建表语句
-- `get_output_format`: 获取SQL输出格式模板
-- `get_mysql_limits`: 获取MySQL 5.7限制信息
+**定义的Tools**（在 toolFuncs.js 中）：
+- `get_tables`: 获取所有可用表列表（从table_index.json）
+- `get_table_schema(table_name)`: 获取指定表详细信息（从field_config/*.json）
+- `get_table_ddl(table_name)`: 获取指定表DDL建表语句（从ddl/*.sql）
+- `get_output_format`: 获取SQL输出格式模板（从templates/output_format.md）
+- `get_mysql_limits`: 获取MySQL 5.7限制信息（从docs/mysql57_limits.md）
 
 **LLM Provider 支持**：
 - OpenAI (`ChatOpenAI`)
-- DeepSeek (`ChatDeepSeek`)
+- DeepSeek (`ChatDeepSeek` 或 `ChatOpenAI` with baseURL)
 - MiniMax (`ChatOpenAI` with custom baseURL)
+- Ollama (本地)
+
+**实现的函数**（多个版本）：
+- `generateSQLWithLangChain`: 基础版本
+- `generateSQLWithLangChainStreamGen_BAK`: 备份版本
+- `generateSQLWithLangChainStreamGen`: 流式版本
+- `generateSQLWithLangChainStreamGenV2`: 使用LangChain流式方法
+
+**后端端口**：5002（不是文档中提到的3001）
 
 ### 10.4 编码问题修复
 
@@ -613,5 +672,27 @@ skills/sql-creator-skill-v2/
    - 不再依赖前端 saveSessionMessage
 
 2. **返回格式变更**
-   - 不再返回 JSON 格式，改为直接返回 markdown
-   - done 事件返回 `{ sql, message }`，其中 message 为完整 markdown
+- 不再返回 JSON 格式，改为直接返回 markdown
+- done 事件返回 `{ sql, message }`，其中 message 为完整 markdown
+
+---
+
+## 11. 阶段总结 (2026-04-08)
+
+### 实现与文档差异
+
+| 项目 | 文档原设计 | 实际实现 |
+|------|----------|----------|
+| 后端端口 | 3001 | 5002 |
+| sessions表 | id, name, created_at | 额外 sort_order 字段 |
+| /api/tables | 完整实现 | 空路由（未实现） |
+| /api/table-schema | CRUD接口 | 空路由（未实现） |
+| SQL验证 | 独立sqlValidator.js | 内联在query.js中 |
+| Skill路径 | db_schema_skill.json | sql-creator-skill-v2/目录 |
+| LLM实现 | 简单wrapper | 多版本LangChain实现 |
+| 查询模式 | 3种 | 5种(langchain/stream/skill/manual/auto) |
+| 会话管理 | 基础CRUD | 自动创建会话 |
+
+### 未实现的API
+- `/api/tables` - 表结构获取接口
+- `/api/table-schema` - 表结构存储CRUD接口
