@@ -276,11 +276,12 @@ ${history}
   
   while (maxToolCalls > 0) {
     console.log(`第${31 - maxToolCalls}次调用`);
-    
+
     const requestParams = {
       model: llmModel,
       messages: messages,
       temperature: 0,
+      stream: true,
       tools: tools.map(t => ({
         type: 'function',
         function: {
@@ -294,7 +295,7 @@ ${history}
         }
       }))
     };
-    
+
     writeLlmLog('generateSQLWithLangChainStreamGen_BAK Round ' + (31 - maxToolCalls) + ' Request:\n' + JSON.stringify(requestParams, null, 2));
     
     try {
@@ -306,68 +307,162 @@ ${history}
         },
         body: JSON.stringify(requestParams)
       });
-      
-      const json = await fetchResponse.json();
-      writeLlmLog(`LLM响应: ${JSON.stringify(json, null, 2)}` );
 
-      const assistantMessage = json.choices?.[0]?.message;
-      responseText = assistantMessage?.content || '';
-      
-      // 输出LLM的思考过程（reasoning）
-      const reasoning = json.choices?.[0]?.message?.content;
-      if (reasoning) {
-        yield { type: 'LLM', log: `💭 LLM思考过程:\n${reasoning.slice(0, 10000)}` };
+      if (!fetchResponse.ok) {
+        const errorJson = await fetchResponse.json();
+        throw new Error(errorJson.error?.message || fetchResponse.statusText);
       }
-      
-      messages.push({ 
-        role: 'assistant', 
-        content: assistantMessage?.content || '',
-        tool_calls: assistantMessage?.tool_calls
-      });
 
-      if (assistantMessage?.tool_calls && assistantMessage.tool_calls.length > 0) {
-        for (const toolCall of assistantMessage.tool_calls) {
-          writeLlmLog(`🔧 调用工具: ${toolCall.function.name} 参数:${JSON.stringify(toolCall.function.arguments)}` );
+      // 流式处理响应
+      const reader = fetchResponse.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      const streamToolCalls = [];
+      responseText = '';
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || '';
+
+        for (const line of lines) {
+          if (line.startsWith('data: ') && !line.includes('[DONE]')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              const content = data.choices?.[0]?.delta?.content || '';
+              if (content) {
+                responseText += content;
+                yield { type: 'chunk', content: content };
+              }
+
+              // 检查工具调用
+              const toolCalls = data.choices?.[0]?.delta?.tool_calls;
+              if (toolCalls && toolCalls.length > 0) {
+                for (const tc of toolCalls) {
+                  const toolIndex = tc.index;
+                  if (toolIndex !== undefined) {
+                    // 确保数组有足够的长度
+                    while (streamToolCalls.length <= toolIndex) {
+                      streamToolCalls.push({
+                        index: streamToolCalls.length,
+                        id: '',
+                        function: { name: '', arguments: '' }
+                      });
+                    }
+
+                    // 更新现有的工具调用
+                    const existing = streamToolCalls[toolIndex];
+
+                    // 更新 id
+                    if (tc.id) {
+                      existing.id = tc.id;
+                    }
+
+                    // 更新函数名
+                    if (tc.function?.name) {
+                      existing.function.name = tc.function.name;
+                    }
+
+                    // 累积参数
+                    if (tc.function?.arguments) {
+                      existing.function.arguments = (existing.function.arguments || '') + tc.function.arguments;
+                    }
+                  }
+                }
+              }
+            } catch (e) {}
+          }
+        }
+      }
+
+      // 输出LLM的思考过程（reasoning）
+      if (responseText) {
+        yield { type: 'LLM', log: `💭 LLM思考过程:\n${responseText.slice(0, 10000)}` };
+      }
+
+      // 过滤出有实际工具名称的工具调用
+      const validToolCalls = streamToolCalls.filter(tc => tc.function?.name && tc.function.name.trim());
+
+      // 流式响应结束，输出工具调用日志
+      for (const tc of validToolCalls) {
+        const toolName = tc.function.name;
+        writeLlmLog(`🔧 调用工具: ${toolName} 参数:${JSON.stringify(tc.function.arguments)}`);
+        let logMsg = `🔧 调用工具: ${toolName}`;
+        try {
+          const parsedArgs = JSON.parse(tc.function.arguments || '{}');
+          if (Object.keys(parsedArgs).length > 0) {
+            logMsg += `\n参数: ${JSON.stringify(parsedArgs)}`;
+          }
+        } catch (e) {}
+        yield { type: 'tool', log: logMsg };
+      }
+
+      // 保存 assistant 消息，需要包含 tool_calls
+      const assistantMsg = {
+        role: 'assistant',
+        content: responseText || ''
+      };
+      if (validToolCalls.length > 0) {
+        // 为每个 tool_call 确保有 id
+        validToolCalls.forEach((tc, idx) => {
+          if (!tc.id) {
+            tc.id = `call_${Date.now()}_${idx}`;
+          }
+        });
+        assistantMsg.tool_calls = validToolCalls.map(tc => ({
+          id: tc.id,
+          type: 'function',
+          function: {
+            name: tc.function.name,
+            arguments: tc.function.arguments || '{}'
+          }
+        }));
+      }
+      messages.push(assistantMsg);
+
+      if (validToolCalls.length > 0) {
+        for (const toolCall of validToolCalls) {
           const toolName = toolCall.function.name;
           const toolArgs = toolCall.function.arguments || '{}';
-          
-          let logMsg = `🔧 调用工具: ${toolName}`;
-          try {
-            const parsedArgs = JSON.parse(toolArgs);
-            if (Object.keys(parsedArgs).length > 0) {
-              logMsg += `\n参数: ${JSON.stringify(parsedArgs)}`;
-            }
-          } catch (e) {}
-          yield { type: 'tool', log: logMsg };
-          
+          const toolCallId = toolCall.id || `call_${Date.now()}_${validToolCalls.indexOf(toolCall)}`;
+
           const tool = tools.find(t => t.name === toolName);
           if (tool) {
             try {
-              const parsedArgs = JSON.parse(toolArgs);
+              // 尝试解析参数，如果失败则使用空对象
+              let parsedArgs = {};
+              try {
+                parsedArgs = JSON.parse(toolArgs);
+              } catch (e) {
+                console.warn(`工具 ${toolName} 参数解析失败: ${e.message}, 参数: ${toolArgs}`);
+              }
               const paramValue = parsedArgs.table_name || parsedArgs[Object.keys(parsedArgs)[0]] || '';
               const toolResult = tool.func(paramValue);
-              
+
               yield { type: 'tool_return', log: `📋 工具 ${toolName} 返回:\n${toolResult}` };
-              
+
               messages.push({
                 role: 'tool',
-                tool_call_id: toolCall.id,
+                tool_call_id: toolCallId,
                 content: toolResult
               });
             } catch (e) {
               messages.push({
                 role: 'tool',
-                tool_call_id: toolCall.id,
+                tool_call_id: toolCallId,
                 content: `Error: ${e.message}`
               });
             }
           }
         }
-        
+
         maxToolCalls--;
         continue;
       }
-      
+
       break;
       
     } catch (e) {
@@ -514,14 +609,34 @@ ${history}
               const toolCalls = data.choices?.[0]?.delta?.tool_calls;
               if (toolCalls && toolCalls.length > 0) {
                 for (const tc of toolCalls) {
-                  const toolName = tc.function?.name;
-                  if (toolName) {
-                    // 检查是否已存在相同的 tool call，避免重复添加
-                    const existingIdx = streamToolCalls.findIndex(t => t.function?.name === toolName);
-                    if (existingIdx === -1) {
-                      streamToolCalls.push(tc);
+                  const toolIndex = tc.index;
+                  if (toolIndex !== undefined) {
+                    // 确保数组有足够的长度
+                    while (streamToolCalls.length <= toolIndex) {
+                      streamToolCalls.push({
+                        index: streamToolCalls.length,
+                        id: '',
+                        function: { name: '', arguments: '' }
+                      });
                     }
-                    // 延迟输出日志，等参数收集完成后再输出
+
+                    // 更新现有的工具调用
+                    const existing = streamToolCalls[toolIndex];
+
+                    // 更新 id
+                    if (tc.id) {
+                      existing.id = tc.id;
+                    }
+
+                    // 更新函数名
+                    if (tc.function?.name) {
+                      existing.function.name = tc.function.name;
+                    }
+
+                    // 累积参数
+                    if (tc.function?.arguments) {
+                      existing.function.arguments = (existing.function.arguments || '') + tc.function.arguments;
+                    }
                   }
                 }
               }
@@ -530,28 +645,29 @@ ${history}
         }
       }
       
+      // 过滤出有实际工具名称的工具调用
+      const validToolCalls = streamToolCalls.filter(tc => tc.function?.name && tc.function.name.trim());
+
       // 流式响应结束，输出工具调用日志
-      for (const tc of streamToolCalls) {
-        const toolName = tc.function?.name;
-        if (toolName) {
-          yield { type: 'log', log: `🔧 调用工具: ${toolName}` };
-        }
+      for (const tc of validToolCalls) {
+        const toolName = tc.function.name;
+        yield { type: 'log', log: `🔧 调用工具: ${toolName}` };
       }
-      
+
       // 流式响应结束，处理工具调用
       // 保存 assistant 消息，需要包含 tool_calls
-      const assistantMsg = { 
-        role: 'assistant', 
+      const assistantMsg = {
+        role: 'assistant',
         content: responseText || ''
       };
-      if (streamToolCalls.length > 0) {
+      if (validToolCalls.length > 0) {
         // 为每个 tool_call 确保有 id
-        streamToolCalls.forEach((tc, idx) => {
+        validToolCalls.forEach((tc, idx) => {
           if (!tc.id) {
             tc.id = `call_${Date.now()}_${idx}`;
           }
         });
-        assistantMsg.tool_calls = streamToolCalls.map(tc => ({
+        assistantMsg.tool_calls = validToolCalls.map(tc => ({
           id: tc.id,
           type: 'function',
           function: {
@@ -561,22 +677,28 @@ ${history}
         }));
       }
       messages.push(assistantMsg);
-      
-      if (streamToolCalls.length > 0) {
-        for (const toolCall of streamToolCalls) {
+
+      if (validToolCalls.length > 0) {
+        for (const toolCall of validToolCalls) {
           const toolName = toolCall.function.name;
           const toolArgs = toolCall.function.arguments || '{}';
-          const toolCallId = toolCall.id || `call_${Date.now()}_${streamToolCalls.indexOf(toolCall)}`;
-          
+          const toolCallId = toolCall.id || `call_${Date.now()}_${validToolCalls.indexOf(toolCall)}`;
+
           const tool = tools.find(t => t.name === toolName);
           if (tool) {
             try {
-              const parsedArgs = JSON.parse(toolArgs);
+              // 尝试解析参数，如果失败则使用空对象
+              let parsedArgs = {};
+              try {
+                parsedArgs = JSON.parse(toolArgs);
+              } catch (e) {
+                console.warn(`工具 ${toolName} 参数解析失败: ${e.message}, 参数: ${toolArgs}`);
+              }
               const paramValue = parsedArgs.table_name || parsedArgs[Object.keys(parsedArgs)[0]] || '';
               const toolResult = tool.func(paramValue);
-              
+
               yield { type: 'log', log: `📋 工具 ${toolName} 返回:\n${toolResult}` };
-              
+
               messages.push({
                 role: 'tool',
                 tool_call_id: toolCallId,
@@ -591,7 +713,7 @@ ${history}
             }
           }
         }
-        
+
         maxToolCalls--;
         continue;
       }
