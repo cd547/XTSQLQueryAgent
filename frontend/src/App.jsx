@@ -185,12 +185,41 @@ function App() {
   useEffect(() => {
     loadSessions();
   }, []);
-  
-useEffect(() => {
+
+  useEffect(() => {
     if (activeTabKey !== 'chat' && tabs[activeTabKey]?.sql !== undefined) {
       setSqlInput(tabs[activeTabKey].sql || '');
     }
   }, [activeTabKey, tabs]);
+
+  useEffect(() => {
+    // 使表头固定在Collapse面板顶部
+    const style = document.createElement('style');
+    style.textContent = `
+      /* 表头固定 */
+      .sql-result-table .ant-table-thead > tr > th {
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 10 !important;
+        background: white !important;
+      }
+      /* 表头行固定 */
+      .sql-result-table .ant-table-thead {
+        position: sticky !important;
+        top: 0 !important;
+        z-index: 10 !important;
+        background: white !important;
+      }
+      /* 防止数据穿透 */
+      .sql-result-table .ant-table-tbody > tr > td {
+        background: white !important;
+      }
+    `;
+    document.head.appendChild(style);
+    return () => {
+      document.head.removeChild(style);
+    };
+  }, []);
 
   const handleSqlChange = (value) => {
     setSqlInput(value || '');
@@ -627,7 +656,7 @@ const columns = currentResults.length > 0
                 )
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                  <Collapse 
+                  <Collapse
                     activeKey={sqlKey}
                     onChange={(key) => {
                       setSqlKey(key);
@@ -698,7 +727,7 @@ key: 'sql',
 key: 'result',
                 label: <span style={{ fontWeight: 500, fontSize: 12 }}>查询结果 ({currentRowCount} 条)</span>,
                 children: currentResults.length > 0 ? (
-                  <div style={{ position: 'relative' }}>
+                  <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
                             <div
                               style={{
                                 position: 'absolute',
@@ -726,25 +755,27 @@ key: 'result',
                                 document.addEventListener('mouseup', handleUp);
                               }}
                             />
-                            <div style={{ marginBottom: 4, marginTop: 6 }}>
+                            <div style={{ marginBottom: 8, marginTop: 6, flexShrink: 0 }}>
                               <Button size="small" onClick={() => exportToExcel(currentResults, columns)}>导出Excel</Button>
                             </div>
+                            <div style={{ flex: 1 }}>
 <Table
-                            dataSource={currentResults}
-                            columns={columns}
-                            components={{ header: { cell: ResizableTitle } }}
-                            pagination={{
+                              dataSource={currentResults}
+                              columns={columns}
+                              components={{ header: { cell: ResizableTitle } }}
+pagination={{
                                 pageSize: pageSize,
                                 showSizeChanger: true,
                                 pageSizeOptions: ['10', '20', '50', '100'],
-onShowSizeChange: (_, size) => setPageSize(size)
-                          }}
-                          scroll={{ x: 'max-content', y: 200 }}
-                          size="small"
-                          sticky={{ offsetHeader: 0 }}
-                          className="sql-result-table"
-                          style={{ fontSize: 10, minWidth: '100%' }}
-                        />
+                                onShowSizeChange: (_, size) => setPageSize(size)
+                              }}
+                              scroll={{ x: 'max-content' }}
+                              size="small"
+                              className="sql-result-table"
+                              style={{ fontSize: 10, minWidth: '100%' }}
+                              rootClassName="sticky-table-header"
+                            />
+                            </div>
                           </div>
                         ) : (
                           <div style={{ color: '#999' }}>暂无结果</div>
