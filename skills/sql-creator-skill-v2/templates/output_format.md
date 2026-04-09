@@ -11,19 +11,16 @@
 SELECT column1, column2
 FROM table1
 JOIN table2 ON table1.id = table2.table1_id
-WHERE condition = ?
+WHERE condition = 1
 ORDER BY column1 DESC
 LIMIT 1000;
 
--- 参数: [值1]
 -- 说明: {详细业务说明}
 -- 警告: {如有风险操作}
--- 数据来源: table_index.json 和 field_config
 ```
 
 ## 生成规则
 
-- 使用参数化查询 `WHERE id = ?`
 - 不使用 SELECT *
 - 大表查询添加 LIMIT
 - DELETE/UPDATE 必须有 WHERE 条件

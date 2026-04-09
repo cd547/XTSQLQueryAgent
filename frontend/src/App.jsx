@@ -1,6 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { Layout, Input, Button, Table, Card, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse } from 'antd';
+import { Resizable } from 'react-resizable';
+import 'react-resizable/css/styles.css';
 const { Panel } = Collapse;
+
+function ResizableTitle(props) {
+  const { onResize, width, ...restProps } = props;
+  return (
+    <Resizable width={width} height={0} onResize={onResize} axis="x">
+      <th {...restProps} style={{ ...restProps.style, position: 'relative' }} />
+    </Resizable>
+  );
+}
 import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import Editor from '@monaco-editor/react';
@@ -161,6 +172,7 @@ function App() {
   const [sqlKey, setSqlKey] = useState(['sql']);
   const [resultKey, setResultKey] = useState(['result']);
   const [pageSize, setPageSize] = useState(20);
+  const [columnWidths, setColumnWidths] = useState({});
   const [inputHeight, setInputHeight] = useState(80);
   const [siderCollapsed, setSiderCollapsed] = useState(false);
   const [sqlPreviewHeight, setSqlPreviewHeight] = useState(200);
@@ -458,21 +470,32 @@ useEffect(() => {
       a.click();
       message.success('导出CSV成功');
     }
-  };
-  
-  // 获取当前tab的结果
-  const currentResults = activeTabKey !== 'chat' && tabs[activeTabKey]?.results ? tabs[activeTabKey].results : results;
-  const currentRowCount = activeTabKey !== 'chat' && tabs[activeTabKey]?.rowCount ? tabs[activeTabKey].rowCount : rowCount;
-  
-  const columns = currentResults.length > 0
-    ? Object.keys(currentResults[0]).map(key => ({ 
-      title: key, 
-      dataIndex: key, 
-      key,
-      ellipsis: true,
-      style: { fontSize: 8 }
-    }))
-    : [];
+};
+
+// 获取当前tab的结果
+const currentResults = activeTabKey !== 'chat' && tabs[activeTabKey]?.results ? tabs[activeTabKey].results : results;
+const currentRowCount = activeTabKey !== 'chat' && tabs[activeTabKey]?.rowCount ? tabs[activeTabKey].rowCount : rowCount;
+
+const handleResize = (columnKey) => (e, { size }) => {
+  setColumnWidths(prev => ({ ...prev, [columnKey]: size.width }));
+};
+
+const columns = currentResults.length > 0
+? Object.keys(currentResults[0]).map(key => ({ 
+    title: (props) => (
+      <ResizableTitle
+        width={columnWidths[key] || 150}
+        onResize={handleResize(key)}
+      >
+        <span style={{ fontSize: 12 }}>{key}</span>
+      </ResizableTitle>
+    ),
+    dataIndex: key, 
+    key,
+    ellipsis: true,
+    width: columnWidths[key] || 150
+  }))
+: [];
   
   useEffect(() => {
     if (currentSessionId) {
@@ -531,13 +554,14 @@ useEffect(() => {
         
         <Layout>
           <Content style={{ display: 'flex', flexDirection: 'column', padding: 0 }}>
-            <div style={{ padding: '8px 16px 0', borderBottom: '1px solid #e8e8e8', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Button 
-                type="text" 
-                icon={<MenuOutlined />} 
-                onClick={() => setSiderCollapsed(!siderCollapsed)}
-                title={siderCollapsed ? '显示侧边栏' : '隐藏侧边栏'}
-              />
+<div style={{ padding: '8px 16px 0', borderBottom: '1px solid #e8e8e8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+  <Button
+    type="text"
+    icon={<MenuOutlined />}
+    onClick={() => setSiderCollapsed(!siderCollapsed)}
+    title={siderCollapsed ? '显示侧边栏' : '隐藏侧边栏'}
+    style={{ marginBottom: 2 }}
+  />
               {(() => {
                 const currentChatLabel = '聊天' + (currentSessionName !== '聊天' ? ` (${currentSessionName})` : '');
                 return (
@@ -609,6 +633,8 @@ useEffect(() => {
                       setSqlKey(key);
                       setResultKey(key);
                     }}
+                    style={{ flex: 1, overflow: 'auto' }}
+                    className="custom-collapse"
                     items={[
                       {
 key: 'sql',
@@ -663,16 +689,16 @@ key: 'sql',
                               />
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                              <Button type="primary" disabled={!sqlInput.trim()} onClick={() => handleExecute(sqlInput)}>查询</Button>
+                              <Button type="primary" size="small" disabled={!sqlInput.trim()} onClick={() => handleExecute(sqlInput)}>查询</Button>
                             </div>
                           </div>
                         )
                       },
                       {
 key: 'result',
-                        label: <span style={{ fontWeight: 500, fontSize: 12 }}>查询结果 ({currentRowCount} 条)</span>,
-                        children: currentResults.length > 0 ? (
-                          <div style={{ position: 'relative' }}>
+                label: <span style={{ fontWeight: 500, fontSize: 12 }}>查询结果 ({currentRowCount} 条)</span>,
+                children: currentResults.length > 0 ? (
+                  <div style={{ position: 'relative' }}>
                             <div
                               style={{
                                 position: 'absolute',
@@ -703,21 +729,22 @@ key: 'result',
                             <div style={{ marginBottom: 4, marginTop: 6 }}>
                               <Button size="small" onClick={() => exportToExcel(currentResults, columns)}>导出Excel</Button>
                             </div>
-                            <Table
-                              dataSource={currentResults}
-                              columns={columns}
-                              pagination={{
+<Table
+                            dataSource={currentResults}
+                            columns={columns}
+                            components={{ header: { cell: ResizableTitle } }}
+                            pagination={{
                                 pageSize: pageSize,
                                 showSizeChanger: true,
                                 pageSizeOptions: ['10', '20', '50', '100'],
-                                onShowSizeChange: (_, size) => setPageSize(size)
-                              }}
-                              scroll={{ x: 'max-content', y: resultTableHeight }}
-                              size="small"
-                              sticky
-                              className="sql-result-table"
-                              style={{ fontSize: 8 }}
-                            />
+onShowSizeChange: (_, size) => setPageSize(size)
+                          }}
+                          scroll={{ x: 'max-content', y: 200 }}
+                          size="small"
+                          sticky={{ offsetHeader: 0 }}
+                          className="sql-result-table"
+                          style={{ fontSize: 10, minWidth: '100%' }}
+                        />
                           </div>
                         ) : (
                           <div style={{ color: '#999' }}>暂无结果</div>

@@ -47,13 +47,9 @@ description: 智能SQL语句生成工具，基于数据库架构和业务规则�
 ### 第四步：验证结构（DDL）
 仅需要验证时读取 ddl/*.sql
 
-### 第五步：生成SQL
-遵循 templates/output_format.md 模板生成SQL
-
-## MySQL 5.7 限制
-
+##  第五步：MySQL 5.7 限制
 见 docs/mysql57_limits.md
 
-## 输出格式
+### 第六步：生成SQL
+遵循 templates/output_format.md 模板生成SQL
 
-见 templates/output_format.md

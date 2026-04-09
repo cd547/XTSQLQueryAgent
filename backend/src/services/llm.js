@@ -644,14 +644,27 @@ ${history}
           }
         }
       }
-      
+
+      // 输出LLM的思考过程（reasoning）
+      if (responseText) {
+        yield { type: 'LLM', log: `💭 LLM思考过程:\n${responseText.slice(0, 10000)}` };
+      }
+
       // 过滤出有实际工具名称的工具调用
       const validToolCalls = streamToolCalls.filter(tc => tc.function?.name && tc.function.name.trim());
 
       // 流式响应结束，输出工具调用日志
       for (const tc of validToolCalls) {
         const toolName = tc.function.name;
-        yield { type: 'log', log: `🔧 调用工具: ${toolName}` };
+        writeLlmLog(`🔧 调用工具: ${toolName} 参数:${JSON.stringify(tc.function.arguments)}`);
+        let logMsg = `🔧 调用工具: ${toolName}`;
+        try {
+          const parsedArgs = JSON.parse(tc.function.arguments || '{}');
+          if (Object.keys(parsedArgs).length > 0) {
+            logMsg += `\n参数: ${JSON.stringify(parsedArgs)}`;
+          }
+        } catch (e) {}
+        yield { type: 'tool', log: logMsg };
       }
 
       // 流式响应结束，处理工具调用
@@ -697,7 +710,7 @@ ${history}
               const paramValue = parsedArgs.table_name || parsedArgs[Object.keys(parsedArgs)[0]] || '';
               const toolResult = tool.func(paramValue);
 
-              yield { type: 'log', log: `📋 工具 ${toolName} 返回:\n${toolResult}` };
+              yield { type: 'tool_return', log: `📋 工具 ${toolName} 返回:\n${toolResult}` };
 
               messages.push({
                 role: 'tool',
@@ -904,7 +917,7 @@ ${history}
             continue;
           }
           
-          yield { type: 'log', log: `🔧 调用工具: ${toolName}...` };
+          yield { type: 'tool', log: `🔧 调用工具: ${toolName}...` };
           
           const tool = tools.find(t => t.name === toolName);
           if (tool) {
@@ -919,7 +932,7 @@ ${history}
               const toolResult = tool.func(paramValue);
               
               const preview = toolResult.length > 200 ? toolResult.substring(0, 200) + '...' : toolResult;
-              yield { type: 'log', log: `📋 工具 ${toolName} 返回:\n${preview}` };
+              yield { type: 'tool_return', log: `📋 工具 ${toolName} 返回:\n${preview}` };
               
               // 继续流式处理工具结果
               const toolMessages = [
@@ -946,13 +959,18 @@ ${history}
                 }
               }
             } catch (e) {
-              yield { type: 'log', log: `❌ 工具调用失败: ${e.message}` };
+              yield { type: 'tool_return', log: `❌ 工具调用失败: ${e.message}` };
             }
           }
         }
       }
     }
-    
+
+    // 输出LLM的思考过程
+    if (fullContent) {
+      yield { type: 'LLM', log: `💭 LLM思考过程:\n${fullContent.slice(0, 10000)}` };
+    }
+
     // 解析最终响应
     let sql = '';
     let message = '';

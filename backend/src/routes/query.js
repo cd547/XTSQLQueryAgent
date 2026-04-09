@@ -7,7 +7,7 @@ import mysql from 'mysql2/promise';
 import { getDb } from '../db/sqlite.js';
 import { getConfig, getLlmConfig } from '../services/config.js';
 import { logger } from '../logger.js';
-import { generateSQLWithLangChain, generateSQLWithLangChainStreamGen, generateSQLWithLangChainStreamGen_BAK, loadSkillMd, generateSQLWithLangChainStreamGenV2} from '../services/llm.js';
+import { generateSQLWithLangChain, generateSQLWithLangChainStreamGen_BAK, loadSkillMd } from '../services/llm.js';
 
 function ensureSession() {
   const db = getDb();
@@ -252,8 +252,8 @@ router.post('/generate', async (req, res) => {
       try {
         const generator = generateSQLWithLangChainStreamGen_BAK(question, historyText);
         let fullContent = '';
-        let finalSql = '';
-        let finalMessage = '';
+        let sql = '';
+        let message = '';
         const allLogs = [];
 
         for await (const chunk of generator) {
@@ -264,7 +264,7 @@ router.post('/generate', async (req, res) => {
             const logContent = chunk.log || '';
             allLogs.push(logContent);
             res.write(`data: ${JSON.stringify({ type: chunk.type, log: logContent })}\n\n`);
-            
+
             // 实时保存每条日志到数据库
             if (sessionId && logContent) {
               try {
@@ -278,8 +278,8 @@ router.post('/generate', async (req, res) => {
           } else if (chunk.type === 'error') {
             res.write(`data: ${JSON.stringify({ type: 'error', content: chunk.content })}\n\n`);
           } else if (chunk.type === 'done') {
-            finalSql = chunk.sql || '';
-            finalMessage = chunk.message || '';
+            sql = chunk.sql || '';
+            message = chunk.message || '';
           }
         }
 
@@ -294,28 +294,35 @@ router.post('/generate', async (req, res) => {
           }
         }
 
-        let sql = '';
-        let message = finalMessage || fullContent;
-        
-        // 从 markdown 中提取 SQL
-        const sqlMatch = message.match(/```sql\s*([\s\S]*?)```/i) || message.match(/```mysql\s*([\s\S]*?)```/i);
-        if (sqlMatch) {
-          sql = sqlMatch[1].trim();
-        } else {
-          const sqlLineMatch = message.match(/SQL[:：]\s*[\n\r]?([\s\S]*?)(?:\n\n|\n$|$)/i);
-          if (sqlLineMatch) {
-            sql = sqlLineMatch[1].trim();
+        // 如果 sql 为空，尝试从 message 或 fullContent 中提取 SQL
+        if (!sql || sql.trim() === '') {
+          const contentToExtract = message || fullContent;
+          // 从 markdown 中提取 SQL
+          const sqlMatch = contentToExtract.match(/```sql\s*([\s\S]*?)```/i) || contentToExtract.match(/```mysql\s*([\s\S]*?)```/i);
+          if (sqlMatch) {
+            sql = sqlMatch[1].trim();
+          } else {
+            const sqlLineMatch = contentToExtract.match(/SQL[:：]\s*[\n\r]?([\s\S]*?)(?:\n\n|\n$|$)/i);
+            if (sqlLineMatch) {
+              sql = sqlLineMatch[1].trim();
+            }
           }
+        }
+
+        // 如果 message 为空，使用 fullContent
+        if (!message || message.trim() === '') {
+          message = fullContent;
         }
 
         logger.info('Stream done, sending final result', { sql: sql?.substring(0, 50), message: message?.substring(0, 50) });
         
         // 保存最终消息到数据库
-        if (sessionId && message) {
+        const contentForDb = fullContent || message;
+        if (sessionId && contentForDb) {
           try {
             const db = getDb();
             db.prepare('INSERT INTO messages (session_id, role, content, sql, results) VALUES (?, ?, ?, ?, ?)')
-              .run(sessionId, 'assistant', message, sql || '', '');
+              .run(sessionId, 'assistant', contentForDb, sql || '', '');
           } catch (e) {
             logger.error('保存最终消息失败', { error: e.message });
           }
@@ -329,64 +336,7 @@ router.post('/generate', async (req, res) => {
 
       res.end();
       return;
-    } else if (schemaMode === 'skill' || schemaMode === undefined) {
-      loadSkillV2();
-      schema = buildSchemaFromSkillV2(question, cachedSkill.tableIndex);
-    } else if (schemaMode === 'manual') {
-      const db = getDb();
-      const rows = db.prepare('SELECT table_name, description, columns FROM table_schemas').all();
-      schema = rows.map(r => `${r.table_name}: ${r.description}\n${r.columns}`).join('\n');
-    } else if (schemaMode === 'auto') {
-      const config = getConfig();
-      const connection = await mysql.createConnection(config);
-      const [tables] = await connection.query('SHOW TABLES');
-      
-      schema = '## 数据库表结构\n\n';
-      for (const t of tables) {
-        const tableName = Object.values(t)[0];
-        const [columns] = await connection.query(`DESCRIBE \`${tableName}\``);
-        schema += `### ${tableName}\n`;
-        for (const col of columns) {
-          schema += `- ${col.Field}: ${col.Type} ${col.Null === 'YES' ? '(NULL)' : '(NOT NULL)'}\n`;
-        }
-        schema += '\n';
-      }
-      await connection.end();
-    }
-
-    const llmConfig = getLlmConfig();
-    console.log("===>>",llmConfig);
-    const { provider, apiKey, model } = llmConfig;
-
-    const prompt = `你是一个SQL查询专家。根据以下数据库表结构，回答用户的问题并生成对应的SQL查询。
-
-${schema}
-
-## 历史上下文（参考之前对话）
-${historyText}
-
-## 规则
-1. 只生成SELECT查询，不要生成INSERT/UPDATE/DELETE
-2. 使用标准的MySQL语法
-3. 如需限制结果条数，使用LIMIT默认1000
-4. 返回JSON格式：{"sql": "SQL语句", "message": "简要说明"}
-
-## 用户问题
-${question}`;
-
-    const result = await callLLM(provider, prompt, apiKey, model);
-
-    let sql = '';
-    let message = '';
-    try {
-      const parsed = JSON.parse(result);
-      sql = parsed.sql || result;
-      message = parsed.message || '';
-    } catch {
-      sql = result;
-    }
-
-    res.json({ sql, message });
+    } 
   } catch (error) {
     logger.error('SQL generation failed', { error: error.message });
     res.json({ error: error.message, sql: '' });
@@ -479,17 +429,20 @@ router.post('/execute', async (req, res) => {
 
   const upper = sql.toUpperCase().trim();
   
-  // 去除SQL开头的注释（-- 和 /* */）
-  let cleanSql = upper.replace(/^--.*$/gm, '').replace(/^\/\*.*\*\//, '').trim();
+  // 去除SQL中的所有注释（-- 和 /* */）
+  let cleanSql = upper
+    .replace(/--[^\n]*/g, '')
+    .replace(/\/\*[\s\S]*?\*\//g, '')
+    .trim();
   
-  const forbidden = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE'];
-  for (const word of forbidden) {
-    if (cleanSql.includes(word)) {
-      return res.json({ error: `不允许执行 ${word} 操作`, rowCount: 0 });
-    }
-  }
-
+  // 先检查是否以SELECT开头（最准确的检测方法）
   if (!cleanSql.startsWith('SELECT')) {
+    const forbidden = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE'];
+    for (const word of forbidden) {
+      if (cleanSql.includes(word)) {
+        return res.json({ error: `不允许执行 ${word} 操作`, rowCount: 0 });
+      }
+    }
     return res.json({ error: '只允许SELECT查询', rowCount: 0 });
   }
 
