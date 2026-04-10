@@ -56,5 +56,13 @@ export function deleteSession(sessionId) {
   return api.delete(`/sessions/${sessionId}`).then(r => r.data);
 }
 
+export function getSkillsList() {
+  return api.get('/skills/list').then(r => r.data);
+}
+
+export function readSkillFile(path) {
+  return api.get('/skills/read', { params: { path } }).then(r => r.data);
+}
+
 export default api;
 

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Layout, Input, Button, Table, Card, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse } from 'antd';
+import { Layout, Input, Button, Table, Card, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree } from 'antd';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
 const { Panel } = Collapse;
@@ -13,10 +13,10 @@ function ResizableTitle(props) {
     </Resizable>
   );
 }
-import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined } from '@ant-design/icons';
+import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import Editor from '@monaco-editor/react';
-import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession } from './api';
+import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile } from './api';
 
 const { TextArea } = Input;
 const { Sider, Content } = Layout;
@@ -166,6 +166,12 @@ function App() {
   const [rowCount, setRowCount] = useState(0);
   const [showResults, setShowResults] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
+  const [skillOpen, setSkillOpen] = useState(false);
+  const [skillTree, setSkillTree] = useState([]);
+  const [skillFileContent, setSkillFileContent] = useState('');
+  const [skillFileLanguage, setSkillFileLanguage] = useState('plaintext');
+  const [skillSelectedFile, setSkillSelectedFile] = useState(null);
+  const [skillDrawerWidth, setSkillDrawerWidth] = useState(480);
   const [tabs, setTabs] = useState({ 'chat': { title: '聊天' } });
   const [activeTabKey, setActiveTabKey] = useState('chat');
   const [currentSessionName, setCurrentSessionName] = useState('聊天');
@@ -257,6 +263,14 @@ function App() {
       }
       .config-drawer .ant-input-group-addon {
         font-size: 12px !important;
+      }
+      /* 隐藏滚动条但可滚动 */
+      .skill-drawer-scroll::-webkit-scrollbar {
+        display: none;
+      }
+      .skill-drawer-scroll {
+        -ms-overflow-style: none;
+        scrollbar-width: none;
       }
     `;
     document.head.appendChild(style);
@@ -522,7 +536,7 @@ function App() {
     }
   };
   
-  const exportToExcel = async (data, cols) => {
+const exportToExcel = async (data, cols) => {
     try {
       const XLSX = await import('xlsx');
       const worksheet = XLSX.utils.json_to_sheet(data);
@@ -543,7 +557,34 @@ function App() {
       a.click();
       message.success('导出CSV成功');
     }
-};
+  };
+
+  const loadSkillsList = async () => {
+    try {
+      const data = await getSkillsList();
+      if (data.success) {
+        setSkillTree(data.tree || []);
+      }
+    } catch (e) {
+      console.error('加载skills失败:', e);
+    }
+  };
+
+  const handleSkillFileSelect = async (filePath) => {
+    if (!filePath) return;
+    setSkillSelectedFile(filePath);
+    try {
+      const data = await readSkillFile(filePath);
+      if (data.success) {
+        setSkillFileContent(data.content || '');
+        setSkillFileLanguage(data.language || 'plaintext');
+      } else {
+        message.error(data.message || '读取失败');
+      }
+    } catch (e) {
+      console.error('读取文件失败:', e);
+    }
+  };
 
 // 获取当前tab的结果
 const currentResults = activeTabKey !== 'chat' && tabs[activeTabKey]?.results ? tabs[activeTabKey].results : results;
@@ -588,11 +629,14 @@ const columns = currentResults.length > 0
             <Button type="primary" onClick={handleNewSession} style={{ width: '100%', marginBottom: 12 }}>
               新对话
             </Button>
-            <Button icon={<SettingOutlined />} onClick={() => setConfigOpen(true)} style={{ width: '100%' }}>
+            <Button icon={<SettingOutlined />} onClick={() => setConfigOpen(true)} style={{ width: '100%', marginBottom: 8 }}>
               配置
             </Button>
+            <Button icon={<FolderOutlined />} onClick={() => { if (skillTree.length === 0) loadSkillsList(); setSkillOpen(true); }} style={{ width: '100%' }}>
+              Skill查看
+            </Button>
           </div>
-          <div style={{ height: 'calc(100vh - 104px)', overflow: 'auto' }}>
+          <div style={{ height: 'calc(100vh - 140px)', overflow: 'auto' }}>
             <List
               dataSource={sessions}
               renderItem={item => (
@@ -885,6 +929,91 @@ key: 'result',
         <Drawer title="配置" placement="right" width={400} onClose={() => setConfigOpen(false)} open={configOpen}>
           <div className="config-drawer" style={{ padding: '0 10px' }}>
             <ConfigPanel compact />
+          </div>
+        </Drawer>
+        
+        <Drawer 
+          title="Skill查看器" 
+          placement="right" 
+          width={skillDrawerWidth} 
+          onClose={() => setSkillOpen(false)} 
+          open={skillOpen}
+          onOpen={() => { if (skillTree.length === 0) loadSkillsList(); }}
+          styles={{ body: { padding: '0 16px', position: 'relative' } }}
+        >
+          <div
+            style={{
+              position: 'absolute',
+              left: 0,
+              top: 0,
+              bottom: 0,
+              width: 8,
+              cursor: 'ew-resize',
+              zIndex: 10
+            }}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              const startX = e.clientX;
+              const startWidth = skillDrawerWidth;
+              const handleMove = (moveEvent) => {
+                const delta = startX - moveEvent.clientX;
+                const newWidth = Math.max(300, Math.min(800, startWidth + delta));
+                setSkillDrawerWidth(newWidth);
+              };
+              const handleUp = () => {
+                document.removeEventListener('mousemove', handleMove);
+                document.removeEventListener('mouseup', handleUp);
+              };
+              document.addEventListener('mousemove', handleMove);
+              document.addEventListener('mouseup', handleUp);
+            }}
+          />
+          <div className="skill-drawer-content" style={{ display: 'flex', flexDirection: 'column', height: '100%', borderRadius: 6, overflow: 'hidden' }}>
+            <div style={{ flex: 1, overflow: 'auto', borderBottom: '1px solid #e8e8e8', marginBottom: 8, padding: 8, background: '#fafafa', borderRadius: 4 }} className="skill-drawer-scroll">
+              <div style={{ height: '100%' }} className="skill-drawer-scroll">
+                <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 8 }}>目录结构</div>
+                <div>
+                  {skillTree.length > 0 ? (
+                    <Tree
+                      treeData={skillTree}
+                      showIcon={true}
+                      defaultExpandAll
+                      onSelect={(selectedKeys, { node }) => {
+                        if (!node.isFolder) {
+                          handleSkillFileSelect(node.key);
+                        }
+                      }}
+                      style={{ fontSize: 12, padding: '4px 0' }}
+                      icon={(node) => node.isFolder ? <FolderOpenOutlined style={{ color: '#faad14' }} /> : <FileTextOutlined style={{ color: '#1890ff' }} />}
+                    />
+                  ) : (
+                    <div style={{ color: '#999', fontSize: 12 }}>暂无内容</div>
+                  )}
+                </div>
+              </div>
+            </div>
+            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+              <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 8 }}>
+                {skillSelectedFile ? `文件: ${skillSelectedFile}` : '文件内容'}
+              </div>
+              <div style={{ flex: 1, border: '1px solid #d9d9d9', borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
+                <Editor
+                  height="100%"
+                  language={skillFileLanguage}
+                  value={skillSelectedFile ? skillFileContent : '请选择文件查看内容'}
+                  theme="vs-dark"
+                  options={{
+                    readOnly: true,
+                    minimap: { enabled: false },
+                    fontSize: 12,
+                    lineNumbers: 'on',
+                    scrollBeyondLastLine: false,
+                    automaticLayout: true,
+                    wordWrap: 'on'
+                  }}
+                />
+              </div>
+            </div>
           </div>
         </Drawer>
       </Layout>
