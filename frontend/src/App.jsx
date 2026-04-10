@@ -5,10 +5,11 @@ import 'react-resizable/css/styles.css';
 const { Panel } = Collapse;
 
 function ResizableTitle(props) {
-  const { onResize, width, ...restProps } = props;
+  const { onResize, width, children, ...restProps } = props;
+  if (!width) return <th {...restProps}>{children}</th>;
   return (
     <Resizable width={width} height={0} onResize={onResize} axis="x">
-      <th {...restProps} style={{ ...restProps.style, position: 'relative' }} />
+      <th {...restProps}>{children}</th>
     </Resizable>
   );
 }
@@ -176,7 +177,7 @@ function App() {
   const [inputHeight, setInputHeight] = useState(80);
   const [siderCollapsed, setSiderCollapsed] = useState(false);
   const [sqlPreviewHeight, setSqlPreviewHeight] = useState(200);
-  const [resultTableHeight, setResultTableHeight] = useState(300);
+  const [resultTableHeight, setResultTableHeight] = useState(800);
   const messageCountRef = useRef(0);
   const messagesEndRef = useRef(null);
   const inputResizerRef = useRef(null);
@@ -213,6 +214,49 @@ function App() {
       /* 防止数据穿透 */
       .sql-result-table .ant-table-tbody > tr > td {
         background: white !important;
+      }
+      /* 隐藏表格内部滚动条 */
+      .sql-result-table .ant-table-body {
+        overflow: visible !important;
+      }
+      .sql-result-table .ant-table-scroll {
+        overflow: visible !important;
+      }
+      .sql-result-table .ant-table-scroll > .ant-table-body {
+        overflow: visible !important;
+      }
+      .sql-result-table .ant-table-content {
+        overflow: visible !important;
+      }
+      /* 列宽调整手柄 */
+      .sql-result-table .ant-table-thead > tr > th.react-resizable .react-resizable-handle {
+        position: absolute !important;
+        right: 0 !important;
+        top: 0 !important;
+        height: 100% !important;
+        width: 15px !important;
+        z-index: 20 !important;
+        cursor: col-resize !important;
+      }
+      /* 确保表格宽度正确 */
+      .sql-result-table .ant-table {
+        width: 100% !important;
+        table-layout: fixed !important;
+      }
+      /* 配置面板字体 */
+      .config-drawer {
+        font-size: 12px !important;
+      }
+      .config-drawer .ant-input,
+      .config-drawer .ant-select-selector,
+      .config-drawer .ant-btn,
+      .config-drawer .ant-input-number,
+      .config-drawer h3,
+      .config-drawer label {
+        font-size: 12px !important;
+      }
+      .config-drawer .ant-input-group-addon {
+        font-size: 12px !important;
       }
     `;
     document.head.appendChild(style);
@@ -512,10 +556,7 @@ const handleResize = (columnKey) => (e, { size }) => {
 const columns = currentResults.length > 0
 ? Object.keys(currentResults[0]).map(key => ({ 
     title: (props) => (
-      <ResizableTitle
-        width={columnWidths[key] || 150}
-        onResize={handleResize(key)}
-      >
+      <ResizableTitle width={columnWidths[key] || 150} onResize={handleResize(key)}>
         <span style={{ fontSize: 12 }}>{key}</span>
       </ResizableTitle>
     ),
@@ -758,23 +799,23 @@ key: 'result',
                             <div style={{ marginBottom: 8, marginTop: 6, flexShrink: 0 }}>
                               <Button size="small" onClick={() => exportToExcel(currentResults, columns)}>导出Excel</Button>
                             </div>
-                            <div style={{ flex: 1 }}>
-<Table
-                              dataSource={currentResults}
-                              columns={columns}
-                              components={{ header: { cell: ResizableTitle } }}
-pagination={{
-                                pageSize: pageSize,
-                                showSizeChanger: true,
-                                pageSizeOptions: ['10', '20', '50', '100'],
-                                onShowSizeChange: (_, size) => setPageSize(size)
-                              }}
-                              scroll={{ x: 'max-content' }}
-                              size="small"
-                              className="sql-result-table"
-                              style={{ fontSize: 10, minWidth: '100%' }}
-                              rootClassName="sticky-table-header"
-                            />
+                            <div style={{ height: resultTableHeight, overflow: 'visible' }}>
+                              <Table
+                                dataSource={currentResults}
+                                columns={columns}
+                                components={{ header: { cell: ResizableTitle } }}
+                                pagination={{
+                                  pageSize: pageSize,
+                                  showSizeChanger: true,
+                                  pageSizeOptions: ['10', '20', '50', '100'],
+                                  onShowSizeChange: (_, size) => setPageSize(size)
+                                }}
+                                scroll={{ x: 'max-content' }}
+                                size="small"
+                                className="sql-result-table"
+                                style={{ fontSize: 10 }}
+                                rootClassName="sticky-table-header"
+                              />
                             </div>
                           </div>
                         ) : (
@@ -842,7 +883,7 @@ pagination={{
         </Layout>
         
         <Drawer title="配置" placement="right" width={400} onClose={() => setConfigOpen(false)} open={configOpen}>
-          <div style={{ padding: '0 10px' }}>
+          <div className="config-drawer" style={{ padding: '0 10px' }}>
             <ConfigPanel compact />
           </div>
         </Drawer>
@@ -888,26 +929,26 @@ function ConfigPanel({ compact }) {
   };
   
   return (
-    <div>
-      <h3 style={{ marginBottom: 16 }}>数据库配置</h3>
+    <div style={{ fontSize: 12 }}>
+      <h3 style={{ marginBottom: 16, fontSize: 14 }}>数据库配置</h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <Input addonBefore="Host" value={dbConfig.host} onChange={e => setDbConfig({...dbConfig, host: e.target.value})} />
-        <Input addonBefore="Port" value={dbConfig.port} onChange={e => setDbConfig({...dbConfig, port: parseInt(e.target.value)})} />
-        <Input addonBefore="User" value={dbConfig.user} onChange={e => setDbConfig({...dbConfig, user: e.target.value})} />
-        <Input.Password addonBefore="Password" value={dbConfig.password} onChange={e => setDbConfig({...dbConfig, password: e.target.value})} />
-        <Input addonBefore="Database" value={dbConfig.database} onChange={e => setDbConfig({...dbConfig, database: e.target.value})} />
+        <Input addonBefore="Host" value={dbConfig.host} onChange={e => setDbConfig({...dbConfig, host: e.target.value})} style={{ fontSize: 12 }} />
+        <Input addonBefore="Port" value={dbConfig.port} onChange={e => setDbConfig({...dbConfig, port: parseInt(e.target.value)})} style={{ fontSize: 12 }} />
+        <Input addonBefore="User" value={dbConfig.user} onChange={e => setDbConfig({...dbConfig, user: e.target.value})} style={{ fontSize: 12 }} />
+        <Input.Password addonBefore="Password" value={dbConfig.password} onChange={e => setDbConfig({...dbConfig, password: e.target.value})} style={{ fontSize: 12 }} />
+        <Input addonBefore="Database" value={dbConfig.database} onChange={e => setDbConfig({...dbConfig, database: e.target.value})} style={{ fontSize: 12 }} />
         <div style={{ display: 'flex', gap: 8 }}>
-          <Button onClick={testDb} loading={testing}>测试连接</Button>
-          <Button type="primary" onClick={saveDb}>保存</Button>
+          <Button onClick={testDb} loading={testing} style={{ fontSize: 12 }}>测试连接</Button>
+          <Button type="primary" onClick={saveDb} style={{ fontSize: 12 }}>保存</Button>
         </div>
       </div>
       
-      <h3 style={{ marginTop: 24, marginBottom: 16 }}>LLM 配置</h3>
+      <h3 style={{ marginTop: 24, marginBottom: 16, fontSize: 14 }}>LLM 配置</h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <Select value={llmConfig.provider} onChange={v => setLlmConfig({...llmConfig, provider: v})} options={[{ value: 'deepseek', label: 'DeepSeek' }, { value: 'openai', label: 'OpenAI' }, { value: 'minimax', label: 'MiniMax' }]} />
-        <Input.Password placeholder="API Key" value={llmConfig.apiKey} onChange={e => setLlmConfig({...llmConfig, apiKey: e.target.value})} />
-        <Input placeholder="模型名称" value={llmConfig.model} onChange={e => setLlmConfig({...llmConfig, model: e.target.value})} />
-        <Button onClick={saveLlm} loading={testingLlm}>保存LLM配置</Button>
+        <Select value={llmConfig.provider} onChange={v => setLlmConfig({...llmConfig, provider: v})} options={[{ value: 'deepseek', label: 'DeepSeek' }, { value: 'openai', label: 'OpenAI' }, { value: 'minimax', label: 'MiniMax' }]} style={{ fontSize: 12 }} />
+        <Input.Password placeholder="API Key" value={llmConfig.apiKey} onChange={e => setLlmConfig({...llmConfig, apiKey: e.target.value})} style={{ fontSize: 12 }} />
+        <Input placeholder="模型名称" value={llmConfig.model} onChange={e => setLlmConfig({...llmConfig, model: e.target.value})} style={{ fontSize: 12 }} />
+        <Button onClick={saveLlm} loading={testingLlm} style={{ fontSize: 12 }}>保存LLM配置</Button>
       </div>
     </div>
   );

@@ -696,3 +696,86 @@ skills/sql-creator-skill-v2/
 ### 未实现的API
 - `/api/tables` - 表结构获取接口
 - `/api/table-schema` - 表结构存储CRUD接口
+
+---
+
+## 12. UI优化更新 (2026-04-10)
+
+### 12.1 表格滚动与表头固定
+
+**问题**：SQL查询结果表格滚动时表头消失，但又不希望表格内部出现垂直滚动条
+
+**解决方案**：
+- 父容器使用 `overflow: visible` 允许内容溢出
+- 使用 CSS `position: sticky` 固定表头
+- 隐藏 Ant Design Table 内部滚动条（overflow: visible）
+- 垂直滚动由外层 Collapse 区域负责
+
+**CSS实现**：
+```css
+.sql-result-table .ant-table-thead > tr > th {
+  position: sticky !important;
+  top: 0 !important;
+  z-index: 10 !important;
+  background: white !important;
+}
+.sql-result-table .ant-table-body,
+.sql-result-table .ant-table-scroll,
+.sql-result-table .ant-table-content {
+  overflow: visible !important;
+}
+```
+
+### 12.2 列宽调整功能
+
+**实现**：使用 `react-resizable` 库实现表头列宽可拖动调整
+
+**文件**：`frontend/src/App.jsx`
+- `ResizableTitle` 组件：包装 th 元素，添加 resize 功能
+- `handleResize` 函数：保存调整后的列宽到状态
+- Table components 属性：`components={{ header: { cell: ResizableTitle } }}`
+
+**CSS优化**：
+- resize 手柄定位在单元格右侧
+- 表格使用 `table-layout: fixed` 确保列宽正确分配
+
+### 12.3 配置面板字体统一
+
+**问题**：配置面板（Drawer）中部分文字过大
+
+**解决方案**：使用 CSS 强制统一配置面板内所有元素字体为 12px
+
+**CSS实现**：
+```css
+.config-drawer {
+  font-size: 12px !important;
+}
+.config-drawer .ant-input,
+.config-drawer .ant-select-selector,
+.config-drawer .ant-btn,
+.config-drawer .ant-input-number,
+.config-drawer h3,
+.config-drawer label,
+.config-drawer .ant-input-group-addon {
+  font-size: 12px !important;
+}
+```
+
+### 12.4 前端依赖更新
+
+**新增依赖**：
+- `@monaco-editor/react` - SQL 编辑器（Monaco Editor）
+- `react-resizable` - 列宽调整
+- `react-syntax-highlighter` - 代码语法高亮
+
+**已有依赖**：
+- `react-markdown` - Markdown 渲染
+- `xlsx` - Excel 导出
+
+---
+
+## 13. 待完成事项
+
+1. 实现 `/api/tables` 接口（表结构获取）
+2. 实现 `/api/table-schema` 接口（表结构 CRUD）
+3. 优化列宽调整手柄的位置显示

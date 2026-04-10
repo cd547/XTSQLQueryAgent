@@ -71,39 +71,39 @@ function ConfigPanel() {
   };
 
   return (
-    <Card title="配置" style={{ marginBottom: 16 }}>
-      <Form form={form} layout="vertical">
-        <Divider orientation="left">数据库配置</Divider>
+    <Card title="配置" style={{ marginBottom: 16, fontSize: 12 }}>
+      <Form form={form} layout="vertical" style={{ fontSize: 12 }}>
+        <Divider orientation="left" style={{ fontSize: 12 }}>数据库配置</Divider>
         <Space size="large" wrap>
           <Form.Item label="Host" name="host" rules={[{ required: true }]} style={{ width: 150 }}>
-            <Input placeholder="localhost" />
+            <Input placeholder="localhost" style={{ fontSize: 12 }} />
           </Form.Item>
           <Form.Item label="端口" name="port" initialValue={3306} style={{ width: 80 }}>
-            <Input type="number" />
+            <Input type="number" style={{ fontSize: 12 }} />
           </Form.Item>
           <Form.Item label="用户名" name="user" rules={[{ required: true }]} style={{ width: 100 }}>
-            <Input />
+            <Input style={{ fontSize: 12 }} />
           </Form.Item>
           <Form.Item label="密码" name="password" style={{ width: 120 }}>
-            <Input.Password />
+            <Input.Password style={{ fontSize: 12 }} />
           </Form.Item>
           <Form.Item label="数据库名" name="database" rules={[{ required: true }]} style={{ width: 120 }}>
-            <Input />
+            <Input style={{ fontSize: 12 }} />
           </Form.Item>
           <Form.Item style={{ marginTop: 30 }}>
             <Space>
-              <Button onClick={handleTest} loading={loading}>测试连接1</Button>
-              <Button type="primary" onClick={handleSaveDb}>保存</Button>
+              <Button onClick={handleTest} loading={loading} style={{ fontSize: 12 }}>测试连接</Button>
+              <Button type="primary" onClick={handleSaveDb} style={{ fontSize: 12 }}>保存</Button>
             </Space>
           </Form.Item>
         </Space>
       </Form>
 
-      <Form form={llmForm} layout="vertical">
-        <Divider orientation="left">LLM 配置</Divider>
+      <Form form={llmForm} layout="vertical" style={{ fontSize: 12 }}>
+        <Divider orientation="left" style={{ fontSize: 12 }}>LLM 配置</Divider>
         <Space size="large" wrap>
           <Form.Item label="Provider" name="provider" rules={[{ required: true }]} style={{ width: 130 }}>
-            <Select>
+            <Select style={{ fontSize: 12 }}>
               <Select.Option value="openai">OpenAI</Select.Option>
               <Select.Option value="deepseek">DeepSeek</Select.Option>
               <Select.Option value="minimax">MiniMax</Select.Option>
@@ -111,13 +111,13 @@ function ConfigPanel() {
             </Select>
           </Form.Item>
           <Form.Item label="API Key" name="apiKey" rules={[{ required: true }]} style={{ width: 250 }}>
-            <Input.Password placeholder="API Key 或 Ollama 地址" />
+            <Input.Password placeholder="API Key 或 Ollama 地址" style={{ fontSize: 12 }} />
           </Form.Item>
           <Form.Item label="模型" name="model" style={{ width: 180 }}>
-            <Input placeholder="如: gpt-4o, deepseek-chat" />
+            <Input placeholder="如: gpt-4o, deepseek-chat" style={{ fontSize: 12 }} />
           </Form.Item>
           <Form.Item style={{ marginTop: 30 }}>
-            <Button type="primary" onClick={handleSaveLlm} loading={loading}>保存LLM配置</Button>
+            <Button type="primary" onClick={handleSaveLlm} loading={loading} style={{ fontSize: 12 }}>保存LLM配置</Button>
           </Form.Item>
         </Space>
       </Form>
