@@ -779,3 +779,61 @@ skills/sql-creator-skill-v2/
 1. 实现 `/api/tables` 接口（表结构获取）
 2. 实现 `/api/table-schema` 接口（表结构 CRUD）
 3. 优化列宽调整手柄的位置显示
+
+---
+
+## 14. Monaco Editor 本地化 (2026-04-10)
+
+### 问题描述
+首次进入 SQL 查询页面时，Monaco Editor 一直显示 Loading。
+控制台报错：`Tracking Prevention blocked access to storage for https://cdn.jsdelivr.net/...`
+
+### 原因
+`@monaco-editor/react` 默认从 cdn.jsdelivr.net 加载，被浏览器 Tracking Prevention 阻止。
+
+### 解决方案
+1. 使用 cnpm 安装本地 monaco-editor 包
+2. 配置 loader 使用本地路径
+3. 配置 Vite optimizeDeps 预构建
+
+**文件变更**：
+- `frontend/vite.config.js` - 添加 optimizeDeps 配置
+- `frontend/src/App.jsx` - 配置 loader 路径和 MonacoEnvironment
+
+```javascript
+// vite.config.js
+optimizeDeps: {
+  include: ['monaco-editor']
+}
+
+// App.jsx
+import Editor, { loader } from '@monaco-editor/react';
+
+loader.config({
+  paths: {
+    vs: './node_modules/monaco-editor/min/vs'
+  }
+});
+
+window.MonacoEnvironment = {
+  getWorkerUrl: function (moduleId, label) {
+    return './node_modules/monaco-editor/min/vs/editor/editor.worker.js';
+  }
+};
+```
+
+---
+
+## 15. UI微调 (2026-04-10)
+
+### 15.1 隐藏下拉选择框
+- 位置：聊天界面底部输入框左侧
+- 变更：移除 schemaMode 下拉选择框 (只保留 stream 模式)
+
+### 15.2 Skill查看器代码字体
+- 位置：Skill 查看器 Drawer 中的 Monaco Editor
+- 变更：字体大小从 12px 改为 11px
+
+### 15.3 下拉选择框隐藏的影响
+- schemaMode 参数仍然有效，但固定为 'stream' 模式
+- 用户无需手动选择模式

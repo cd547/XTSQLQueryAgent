@@ -15,7 +15,31 @@ function ResizableTitle(props) {
 }
 import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
-import Editor from '@monaco-editor/react';
+import Editor, { loader } from '@monaco-editor/react';
+
+window.MonacoEnvironment = {
+  getWorkerUrl: function (moduleId, label) {
+    if (label === 'json') {
+      return './node_modules/monaco-editor/min/vs/language/json/json.worker.js';
+    }
+    if (label === 'css' || label === 'scss' || label === 'less') {
+      return './node_modules/monaco-editor/min/vs/language/css/css.worker.js';
+    }
+    if (label === 'html' || label === 'handlebars' || label === 'razor') {
+      return './node_modules/monaco-editor/min/vs/language/html/html.worker.js';
+    }
+    if (label === 'typescript' || label === 'javascript') {
+      return './node_modules/monaco-editor/min/vs/language/typescript/ts.worker.js';
+    }
+    return './node_modules/monaco-editor/min/vs/editor/editor.worker.js';
+  }
+};
+
+loader.config({
+  paths: {
+    vs: './node_modules/monaco-editor/min/vs'
+  }
+});
 import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile } from './api';
 
 const { TextArea } = Input;
@@ -625,44 +649,48 @@ const columns = currentResults.length > 0
           collapsedWidth={0}
           trigger={null}
         >
-          <div style={{ padding: 16, borderBottom: '1px solid #e8e8e8' }}>
-            <Button type="primary" onClick={handleNewSession} style={{ width: '100%', marginBottom: 12 }}>
-              新对话
-            </Button>
-            <Button icon={<SettingOutlined />} onClick={() => setConfigOpen(true)} style={{ width: '100%', marginBottom: 8 }}>
-              配置
-            </Button>
-            <Button icon={<FolderOutlined />} onClick={() => { if (skillTree.length === 0) loadSkillsList(); setSkillOpen(true); }} style={{ width: '100%' }}>
-              Skill查看
-            </Button>
-          </div>
-          <div style={{ height: 'calc(100vh - 140px)', overflow: 'auto' }}>
-            <List
-              dataSource={sessions}
-              renderItem={item => (
-                <List.Item
-                  key={item.id}
-                  style={{ padding: '8px 12px', cursor: 'pointer', background: currentSessionId === item.id ? '#e6f7ff' : 'transparent', borderLeft: currentSessionId === item.id ? '3px solid #1890ff' : '3px solid transparent' }}
-                  onClick={() => handleSessionClick(item)}
-                  actions={[
-                    <Popconfirm
-                      key="delete"
-                      title="确定删除此对话？"
-                      onConfirm={(e) => handleDeleteSession(item.id, e)}
-                      okText="确定"
-                      cancelText="取消"
-                    >
-                      <DeleteIcon style={deleteIconStyle} />
-                    </Popconfirm>
-                  ]}
-                >
-                  <List.Item.Meta
-                    title={<span style={{ fontSize: 12 }}>{item.name} <span style={{ color: '#999' }}>#{item.id}</span></span>}
-                    description={<span style={{ fontSize: 10, color: '#999' }}>{item.created_at ? new Date(item.created_at).toLocaleString() : ''}</span>}
-                  />
-                </List.Item>
-              )}
-            />
+          <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ padding: 8, borderBottom: '1px solid #e8e8e8' }}>
+              <Button type="primary" icon={<PlusOutlined />} onClick={handleNewSession} size="small" style={{ width: '100%' }}>
+                新对话
+              </Button>
+            </div>
+            <div style={{ flex: 1, overflow: 'auto' }}>
+              <List
+                dataSource={sessions}
+                renderItem={item => (
+                  <List.Item
+                    key={item.id}
+                    style={{ padding: '4px 8px', cursor: 'pointer', background: currentSessionId === item.id ? '#e6f7ff' : 'transparent', borderLeft: currentSessionId === item.id ? '3px solid #1890ff' : '3px solid transparent' }}
+                    onClick={() => handleSessionClick(item)}
+                    actions={[
+                      <Popconfirm
+                        key="delete"
+                        title="确定删除此对话？"
+                        onConfirm={(e) => handleDeleteSession(item.id, e)}
+                        okText="确定"
+                        cancelText="取消"
+                      >
+                        <DeleteIcon style={deleteIconStyle} />
+                      </Popconfirm>
+                    ]}
+                  >
+                    <List.Item.Meta
+                      title={<span style={{ fontSize: 11 }}>{item.name} <span style={{ color: '#999' }}>#{item.id}</span></span>}
+                      description={<span style={{ fontSize: 9, color: '#999' }}>{item.created_at ? new Date(item.created_at).toLocaleString() : ''}</span>}
+                    />
+                  </List.Item>
+                )}
+              />
+            </div>
+            <div style={{ padding: '8px', borderTop: '1px solid #e8e8e8', display: 'flex', gap: 8 }}>
+              <Button icon={<SettingOutlined />} onClick={() => setConfigOpen(true)} size="small" style={{ flex: 1 }}>
+                配置
+              </Button>
+              <Button icon={<FolderOutlined />} onClick={() => { if (skillTree.length === 0) loadSkillsList(); setSkillOpen(true); }} size="small" style={{ flex: 1 }}>
+                Skill
+              </Button>
+            </div>
           </div>
         </Sider>
         
@@ -910,7 +938,6 @@ key: 'result',
                   />
                   <div style={{ position: 'absolute', top: 1, left: '50%', transform: 'translateX(-50%)', width: 40, height: 4, background: '#d9d9d9', borderRadius: 2, cursor: 'ns-resize', pointerEvents: 'none', zIndex: 15 }} />
                   <div style={{ display: 'flex', gap: 12, alignItems: 'center', height: '100%', padding: '8px 24px' }}>
-                    <Select value={schemaMode} onChange={setSchemaMode} style={{ width: 100 }} options={[{ value: 'stream', label: '流式' }]} />
                     <TextArea
                       value={input}
                       onChange={e => setInput(e.target.value)}
@@ -996,7 +1023,7 @@ key: 'result',
               <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 8 }}>
                 {skillSelectedFile ? `文件: ${skillSelectedFile}` : '文件内容'}
               </div>
-              <div style={{ flex: 1, border: '1px solid #d9d9d9', borderRadius: 4, overflow: 'hidden', position: 'relative' }}>
+              <div style={{ flex: 1, border: '1px solid #444', borderRadius: 4, overflow: 'hidden', position: 'relative', background: '#1e1e1e' }}>
                 <Editor
                   height="100%"
                   language={skillFileLanguage}
@@ -1005,7 +1032,7 @@ key: 'result',
                   options={{
                     readOnly: true,
                     minimap: { enabled: false },
-                    fontSize: 12,
+                    fontSize: 11,
                     lineNumbers: 'on',
                     scrollBeyondLastLine: false,
                     automaticLayout: true,
