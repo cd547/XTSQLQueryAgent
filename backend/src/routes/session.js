@@ -7,10 +7,25 @@ const router = Router();
 router.get('/', (req, res) => {
   try {
     const db = getDb();
-    const sessions = db.prepare('SELECT * FROM sessions ORDER BY id DESC').all();
+    const sessions = db.prepare(`
+      SELECT s.id, s.name, s.sort_order, s.created_at,
+             COALESCE((SELECT SUM(total_tokens) FROM messages WHERE session_id = s.id), 0) as total_tokens
+      FROM sessions s ORDER BY s.id DESC
+    `).all();
     res.json({ sessions });
   } catch (error) {
     res.json({ error: error.message, sessions: [] });
+  }
+});
+
+// 获取会话的 token 统计
+router.get('/:id/tokens', (req, res) => {
+  try {
+    const db = getDb();
+    const result = db.prepare('SELECT COALESCE(SUM(total_tokens), 0) as total_tokens FROM messages WHERE session_id = ?').get(req.params.id);
+    res.json({ total_tokens: result?.total_tokens || 0 });
+  } catch (error) {
+    res.json({ error: error.message, total_tokens: 0 });
   }
 });
 

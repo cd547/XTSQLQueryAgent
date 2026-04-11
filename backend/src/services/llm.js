@@ -312,6 +312,7 @@ ${history}
       messages: messages,
       temperature: 0,
       stream: true,
+      stream_options: { include_usage: true },
       tools: toolsDefinition
     };
 
@@ -355,6 +356,10 @@ while (true) {
           if (line.startsWith('data: ') && !line.includes('[DONE]')) {
             try {
               const data = JSON.parse(line.slice(6));
+              const usage = data.usage;
+              if (usage) {
+                yield { type: 'usage', usage: { prompt_tokens: usage.prompt_tokens || 0, completion_tokens: usage.completion_tokens || 0, total_tokens: usage.total_tokens || 0 } };
+              }
               const content = data.choices?.[0]?.delta?.content || '';
               if (content) {
                 responseText += content;
@@ -618,6 +623,10 @@ ${history}
           if (line.startsWith('data: ') && !line.includes('[DONE]')) {
             try {
               const data = JSON.parse(line.slice(6));
+              const usage = data.usage;
+              if (usage) {
+                yield { type: 'usage', usage: { prompt_tokens: usage.prompt_tokens || 0, completion_tokens: usage.completion_tokens || 0, total_tokens: usage.total_tokens || 0 } };
+              }
               const content = data.choices?.[0]?.delta?.content || '';
               if (content) {
                 responseText += content;

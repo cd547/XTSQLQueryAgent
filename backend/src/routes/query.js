@@ -255,11 +255,18 @@ router.post('/generate', async (req, res) => {
         let sql = '';
         let message = '';
         const allLogs = [];
+        let totalPromptTokens = 0;
+        let totalCompletionTokens = 0;
+        let totalTokens = 0;
 
         for await (const chunk of generator) {
           if (chunk.type === 'chunk') {
             fullContent += chunk.content;
             res.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk.content })}\n\n`);
+          } else if (chunk.type === 'usage') {
+            totalPromptTokens += chunk.usage.prompt_tokens;
+            totalCompletionTokens += chunk.usage.completion_tokens;
+            totalTokens += chunk.usage.total_tokens;
           } else if (chunk.type === 'LLM' || chunk.type === 'tool' || chunk.type === 'tool_return') {
             const logContent = chunk.log || '';
             allLogs.push(logContent);
@@ -314,21 +321,34 @@ router.post('/generate', async (req, res) => {
           message = fullContent;
         }
 
-        logger.info('Stream done, sending final result', { sql: sql?.substring(0, 50), message: message?.substring(0, 50) });
+logger.info('Stream done, sending final result', { sql: sql?.substring(0, 50), message: message?.substring(0, 50), totalTokens });
         
-        // 保存最终消息到数据库
+        // 保存最终消息到数据库（包含token统计）
         const contentForDb = fullContent || message;
         if (sessionId && contentForDb) {
           try {
             const db = getDb();
-            db.prepare('INSERT INTO messages (session_id, role, content, sql, results) VALUES (?, ?, ?, ?, ?)')
-              .run(sessionId, 'assistant', contentForDb, sql || '', '');
+            db.prepare('INSERT INTO messages (session_id, role, content, sql, results, prompt_tokens, completion_tokens, total_tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+              .run(sessionId, 'assistant', contentForDb, sql || '', '', totalPromptTokens, totalCompletionTokens, totalTokens);
           } catch (e) {
             logger.error('保存最终消息失败', { error: e.message });
           }
+          
+          // 更新会话的累积 token
+          if (sessionId && totalTokens > 0) {
+            try {
+              const db = getDb();
+              const current = db.prepare('SELECT total_tokens FROM sessions WHERE id = ?').get(sessionId);
+              const newTotal = (current?.total_tokens || 0) + totalTokens;
+              db.prepare('UPDATE sessions SET total_tokens = ? WHERE id = ?')
+                .run(newTotal, sessionId);
+            } catch (e) {
+              logger.error('更新会话token失败', { error: e.message });
+            }
+          }
         }
         
-        res.write(`data: ${JSON.stringify({ type: 'done', sql, message, sessionId })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'done', sql, message, sessionId, totalTokens })}\n\n`);
       } catch (error) {
         logger.error('Stream query failed', { error: error.message, stack: error.stack });
         res.write(`data: ${JSON.stringify({ type: 'error', content: error.message })}\n\n`);

@@ -1,5 +1,41 @@
 # 更新日志
 
+## 2026-04-11
+
+### Token消耗统计功能 (新增)
+- **DeepSeek API token 用量**: 请求时添加 `stream_options: { include_usage: true }`
+  - 流式响应的最后一个 chunk 包含 usage 数据
+- **解析 usage**: 在 llm.js 中提取并 yield usage 数据
+  - `prompt_tokens`: 输入 token 数
+  - `completion_tokens`: 输出 token 数
+  - `total_tokens`: 总 token 数
+- **数据库存储**: 
+  - messages 表添加 `prompt_tokens`, `completion_tokens`, `total_tokens` 字段
+  - sessions 表添加 `total_tokens` 字段累积
+- **动态计算**: 从 messages 表 SUM 计算会话累积 token
+  - `/sessions` 接口动态计算 `total_tokens`
+  - `/sessions/:id/tokens` 从 messages 表查询
+- **前端显示**: 发送按钮下方显示累积 token 消耗
+  - `[currentTokens] tokens` 格式
+  - 发送完成后累加
+  - 切换会话时加载历史 token
+
+### 功能新增 (frontend/src/App.jsx)
+- **选中SQL执行**: SQL预览支持选中部分内容执行
+  - 新增 `sqlEditorInst` state 和 `onMount` 获取 Monaco Editor 实例
+  - 新增 `getSelectedSql()` 函数：优先返回选中文本，无选中则返回全文
+  - 查询按钮改为执行 `getSelectedSql()` 而非直接使用 `sqlInput`
+
+### UI调整
+- **暗色主题**: SQL预览 Editor 添加 `theme="vs-dark"`
+- **字体缩小**: SQL预览 Editor 字体从 12px 改为 11px
+
+### 日志优化 (backend/src/services/llm.js)
+- **立即刷新**: `queueLog()` 新增 `immediate` 参数
+  - Round请求、工具调用、函数结束使用 `immediate=true` 立即写入日志
+- **完成日志**: 每个函数结束添加完成标记日志
+  - `queueLog(..., true)` + `flushLogs()` 确保日志不丢失
+
 ## 2024-04-11
 
 ### 性能优化 (backend src/services/llm.js)

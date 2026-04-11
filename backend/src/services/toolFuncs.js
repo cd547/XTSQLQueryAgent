@@ -135,12 +135,12 @@ export const tools = [
       return getOutputFormat();
     }
   }),
-  new DynamicTool({
-    name: "get_mysql_limits",
-    description: "获取MySQL 5.7的语法限制和注意事项。",
-    func: () => {
-      console.log('get_mysql_limits called');
-      return getMysqlLimits();
-    }
-  })
+  // new DynamicTool({
+  //   name: "get_mysql_limits",
+  //   description: "获取MySQL 5.7的语法限制和注意事项。",
+  //   func: () => {
+  //     console.log('get_mysql_limits called');
+  //     return getMysqlLimits();
+  //   }
+  // })
 ];

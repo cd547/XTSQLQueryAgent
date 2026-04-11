@@ -52,6 +52,10 @@ export function updateSession(sessionId, name) {
   return api.put(`/sessions/${sessionId}`, { name }).then(r => r.data);
 }
 
+export function getSessionTokens(sessionId) {
+  return api.get(`/sessions/${sessionId}/tokens`).then(r => r.data);
+}
+
 export function deleteSession(sessionId) {
   return api.delete(`/sessions/${sessionId}`).then(r => r.data);
 }

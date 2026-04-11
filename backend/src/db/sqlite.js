@@ -27,9 +27,16 @@ export function initDatabase() {
     )
   `);
 
-  // 如果 sort_order 列不存在，添加它
+// 如果 sort_order 列不存在，添加它
   try {
     db.exec(`ALTER TABLE sessions ADD COLUMN sort_order INTEGER DEFAULT 0`);
+  } catch (e) {
+    // 列已存在，忽略
+  }
+
+  // 如果 total_tokens 列不存在，添加它
+  try {
+    db.exec(`ALTER TABLE sessions ADD COLUMN total_tokens INTEGER DEFAULT 0`);
   } catch (e) {
     // 列已存在，忽略
   }
@@ -46,6 +53,17 @@ export function initDatabase() {
       FOREIGN KEY (session_id) REFERENCES sessions(id)
     )
   `);
+
+  // 添加 token 字段
+  try {
+    db.exec(`ALTER TABLE messages ADD COLUMN prompt_tokens INTEGER DEFAULT 0`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE messages ADD COLUMN completion_tokens INTEGER DEFAULT 0`);
+  } catch (e) {}
+  try {
+    db.exec(`ALTER TABLE messages ADD COLUMN total_tokens INTEGER DEFAULT 0`);
+  } catch (e) {}
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS configs (

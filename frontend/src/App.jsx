@@ -209,6 +209,7 @@ function App() {
   const [siderCollapsed, setSiderCollapsed] = useState(false);
   const [sqlPreviewHeight, setSqlPreviewHeight] = useState(200);
   const [resultTableHeight, setResultTableHeight] = useState(800);
+  const [currentTokens, setCurrentTokens] = useState(0);
   const messageCountRef = useRef(0);
   const messagesEndRef = useRef(null);
   const inputResizerRef = useRef(null);
@@ -374,6 +375,7 @@ function App() {
   
   const handleSessionClick = (session) => {
     setCurrentSessionId(session.id);
+    setCurrentTokens(session.total_tokens || 0);
     const newName = session.name ? `${session.name}#${session.id}` : '聊天';
     setCurrentSessionName(newName);
     loadMessages(session.id);
@@ -514,6 +516,10 @@ function App() {
                   }
                   return newMsgs;
                 });
+                // 更新 token 显示
+                if (data.totalTokens) {
+                  setCurrentTokens(prev => prev + data.totalTokens);
+                }
               }
             } catch (e) {
               console.warn('Parse SSE error:', e);
@@ -963,7 +969,10 @@ key: 'result',
                       placeholder="输入自然语言查询，按Enter发送，Shift+Enter换行"
                       style={{ flex: 1, resize: 'none', height: '100%' }}
                     />
-                    <Button type="primary" onClick={handleSend} loading={loading} disabled={!input.trim()}>发送</Button>
+                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
+                      <Button type="primary" onClick={handleSend} loading={loading} disabled={!input.trim()}>发送</Button>
+                      {currentTokens > 0 && <span style={{ fontSize: 10, color: '#999' }}>{currentTokens} tokens</span>}
+                    </div>
                   </div>
                 </div>
               </>
