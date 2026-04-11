@@ -200,6 +200,7 @@ function App() {
   const [activeTabKey, setActiveTabKey] = useState('chat');
   const [currentSessionName, setCurrentSessionName] = useState('聊天');
   const [sqlInput, setSqlInput] = useState('');
+  const [sqlEditorInst, setSqlEditorInst] = useState(null);
   const [sqlKey, setSqlKey] = useState(['sql']);
   const [resultKey, setResultKey] = useState(['result']);
   const [pageSize, setPageSize] = useState(20);
@@ -536,6 +537,21 @@ function App() {
     }
   };
   
+  const getSelectedSql = () => {
+    if (sqlEditorInst) {
+      const selection = sqlEditorInst.getSelection();
+      const model = sqlEditorInst.getModel();
+      if (selection && model) {
+        const hasSelection = selection.startLineNumber !== selection.endLineNumber || selection.startColumn !== selection.endColumn;
+        if (hasSelection) {
+          const selectedText = model.getValueInRange(selection).trim();
+          if (selectedText) return selectedText;
+        }
+      }
+    }
+    return sqlInput;
+  };
+
   const handleExecute = async (sql) => {
     setLoading(true);
     setSqlKey(['sql', 'result']);
@@ -784,7 +800,8 @@ key: 'sql',
                         children: (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} ref={resizerRef}>
                             <div style={{ border: '1px solid #d9d9d9', borderRadius: 4, position: 'relative' }}>
-                              <Editor
+<Editor
+                                onMount={(editor) => setSqlEditorInst(editor)}
                                 height={sqlPreviewHeight}
                                 defaultLanguage="sql"
                                 value={sqlInput}
@@ -792,7 +809,7 @@ key: 'sql',
                                 theme="vs-dark"
                                 options={{
                                   minimap: { enabled: false },
-fontSize: 11,
+                                  fontSize: 11,
                                   lineNumbers: 'on',
                                   scrollBeyondLastLine: false,
                                   automaticLayout: true,
@@ -832,7 +849,7 @@ fontSize: 11,
                               />
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-                              <Button type="primary" size="small" disabled={!sqlInput.trim()} onClick={() => handleExecute(sqlInput)}>查询</Button>
+                              <Button type="primary" size="small" disabled={!sqlInput.trim() && !getSelectedSql()} onClick={() => handleExecute(getSelectedSql())}>查询</Button>
                             </div>
                           </div>
                         )
