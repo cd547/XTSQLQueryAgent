@@ -824,6 +824,44 @@ window.MonacoEnvironment = {
 
 ---
 
+## 16. 性能优化 (2026-04-11)
+
+### 16.1 Provider 映射抽取
+- 文件：`backend/src/services/llm.js`
+- 新增 `getProviderConfig(provider, model)` 函数
+- 消除三个版本函数中的重复 switch 代码
+- 返回 `{ baseURL, llmModel }`
+
+### 16.2 日志缓冲写入
+- 新增 `queueLog()` + `flushLogs()` + `LOG_BUFFER` 数组
+- 缓冲1秒后批量写入，减少频繁 IO
+- 替换 `writeLlmLog()` 为 `queueLog()` 调用
+
+### 16.3 流式解析 Buffer 修复
+- 问题：`done=true` 时 `stream: true` 阻止解码最后数据
+- 修复：`buffer += decoder.decode(value, { stream: !done })`
+- done=true 时清空 buffer 并 break 退出循环
+
+### 16.4 tools 定义缓存
+- 在函数开头创建 `toolsDefinition` 数组
+- 避免每次 HTTP 请求重新 `.map()` 创建
+- 三个版本都已优化
+
+### 16.5 参数解析传递完整对象
+- 修改前：`tool.func(paramValue)` 只取第一个参数
+- 修改后：`tool.func(parsedArgs)` 传递完整对象
+- `toolFuncs.js` 支持 `typeof === 'object'` 处理
+
+### 16.6 工具查找优化
+- 在 while 外部创建 `toolsMap = new Map(tools.map(t => [t.name, t]))`
+- 查找从 O(n) `.find()` 变为 O(1) `.get()`
+
+### 16.7 空 Catch 日志
+- 所有 `catch (e) {}` 改为 `catch (e) { logger.debug(...) }`
+- 记录 JSON 解析失败等错误
+
+---
+
 ## 15. UI微调 (2026-04-10)
 
 ### 15.1 隐藏下拉选择框

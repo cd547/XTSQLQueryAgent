@@ -789,9 +789,10 @@ key: 'sql',
                                 defaultLanguage="sql"
                                 value={sqlInput}
                                 onChange={handleSqlChange}
+                                theme="vs-dark"
                                 options={{
                                   minimap: { enabled: false },
-                                  fontSize: 12,
+fontSize: 11,
                                   lineNumbers: 'on',
                                   scrollBeyondLastLine: false,
                                   automaticLayout: true,

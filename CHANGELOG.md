@@ -1,6 +1,18 @@
 # 更新日志
 
-## 2024-04-10
+## 2024-04-11
+
+### 性能优化 (backend src/services/llm.js)
+- **抽取 Provider 映射函数**: 新增 `getProviderConfig()` 消除重复 switch 代码
+  - 三个版本函数共用：generateSQLWithLangChain、StreamGen_BAK、StreamGen
+- **日志缓冲写入**: 新增 `queueLog()` + `flushLogs()` 批量写入（1秒缓冲）
+- **流式解析 Buffer 修复**: done=true 时用 `stream: false` 解码全部数据，避免丢失
+- **tools 缓存**: 在函数开头创建 `toolsDefinition` 数组，避免每次请求重新创建
+- **参数解析优化**: 传递完整 `parsedArgs` 对象给工具函数，支持多参数扩展
+- **工具查找优化**: 创建 `toolsMap` (Map) 在 while 外部，查找从 O(n) 变为 O(1)
+- **空 Catch 日志**: 添加 `logger.debug()` 记录解析失败，避免静默吞掉错误
+
+### 2024-04-10
 
 ### 修复
 - **Monaco Editor 本地化**: 解决首次加载一直显示 Loading 的问题

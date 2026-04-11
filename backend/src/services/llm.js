@@ -183,12 +183,12 @@ ${history}
           const toolArgs = toolCall.function.arguments || '{}';
           console.log('Calling tool:', toolName, 'with args:', toolArgs);
           
-          const tool = tools.find(t => t.name === toolName);
+          const tool = toolsMap.get(toolName);
           if (tool) {
             try {
               const parsedArgs = JSON.parse(toolArgs);
               const paramValue = parsedArgs.table_name || parsedArgs[Object.keys(parsedArgs)[0]] || '';
-              const toolResult = tool.func(paramValue);
+              const toolResult = tool.func(parsedArgs);
               console.log('Tool result:', toolResult);
               
               messages.push({
@@ -255,6 +255,21 @@ export async function* generateSQLWithLangChainStreamGen_BAK(question, history =
   const llmModel = providerCfg.llmModel;
   
   const skillMd = loadSkillMd();
+
+  const toolsDefinition = tools.map(t => ({
+    type: 'function',
+    function: {
+      name: t.name,
+      description: t.description,
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: []
+      }
+    }
+  }));
+
+  const toolsMap = new Map(tools.map(t => [t.name, t]));
   //const tableIndex = loadTableIndex();
 
   const systemMessage = `你是一个SQL查询专家。必须先读取并严格遵守 skills/sql-creator-skill-v2/SKILL.md 的规范，随后根据用户问题生成SQL。
@@ -289,18 +304,7 @@ ${history}
       messages: messages,
       temperature: 0,
       stream: true,
-      tools: tools.map(t => ({
-        type: 'function',
-        function: {
-          name: t.name,
-          description: t.description,
-          parameters: {
-            type: 'object',
-            properties: {},
-            required: []
-          }
-        }
-      }))
+      tools: toolsDefinition
     };
 
     queueLog('generateSQLWithLangChainStreamGen_BAK Round ' + (31 - maxToolCalls) + ' Request:\n' + JSON.stringify(requestParams, null, 2));
@@ -440,7 +444,7 @@ while (true) {
           const toolArgs = toolCall.function.arguments || '{}';
           const toolCallId = toolCall.id || `call_${Date.now()}_${validToolCalls.indexOf(toolCall)}`;
 
-          const tool = tools.find(t => t.name === toolName);
+          const tool = toolsMap.get(toolName);
           if (tool) {
             try {
               // 尝试解析参数，如果失败则使用空对象
@@ -451,7 +455,7 @@ while (true) {
                 console.warn(`工具 ${toolName} 参数解析失败: ${e.message}, 参数: ${toolArgs}`);
               }
               const paramValue = parsedArgs.table_name || parsedArgs[Object.keys(parsedArgs)[0]] || '';
-              const toolResult = tool.func(paramValue);
+              const toolResult = tool.func(parsedArgs);
 
               yield { type: 'tool_return', log: `📋 工具 ${toolName} 返回:\n${toolResult}` };
 
@@ -537,6 +541,21 @@ ${history}
     { role: 'user', content: question }
   ];
 
+  const toolsDefinition = tools.map(t => ({
+    type: 'function',
+    function: {
+      name: t.name,
+      description: t.description,
+      parameters: {
+        type: 'object',
+        properties: {},
+        required: []
+      }
+    }
+  }));
+
+  const toolsMap = new Map(tools.map(t => [t.name, t]));
+
   let maxToolCalls = 15;
   let responseText = '';
   
@@ -548,18 +567,7 @@ ${history}
       messages: messages,
       temperature: 0,
       stream: true,
-      tools: tools.map(t => ({
-        type: 'function',
-        function: {
-          name: t.name,
-          description: t.description,
-          parameters: {
-            type: 'object',
-            properties: {},
-            required: []
-          }
-        }
-      }))
+      tools: toolsDefinition
     };
     
     try {
@@ -698,7 +706,7 @@ ${history}
           const toolArgs = toolCall.function.arguments || '{}';
           const toolCallId = toolCall.id || `call_${Date.now()}_${validToolCalls.indexOf(toolCall)}`;
 
-          const tool = tools.find(t => t.name === toolName);
+          const tool = toolsMap.get(toolName);
           if (tool) {
             try {
               // 尝试解析参数，如果失败则使用空对象
@@ -709,7 +717,7 @@ ${history}
                 console.warn(`工具 ${toolName} 参数解析失败: ${e.message}, 参数: ${toolArgs}`);
               }
               const paramValue = parsedArgs.table_name || parsedArgs[Object.keys(parsedArgs)[0]] || '';
-              const toolResult = tool.func(paramValue);
+              const toolResult = tool.func(parsedArgs);
 
               yield { type: 'tool_return', log: `📋 工具 ${toolName} 返回:\n${toolResult}` };
 
@@ -920,7 +928,7 @@ ${history}
           
           yield { type: 'tool', log: `🔧 调用工具: ${toolName}...` };
           
-          const tool = tools.find(t => t.name === toolName);
+          const tool = toolsMap.get(toolName);
           if (tool) {
             try {
               let paramValue = '';

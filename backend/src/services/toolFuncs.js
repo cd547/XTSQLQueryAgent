@@ -100,7 +100,9 @@ export const tools = [
       console.log('get_table_schema called with:', tableName);
       if (!tableName) return '请提供表名参数';
       try {
-        if (typeof tableName === 'string') {
+        if (typeof tableName === 'object') {
+          tableName = tableName.table_name;
+        } else if (typeof tableName === 'string') {
           const parsed = JSON.parse(tableName);
           tableName = parsed.table_name;
         }
@@ -115,7 +117,9 @@ export const tools = [
       console.log('get_table_ddl called with:', tableName);
       if (!tableName) return '请提供表名参数';
       try {
-        if (typeof tableName === 'string') {
+        if (typeof tableName === 'object') {
+          tableName = tableName.table_name;
+        } else if (typeof tableName === 'string') {
           const parsed = JSON.parse(tableName);
           tableName = parsed.table_name;
         }
