@@ -2,6 +2,7 @@ import { DynamicTool } from '@langchain/core/tools';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { logger } from '../logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_V2_PATH = path.join(__dirname, '../../../skills/sql-creator-skill-v2');
@@ -103,7 +104,7 @@ export const tools = [
           const parsed = JSON.parse(tableName);
           tableName = parsed.table_name;
         }
-      } catch (e) {}
+      } catch (e) { logger.debug('Parse tableName failed', { error: e.message }); }
       return JSON.stringify(getTableSchema(tableName), null, 2);
     }
   }),
@@ -118,7 +119,7 @@ export const tools = [
           const parsed = JSON.parse(tableName);
           tableName = parsed.table_name;
         }
-      } catch (e) {}
+      } catch (e) { logger.debug('Parse tableName failed', { error: e.message }); }
       return getTableDDL(tableName);
     }
   }),

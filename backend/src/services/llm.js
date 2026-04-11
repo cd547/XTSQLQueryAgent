@@ -18,6 +18,36 @@ function writeLlmLog(content) {
   fs.appendFileSync(logFile, logLine, 'utf-8');
 }
 
+const LOG_BUFFER = [];
+let flushTimer = null;
+
+function flushLogs() {
+  if (LOG_BUFFER.length === 0) return;
+  const content = LOG_BUFFER.splice(0).join('\n');
+  writeLlmLog(content);
+}
+
+function queueLog(content) {
+  LOG_BUFFER.push(content);
+  if (!flushTimer) {
+    flushTimer = setTimeout(flushLogs, 1000);
+  }
+}
+
+function getProviderConfig(provider, model) {
+  const configs = {
+    openai: { baseURL: 'https://api.openai.com/v1', model: 'gpt-4o' },
+    deepseek: { baseURL: 'https://api.deepseek.com', model: 'deepseek-chat' },
+    minimax: { baseURL: 'https://api.minimax.chat/v1', model: 'abab6.5s-chat' }
+  };
+  const cfg = configs[provider];
+  if (!cfg) throw new Error(`不支持的provider: ${provider}`);
+  return {
+    baseURL: cfg.baseURL,
+    llmModel: model || cfg.model
+  };
+}
+
 // TODO: 流式输出支持
 // export async function generateSQLWithLangChainStream(question, history = '') {
 //   const llm = new ChatOpenAI({...}).bindTools(tools);
@@ -42,21 +72,12 @@ async function generateSQLWithLangChain(question, history = '') {
   
   let baseURL, llmModel;
   
-  switch (provider) {
-    case 'openai':
-      baseURL = 'https://api.openai.com/v1';
-      llmModel = model || 'gpt-4o';
-      break;
-    case 'deepseek':
-      baseURL = 'https://api.deepseek.com';
-      llmModel = 'deepseek-chat';
-      break;
-    case 'minimax':
-      baseURL = 'https://api.minimax.chat/v1';
-      llmModel = model || 'abab6.5s-chat';
-      break;
-    default:
-      throw new Error(`不支持的provider: ${provider}`);
+  try {
+    const providerCfg = getProviderConfig(provider, model);
+    baseURL = providerCfg.baseURL;
+    llmModel = providerCfg.llmModel;
+  } catch (e) {
+    throw e;
   }
   
   logger.info('Creating ChatOpenAI', { baseURL, llmModel, apiKey: apiKey?.slice(0, 10) + '...' });
@@ -228,24 +249,10 @@ export async function* generateSQLWithLangChainStreamGen_BAK(question, history =
   }
   
   const { provider, apiKey, model } = config;
-  let baseURL, llmModel;
   
-  switch (provider) {
-    case 'openai':
-      baseURL = 'https://api.openai.com/v1';
-      llmModel = model || 'gpt-4o';
-      break;
-    case 'deepseek':
-      baseURL = 'https://api.deepseek.com';
-      llmModel = model || 'deepseek-chat';
-      break;
-    case 'minimax':
-      baseURL = 'https://api.minimax.chat/v1';
-      llmModel = model || 'abab6.5s-chat';
-      break;
-    default:
-      throw new Error(`不支持的provider: ${provider}`);
-  }
+  const providerCfg = getProviderConfig(provider, model);
+  const baseURL = providerCfg.baseURL;
+  const llmModel = providerCfg.llmModel;
   
   const skillMd = loadSkillMd();
   //const tableIndex = loadTableIndex();
@@ -296,7 +303,7 @@ ${history}
       }))
     };
 
-    writeLlmLog('generateSQLWithLangChainStreamGen_BAK Round ' + (31 - maxToolCalls) + ' Request:\n' + JSON.stringify(requestParams, null, 2));
+    queueLog('generateSQLWithLangChainStreamGen_BAK Round ' + (31 - maxToolCalls) + ' Request:\n' + JSON.stringify(requestParams, null, 2));
     
     try {
       const fetchResponse = await fetch(`${baseURL}/chat/completions`, {
@@ -320,14 +327,18 @@ ${history}
       const streamToolCalls = [];
       responseText = '';
 
-      while (true) {
+while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
+        
+        buffer += decoder.decode(value, { stream: !done });
         const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
+        if (done) {
+          buffer = '';
+          break;
+        } else {
+          buffer = lines.pop() || '';
+        }
+        
         for (const line of lines) {
           if (line.startsWith('data: ') && !line.includes('[DONE]')) {
             try {
@@ -337,7 +348,7 @@ ${history}
                 responseText += content;
                 yield { type: 'chunk', content: content };
               }
-
+              
               // 检查工具调用
               const toolCalls = data.choices?.[0]?.delta?.tool_calls;
               if (toolCalls && toolCalls.length > 0) {
@@ -373,7 +384,7 @@ ${history}
                   }
                 }
               }
-            } catch (e) {}
+            } catch (e) { logger.debug('JSON parse/split failed', { error: e.message }); }
           }
         }
       }
@@ -389,14 +400,14 @@ ${history}
       // 流式响应结束，输出工具调用日志
       for (const tc of validToolCalls) {
         const toolName = tc.function.name;
-        writeLlmLog(`🔧 调用工具: ${toolName} 参数:${JSON.stringify(tc.function.arguments)}`);
+        queueLog(`🔧 调用工具: ${toolName} 参数:${JSON.stringify(tc.function.arguments)}`);
         let logMsg = `🔧 调用工具: ${toolName}`;
         try {
           const parsedArgs = JSON.parse(tc.function.arguments || '{}');
           if (Object.keys(parsedArgs).length > 0) {
             logMsg += `\n参数: ${JSON.stringify(parsedArgs)}`;
           }
-        } catch (e) {}
+        } catch (e) { logger.debug('JSON parse/split failed', { error: e.message }); }
         yield { type: 'tool', log: logMsg };
       }
 
@@ -488,24 +499,10 @@ export async function* generateSQLWithLangChainStreamGen(question, history = '')
   }
   
   const { provider, apiKey, model } = config;
-  let baseURL, llmModel;
   
-  switch (provider) {
-    case 'openai':
-      baseURL = 'https://api.openai.com/v1';
-      llmModel = model || 'gpt-4o';
-      break;
-    case 'deepseek':
-      baseURL = 'https://api.deepseek.com';
-      llmModel = model || 'deepseek-chat';
-      break;
-    case 'minimax':
-      baseURL = 'https://api.minimax.chat/v1';
-      llmModel = model || 'abab6.5s-chat';
-      break;
-    default:
-      throw new Error(`不支持的provider: ${provider}`);
-  }
+  const providerCfg = getProviderConfig(provider, model);
+  const baseURL = providerCfg.baseURL;
+  const llmModel = providerCfg.llmModel;
   
   const skillMd = loadSkillMd();
   const tableIndex = loadTableIndex();
@@ -589,11 +586,15 @@ ${history}
       
       while (true) {
         const { done, value } = await reader.read();
-        if (done) break;
         
-        buffer += decoder.decode(value, { stream: true });
+        buffer += decoder.decode(value, { stream: !done });
         const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
+        if (done) {
+          buffer = '';
+          break;
+        } else {
+          buffer = lines.pop() || '';
+        }
         
         for (const line of lines) {
           if (line.startsWith('data: ') && !line.includes('[DONE]')) {
@@ -640,7 +641,7 @@ ${history}
                   }
                 }
               }
-            } catch (e) {}
+            } catch (e) { logger.debug('JSON parse/split failed', { error: e.message }); }
           }
         }
       }
@@ -656,14 +657,14 @@ ${history}
       // 流式响应结束，输出工具调用日志
       for (const tc of validToolCalls) {
         const toolName = tc.function.name;
-        writeLlmLog(`🔧 调用工具: ${toolName} 参数:${JSON.stringify(tc.function.arguments)}`);
+        queueLog(`🔧 调用工具: ${toolName} 参数:${JSON.stringify(tc.function.arguments)}`);
         let logMsg = `🔧 调用工具: ${toolName}`;
         try {
           const parsedArgs = JSON.parse(tc.function.arguments || '{}');
           if (Object.keys(parsedArgs).length > 0) {
             logMsg += `\n参数: ${JSON.stringify(parsedArgs)}`;
           }
-        } catch (e) {}
+        } catch (e) { logger.debug('JSON parse/split failed', { error: e.message }); }
         yield { type: 'tool', log: logMsg };
       }
 
