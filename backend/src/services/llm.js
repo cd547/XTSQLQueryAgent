@@ -23,13 +23,20 @@ let flushTimer = null;
 
 function flushLogs() {
   if (LOG_BUFFER.length === 0) return;
-  const content = LOG_BUFFER.splice(0).join('\n');
+  const flushing = LOG_BUFFER.splice(0);
+  const content = flushing.join('\n');
   writeLlmLog(content);
 }
 
-function queueLog(content) {
+function queueLog(content, immediate = false) {
   LOG_BUFFER.push(content);
-  if (!flushTimer) {
+  if (immediate) {
+    if (flushTimer) {
+      clearTimeout(flushTimer);
+      flushTimer = null;
+    }
+    flushLogs();
+  } else if (!flushTimer) {
     flushTimer = setTimeout(flushLogs, 1000);
   }
 }
@@ -295,6 +302,7 @@ ${history}
 
   let maxToolCalls = 30;
   let responseText = '';
+  let sql = '';
   
   while (maxToolCalls > 0) {
     console.log(`第${31 - maxToolCalls}次调用`);
@@ -307,7 +315,7 @@ ${history}
       tools: toolsDefinition
     };
 
-    queueLog('generateSQLWithLangChainStreamGen_BAK Round ' + (31 - maxToolCalls) + ' Request:\n' + JSON.stringify(requestParams, null, 2));
+    queueLog('generateSQLWithLangChainStreamGen_BAK Round ' + (31 - maxToolCalls) + ' Request:\n' + JSON.stringify(requestParams, null, 2), true);
     
     try {
       const fetchResponse = await fetch(`${baseURL}/chat/completions`, {
@@ -404,7 +412,7 @@ while (true) {
       // 流式响应结束，输出工具调用日志
       for (const tc of validToolCalls) {
         const toolName = tc.function.name;
-        queueLog(`🔧 调用工具: ${toolName} 参数:${JSON.stringify(tc.function.arguments)}`);
+        queueLog(`🔧 调用工具: ${toolName} 参数:${JSON.stringify(tc.function.arguments)}`, true);
         let logMsg = `🔧 调用工具: ${toolName}`;
         try {
           const parsedArgs = JSON.parse(tc.function.arguments || '{}');
@@ -489,6 +497,8 @@ while (true) {
   // 返回 markdown 格式的结果
   const message = responseText;
 
+  queueLog(`=== BAK 完成 SQL: ${sql || responseText}`, true);
+  flushLogs();
   yield { type: 'done', sql: '', message };
 }
 
@@ -665,7 +675,7 @@ ${history}
       // 流式响应结束，输出工具调用日志
       for (const tc of validToolCalls) {
         const toolName = tc.function.name;
-        queueLog(`🔧 调用工具: ${toolName} 参数:${JSON.stringify(tc.function.arguments)}`);
+        queueLog(`🔧 调用工具: ${toolName} 参数:${JSON.stringify(tc.function.arguments)}`, true);
         let logMsg = `🔧 调用工具: ${toolName}`;
         try {
           const parsedArgs = JSON.parse(tc.function.arguments || '{}');
@@ -788,6 +798,8 @@ ${history}
     }
   }
 
+  queueLog(`=== 完成 SQL: ${sql?.substring(0, 100)}... ===`, true);
+  flushLogs();
   yield { type: 'done', sql, message };
 }
 
