@@ -1,0 +1,9 @@
+{
+  "table_name": "edu_study",
+  "field_aliases": {},
+  "field_enums": {},
+  "virtual_associations": [],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": ["class_time_start和class_time_end是13位时间戳"]
+}
