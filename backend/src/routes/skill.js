@@ -31,6 +31,9 @@ function buildTree(dirPath, relativePath = '') {
   try {
     const entries = fs.readdirSync(dirPath, { withFileTypes: true });
     for (const entry of entries) {
+      // 跳过 skill_back 目录
+      if (entry.name === 'skill_back') continue;
+      
       const fullPath = path.join(dirPath, entry.name);
       const relPath = path.join(relativePath, entry.name).replace(/\\/g, '/');
       

@@ -29,14 +29,18 @@
 
 ### 3. 上半部分 - 目录树
 - 使用 Ant Design Tree组件
-- 显示 skills/ 目录的完整结构
+- 显示 skills/ 目录的完整结构（自动跳过 skill_back 备份目录）
 - 支持展开/收起文件夹
+- 支持拖拽调整高度（拖动条位于底部，向上拖动缩小，向下拖动增大，范围80-400px）
 - 文件夹显示黄色 `FolderOpenOutlined` 图标
 - 文件显示蓝色 `FileTextOutlined` 图标
 - 隐藏滚动条，但支持鼠标滚轮滚动
+- 目录标题下方操作面板（仅解锁状态下显示）
+  - 包含"添加"按钮，带 `TableOutlined` 图标，文字和图标颜色为主题蓝色 `#1890ff`，悬停提示"添加表格"
 
 ### 4. 下半部分 - 内容显示
 - Monaco Editor 始终保持渲染状态（预加载优化性能）
+- 支持拖拽调整高度（拖动条位于顶部，向上拖动缩小，向下拖动增大，范围100-500px）
 - 根据文件扩展名识别语言：
   - `.md` → markdown
   - `.json` → json
@@ -146,18 +150,21 @@ GET /api/skills/read?path=xxx
   - `saveSkillFile(path, content)` - 保存文件
 
 - `frontend/src/App.jsx` - 主要修改
-  - 新增状态: `skillOpen`, `skillTree`, `skillFileContent`, `skillFileLanguage`, `skillSelectedFile`, `skillDrawerWidth`, `skillLocked`, `skillSaving`, `skillOriginalContent`
+  - 新增状态: `skillOpen`, `skillTree`, `skillFileContent`, `skillFileLanguage`, `skillSelectedFile`, `skillDrawerWidth`, `skillLocked`, `skillSaving`, `skillOriginalContent`, `skillTreeHeight`, `skillEditorHeight`
   - 新增 `loadSkillsList()` 函数
   - 新增 `handleSkillFileSelect()` 函数（读取文件时保存原始内容到 `skillOriginalContent`）
   - 新增 `handleSkillSave()` 函数
   - 左侧栏添加"Skill查看"按钮
   - 新增 SkillDrawer 组件（Drawer + Tree + Editor）
   - 支持Drawer宽度拖拽调整
+  - 目录树高度拖拽调整
+  - Editor区域高度拖拽调整
   - Monaco Editor 预加载优化
   - 标题栏添加锁定按钮，切换 `skillLocked` 状态
   - Editor 的 `readOnly` 属性根据 `skillLocked` 动态控制
   - Editor 添加 `onChange` 回调更新 `skillFileContent`
   - 文件名称右侧添加保存按钮（仅未锁定且已选择文件且内容有改动时显示）
+  - 目录构建时自动过滤 `skill_back` 目录
 
 ## 技术细节
 

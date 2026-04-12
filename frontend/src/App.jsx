@@ -13,7 +13,7 @@ function ResizableTitle(props) {
     </Resizable>
   );
 }
-import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined } from '@ant-design/icons';
+import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import Editor, { loader } from '@monaco-editor/react';
 
@@ -215,6 +215,9 @@ function App() {
   const [skillLocked, setSkillLocked] = useState(true);
   const [skillSaving, setSkillSaving] = useState(false);
   const [skillOriginalContent, setSkillOriginalContent] = useState('');
+  const [skillTreeHeight, setSkillTreeHeight] = useState(200);
+  const [skillEditorHeight, setSkillEditorHeight] = useState(300);
+  const [skillTreeActionsVisible, setSkillTreeActionsVisible] = useState(false);
   const messageCountRef = useRef(0);
   const messagesEndRef = useRef(null);
   const inputResizerRef = useRef(null);
@@ -1071,7 +1074,44 @@ key: 'result',
               {skillTreeCollapsed?<CaretRightOutlined style={{marginRight:4,fontSize:10}}/>:<DownOutlined style={{marginRight:4,fontSize:10}}/>}
               <span style={{fontSize:12,fontWeight:500}}>目录结构</span>
             </div>
-            {!skillTreeCollapsed && <div style={{ flex: 1, overflow: 'auto', borderBottom: '1px solid #e8e8e8', marginBottom: 8, padding: 8, background: '#fafafa', borderRadius: 4 }} className="skill-drawer-scroll">
+{!skillLocked && !skillTreeCollapsed && (
+              <div style={{ marginBottom: 8, display: 'flex', gap: 8 }}>
+                <Button 
+                  size="small" 
+                  icon={<TableOutlined style={{ color: '#1890ff' }} />} 
+                  style={{ fontSize: 11, color: '#1890ff' }}
+                  title="添加表格"
+                >添加</Button>
+              </div>
+            )}
+            {!skillTreeCollapsed && <div style={{ height: skillTreeHeight, overflow: 'auto', borderBottom: '1px solid #e8e8e8', marginBottom: 8, padding: 8, background: '#fafafa', borderRadius: 4, position: 'relative' }} className="skill-drawer-scroll">
+              <div
+                style={{
+                  position: 'absolute',
+                  bottom: 0,
+                  left: 0,
+                  right: 0,
+                  height: 6,
+                  cursor: 'ns-resize',
+                  zIndex: 10
+                }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  const startY = e.clientY;
+                  const startHeight = skillTreeHeight;
+                  const handleMove = (moveEvent) => {
+                    const delta = moveEvent.clientY - startY;
+                    const newHeight = Math.max(80, Math.min(400, startHeight + delta));
+                    setSkillTreeHeight(newHeight);
+                  };
+                  const handleUp = () => {
+                    document.removeEventListener('mousemove', handleMove);
+                    document.removeEventListener('mouseup', handleUp);
+                  };
+                  document.addEventListener('mousemove', handleMove);
+                  document.addEventListener('mouseup', handleUp);
+                }}
+              />
               <div style={{ height: '100%' }} className="skill-drawer-scroll">
                 <div>
                   {skillTree.length > 0 ? (
@@ -1097,7 +1137,34 @@ key: 'result',
               {skillContentCollapsed?<CaretRightOutlined style={{marginRight:4,fontSize:10}}/>:<DownOutlined style={{marginRight:4,fontSize:10}}/>}
               <span style={{fontSize:12,fontWeight:500}}>文件内容</span>
             </div>
-            {!skillContentCollapsed && <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', marginBottom: 10 }}>
+            {!skillContentCollapsed && <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', marginBottom: 10, position: 'relative' }}>
+              <div
+                style={{
+                  position: 'absolute',
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  height: 6,
+                  cursor: 'ns-resize',
+                  zIndex: 10
+                }}
+                onMouseDown={(e) => {
+                  e.preventDefault();
+                  const startY = e.clientY;
+                  const startHeight = skillEditorHeight;
+                  const handleMove = (moveEvent) => {
+                    const delta = moveEvent.clientY - startY;
+                    const newHeight = Math.max(100, Math.min(500, startHeight - delta));
+                    setSkillEditorHeight(newHeight);
+                  };
+                  const handleUp = () => {
+                    document.removeEventListener('mousemove', handleMove);
+                    document.removeEventListener('mouseup', handleUp);
+                  };
+                  document.addEventListener('mousemove', handleMove);
+                  document.addEventListener('mouseup', handleUp);
+                }}
+              />
               <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                 <span>{skillSelectedFile ? `文件: ${skillSelectedFile}` : '文件内容'}</span>
                 {!skillLocked && skillSelectedFile && skillFileContent !== skillOriginalContent && (
