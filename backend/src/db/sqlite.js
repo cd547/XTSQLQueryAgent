@@ -102,3 +102,23 @@ export function initDatabase() {
 
   console.log('SQLite initialized');
 }
+
+export function initSkillLogTable() {
+  const db = getDb();
+  
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS skill_logs (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      operation TEXT,
+      file_path TEXT,
+      backup_path TEXT,
+      old_content TEXT,
+      new_content TEXT,
+      status TEXT,
+      error_message TEXT,
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  
+  console.log('Skill logs table initialized');
+}

@@ -13,7 +13,7 @@ function ResizableTitle(props) {
     </Resizable>
   );
 }
-import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined } from '@ant-design/icons';
+import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import Editor, { loader } from '@monaco-editor/react';
 
@@ -40,7 +40,7 @@ loader.config({
     vs: './node_modules/monaco-editor/min/vs'
   }
 });
-import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, getSessionTokens } from './api';
+import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens } from './api';
 
 const { TextArea } = Input;
 const { Sider, Content } = Layout;
@@ -210,6 +210,11 @@ function App() {
   const [sqlPreviewHeight, setSqlPreviewHeight] = useState(200);
   const [resultTableHeight, setResultTableHeight] = useState(800);
   const [currentTokens, setCurrentTokens] = useState(0);
+  const [skillTreeCollapsed, setSkillTreeCollapsed] = useState(false);
+  const [skillContentCollapsed, setSkillContentCollapsed] = useState(false);
+  const [skillLocked, setSkillLocked] = useState(true);
+  const [skillSaving, setSkillSaving] = useState(false);
+  const [skillOriginalContent, setSkillOriginalContent] = useState('');
   const messageCountRef = useRef(0);
   const messagesEndRef = useRef(null);
   const inputResizerRef = useRef(null);
@@ -632,12 +637,30 @@ const exportToExcel = async (data, cols) => {
       const data = await readSkillFile(filePath);
       if (data.success) {
         setSkillFileContent(data.content || '');
+        setSkillOriginalContent(data.content || '');
         setSkillFileLanguage(data.language || 'plaintext');
       } else {
         message.error(data.message || '读取失败');
       }
     } catch (e) {
       console.error('读取文件失败:', e);
+    }
+  };
+
+  const handleSkillSave = async () => {
+    if (skillLocked || !skillSelectedFile || !skillFileContent) return;
+    setSkillSaving(true);
+    try {
+      const data = await saveSkillFile(skillSelectedFile, skillFileContent);
+      if (data.success) {
+        message.success(`保存成功，备份于 ${data.backupFolder}`);
+      } else {
+        message.error(data.message || '保存失败');
+      }
+    } catch (e) {
+      message.error('保存失败: ' + e.message);
+    } finally {
+      setSkillSaving(false);
     }
   };
 
@@ -996,7 +1019,19 @@ key: 'result',
         </Drawer>
         
         <Drawer 
-          title="Skill查看器" 
+          title={
+            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+              <span>Skill查看器</span>
+              <Button 
+                type="text" 
+                size="small" 
+                icon={skillLocked ? <LockOutlined /> : <UnlockOutlined />} 
+                onClick={() => setSkillLocked(!skillLocked)}
+                title={skillLocked ? '点击解锁编辑权限' : '点击锁定编辑权限'}
+                style={{ color: skillLocked ? '#999' : '#52c41a' }}
+              />
+            </div>
+          } 
           placement="right" 
           width={skillDrawerWidth} 
           onClose={() => setSkillOpen(false)} 
@@ -1032,9 +1067,12 @@ key: 'result',
             }}
           />
           <div className="skill-drawer-content" style={{ display: 'flex', flexDirection: 'column', height: '100%', borderRadius: 6, overflow: 'hidden' }}>
-            <div style={{ flex: 1, overflow: 'auto', borderBottom: '1px solid #e8e8e8', marginBottom: 8, padding: 8, background: '#fafafa', borderRadius: 4 }} className="skill-drawer-scroll">
+            <div style={{display:'flex',alignItems:'center',cursor:'pointer',marginBottom:4}} onClick={()=>setSkillTreeCollapsed(!skillTreeCollapsed)}>
+              {skillTreeCollapsed?<CaretRightOutlined style={{marginRight:4,fontSize:10}}/>:<DownOutlined style={{marginRight:4,fontSize:10}}/>}
+              <span style={{fontSize:12,fontWeight:500}}>目录结构</span>
+            </div>
+            {!skillTreeCollapsed && <div style={{ flex: 1, overflow: 'auto', borderBottom: '1px solid #e8e8e8', marginBottom: 8, padding: 8, background: '#fafafa', borderRadius: 4 }} className="skill-drawer-scroll">
               <div style={{ height: '100%' }} className="skill-drawer-scroll">
-                <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 8 }}>目录结构</div>
                 <div>
                   {skillTree.length > 0 ? (
                     <Tree
@@ -1054,19 +1092,34 @@ key: 'result',
                   )}
                 </div>
               </div>
+            </div>}
+            <div style={{display:'flex',alignItems:'center',cursor:'pointer',marginBottom:4}} onClick={()=>setSkillContentCollapsed(!skillContentCollapsed)}>
+              {skillContentCollapsed?<CaretRightOutlined style={{marginRight:4,fontSize:10}}/>:<DownOutlined style={{marginRight:4,fontSize:10}}/>}
+              <span style={{fontSize:12,fontWeight:500}}>文件内容</span>
             </div>
-            <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-              <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 8 }}>
-                {skillSelectedFile ? `文件: ${skillSelectedFile}` : '文件内容'}
+            {!skillContentCollapsed && <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', marginBottom: 10 }}>
+              <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                <span>{skillSelectedFile ? `文件: ${skillSelectedFile}` : '文件内容'}</span>
+                {!skillLocked && skillSelectedFile && skillFileContent !== skillOriginalContent && (
+                  <Button 
+                    type="text" 
+                    size="small" 
+                    loading={skillSaving}
+                    onClick={handleSkillSave}
+                    style={{ padding: 2, height: 20, minWidth: 20 }}
+                    icon={<EditOutlined style={{ fontSize: 12 }} />}
+                  />
+                )}
               </div>
               <div style={{ flex: 1, border: '1px solid #444', borderRadius: 4, overflow: 'hidden', position: 'relative', background: '#1e1e1e' }}>
                 <Editor
                   height="100%"
                   language={skillFileLanguage}
                   value={skillSelectedFile ? skillFileContent : '请选择文件查看内容'}
+                  onChange={(value) => setSkillFileContent(value || '')}
                   theme="vs-dark"
                   options={{
-                    readOnly: true,
+                    readOnly: skillLocked,
                     minimap: { enabled: false },
                     fontSize: 11,
                     lineNumbers: 'on',
@@ -1076,7 +1129,7 @@ key: 'result',
                   }}
                 />
               </div>
-            </div>
+            </div>}
           </div>
         </Drawer>
       </Layout>

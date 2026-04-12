@@ -1,5 +1,28 @@
 # 更新日志
 
+## 2026-04-12
+
+### Agent配置功能 (backend + frontend)
+- **数据库存储**: configs 表新增 agent 配置项
+  - `agent_max_tool_calls`: 最大工具调用次数 (默认30)
+  - `agent_timeout_ms`: 超时时间 (默认60000)
+- **后端接口**: 
+  - `GET /config/agent` 获取所有 agent 配置
+  - `PUT /config/agent/:key` 更新单个配置
+- **读取配置**: llm.js 从数据库读取 `maxToolCalls` 参数
+- **配置面板**: Agent 配置区域可修改参数并保存
+
+### Token统计优化
+- **每轮记录**: 每次 DeepSeek API 调用保存 `role='usage'` 记录
+- **过滤显示**: loadMessages 过滤掉 usage 类型，不在聊天历史显示
+- **精确计算**: SQL 查询只统计 role='usage' 的记录，避免重复
+
+### UI调整
+- **日志样式**: 思考过程/工具调用/工具返回标签统一
+- **图标优化**: 折叠箭头使用 Ant Design 图标 (CaretRightOutlined/DownOutlined)
+- **Skill查看器折叠**: 目录结构和文件内容可独立折叠/展开
+- **文件编辑器间距**: 底部保留 10px 间距
+
 ## 2026-04-11
 
 ### Token消耗统计功能 (新增)

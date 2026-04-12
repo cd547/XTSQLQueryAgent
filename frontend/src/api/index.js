@@ -68,6 +68,10 @@ export function readSkillFile(path) {
   return api.get('/skills/read', { params: { path } }).then(r => r.data);
 }
 
+export function saveSkillFile(path, content) {
+  return api.post('/skills/save', { path, content }).then(r => r.data);
+}
+
 export function getAgentConfig() {
   return api.get('/config/agent').then(r => r.data);
 }

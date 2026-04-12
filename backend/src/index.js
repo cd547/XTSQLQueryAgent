@@ -1,6 +1,6 @@
 import express from 'express';
 import cors from 'cors';
-import { initDatabase } from './db/sqlite.js';
+import { initDatabase, initSkillLogTable } from './db/sqlite.js';
 
 const app = express();
 const PORT = process.env.PORT || 5002;
@@ -14,6 +14,7 @@ app.get('/api/health', (req, res) => {
 
 // Initialize SQLite
 initDatabase();
+initSkillLogTable();
 
 // Routes
 import configRouter from './routes/config.js';
