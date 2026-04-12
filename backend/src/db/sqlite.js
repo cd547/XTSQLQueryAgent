@@ -75,6 +75,17 @@ export function initDatabase() {
     )
   `);
 
+  // 初始化默认配置
+  const defaultConfigs = [
+    { key: 'agent_max_tool_calls', value: '30' },
+    { key: 'agent_timeout_ms', value: '60000' },
+  ];
+  for (const cfg of defaultConfigs) {
+    try {
+      db.prepare('INSERT OR IGNORE INTO configs (key, value) VALUES (?, ?)').run(cfg.key, cfg.value);
+    } catch (e) {}
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS table_schemas (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

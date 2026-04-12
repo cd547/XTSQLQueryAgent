@@ -9,7 +9,7 @@ router.get('/', (req, res) => {
     const db = getDb();
     const sessions = db.prepare(`
       SELECT s.id, s.name, s.sort_order, s.created_at,
-             COALESCE((SELECT SUM(total_tokens) FROM messages WHERE session_id = s.id), 0) as total_tokens
+             COALESCE((SELECT SUM(total_tokens) FROM messages WHERE session_id = s.id AND role = 'usage'), 0) as total_tokens
       FROM sessions s ORDER BY s.id DESC
     `).all();
     res.json({ sessions });
@@ -22,7 +22,7 @@ router.get('/', (req, res) => {
 router.get('/:id/tokens', (req, res) => {
   try {
     const db = getDb();
-    const result = db.prepare('SELECT COALESCE(SUM(total_tokens), 0) as total_tokens FROM messages WHERE session_id = ?').get(req.params.id);
+    const result = db.prepare('SELECT COALESCE(SUM(total_tokens), 0) as total_tokens FROM messages WHERE session_id = ? AND role = ?').get(req.params.id, 'usage');
     res.json({ total_tokens: result?.total_tokens || 0 });
   } catch (error) {
     res.json({ error: error.message, total_tokens: 0 });

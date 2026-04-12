@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { getDb } from '../db/sqlite.js';
 import { logger } from '../logger.js';
+import { getAgentConfig, updateAgentConfig } from '../services/config.js';
 
 const router = Router();
 
@@ -73,6 +74,26 @@ router.get('/llm', async (req, res) => {
     res.json(config);
   } else {
     res.json({});
+  }
+});
+
+router.get('/agent', async (req, res) => {
+  try {
+    const config = getAgentConfig();
+    res.json(config);
+  } catch (e) {
+    res.json({});
+  }
+});
+
+router.put('/agent/:key', async (req, res) => {
+  try {
+    const { key } = req.params;
+    const { value } = req.body;
+    const config = updateAgentConfig(`agent_${key}`, value);
+    res.json({ success: true, config });
+  } catch (e) {
+    res.json({ success: false, error: e.message });
   }
 });
 

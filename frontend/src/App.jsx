@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Layout, Input, Button, Table, Card, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree } from 'antd';
+import { Layout, Input, Button, Table, Card, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, InputNumber } from 'antd';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
 const { Panel } = Collapse;
@@ -13,7 +13,7 @@ function ResizableTitle(props) {
     </Resizable>
   );
 }
-import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined } from '@ant-design/icons';
+import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import Editor, { loader } from '@monaco-editor/react';
 
@@ -40,7 +40,7 @@ loader.config({
     vs: './node_modules/monaco-editor/min/vs'
   }
 });
-import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile } from './api';
+import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, getSessionTokens } from './api';
 
 const { TextArea } = Input;
 const { Sider, Content } = Layout;
@@ -78,7 +78,7 @@ function ChatMessage({ role, content, isStreaming, onExecute, timestamp, collaps
   }) : '';
   
   if (isLog) {
-    const typeLabel = logType === 'return' ? '工具返回' : logType === 'llm' ? 'LLM思考' : '工具调用';
+    const typeLabel = logType === 'return' ? '工具返回' : logType === 'llm' ? '思考过程' : '工具调用';
     const bgColors = {
       llm: '#e6f7ff',
       call: '#f5f5f5',
@@ -110,8 +110,8 @@ function ChatMessage({ role, content, isStreaming, onExecute, timestamp, collaps
             style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', marginBottom: collapsed ? 0 : 4 }}
             onClick={() => { if (onToggleCollapse) onToggleCollapse(); }}
           >
-            <span style={{ marginRight: 4 }}>
-              {collapsed ? '▶' : '▼'}
+            <span style={{ marginRight: 4, fontSize: 10 }}>
+              {collapsed ? <CaretRightOutlined /> : <DownOutlined />}
             </span>
             <span style={{ fontSize: 9, color: '#999' }}>{timeStr} · {typeLabel}</span>
           </div>
@@ -322,6 +322,7 @@ function App() {
       if (data.sessions && data.sessions.length > 0 && !currentSessionId) {
         const firstSession = data.sessions[0];
         setCurrentSessionId(firstSession.id);
+        setCurrentTokens(firstSession.total_tokens || 0);
         setCurrentSessionName(firstSession.name ? `${firstSession.name}#${firstSession.id}` : '聊天');
         loadMessages(firstSession.id);
       }
@@ -334,13 +335,15 @@ function App() {
     try {
       const data = await getSessionMessages(sessionId);
       if (data.messages) {
-        setMessages(data.messages.map(m => ({
-          role: m.role,
-          content: m.content || m.sql || '',
-          sql: m.sql || '',
-          timestamp: m.created_at,
-          logType: m.role === 'LLM' ? 'llm' : m.role === 'tool_return' ? 'return' : 'call'
-        })));
+        setMessages(data.messages
+          .filter(m => m.role !== 'usage')
+          .map(m => ({
+            role: m.role,
+            content: m.content || m.sql || '',
+            sql: m.sql || '',
+            timestamp: m.created_at,
+            logType: m.role === 'LLM' ? 'llm' : m.role === 'tool_return' ? 'return' : 'call'
+          })));
       }
     } catch (e) {
       console.error('加载消息失败:', e);
@@ -364,6 +367,7 @@ function App() {
       };
       setSessions(prev => [newSession, ...prev]);
       setCurrentSessionId(data.id);
+      setCurrentTokens(0);
       setMessages([]);
       setResults([]);
       setShowResults(false);
@@ -373,13 +377,19 @@ function App() {
     }
   };
   
-  const handleSessionClick = (session) => {
+  const handleSessionClick = async (session) => {
     setCurrentSessionId(session.id);
-    setCurrentTokens(session.total_tokens || 0);
     const newName = session.name ? `${session.name}#${session.id}` : '聊天';
     setCurrentSessionName(newName);
     loadMessages(session.id);
     messageCountRef.current = 0;
+    // 获取当前会话的token消耗
+    try {
+      const data = await getSessionTokens(session.id);
+      setCurrentTokens(data.total_tokens || 0);
+    } catch (e) {
+      setCurrentTokens(0);
+    }
   };
   
   const handleDeleteSession = async (sessionId, e) => {
@@ -480,7 +490,6 @@ function App() {
                 let logType = 'call';
                 if (data.type === 'LLM') logType = 'llm';
                 else if (data.type === 'tool_return') logType = 'return';
-                else logType = 'call';
                 
                 setMessages(prev => {
                   const newMsgs = [...prev];
@@ -1078,8 +1087,19 @@ key: 'result',
 function ConfigPanel({ compact }) {
   const [dbConfig, setDbConfig] = useState({ host: 'localhost', port: 3306, user: 'root', password: '', database: '' });
   const [llmConfig, setLlmConfig] = useState({ provider: 'deepseek', apiKey: '', model: 'deepseek-chat' });
+  const [agentConfig, setAgentConfig] = useState({ max_tool_calls: '30', timeout_ms: '60000' });
   const [testing, setTesting] = useState(false);
   const [testingLlm, setTestingLlm] = useState(false);
+  const [savingAgent, setSavingAgent] = useState(false);
+
+  useEffect(() => {
+    fetch('http://localhost:5002/api/config/agent').then(r => r.json()).then(data => {
+      setAgentConfig({
+        max_tool_calls: data.agent_max_tool_calls || '30',
+        timeout_ms: data.agent_timeout_ms || '60000'
+      });
+    });
+  }, []);
   
   const testDb = async () => {
     setTesting(true);
@@ -1110,6 +1130,16 @@ function ConfigPanel({ compact }) {
     } catch (e) { message.error('保存失败'); }
     finally { setTestingLlm(false); }
   };
+
+  const saveAgent = async () => {
+    setSavingAgent(true);
+    try {
+      await fetch('http://localhost:5002/api/config/agent/max_tool_calls', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: agentConfig.max_tool_calls }) });
+      await fetch('http://localhost:5002/api/config/agent/timeout_ms', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: agentConfig.timeout_ms }) });
+      message.success('Agent配置已保存');
+    } catch (e) { message.error('保存失败'); }
+    finally { setSavingAgent(false); }
+  };
   
   return (
     <div style={{ fontSize: 12 }}>
@@ -1132,6 +1162,13 @@ function ConfigPanel({ compact }) {
         <Input.Password placeholder="API Key" value={llmConfig.apiKey} onChange={e => setLlmConfig({...llmConfig, apiKey: e.target.value})} style={{ fontSize: 12 }} />
         <Input placeholder="模型名称" value={llmConfig.model} onChange={e => setLlmConfig({...llmConfig, model: e.target.value})} style={{ fontSize: 12 }} />
         <Button onClick={saveLlm} loading={testingLlm} style={{ fontSize: 12 }}>保存LLM配置</Button>
+      </div>
+
+      <h3 style={{ marginTop: 24, marginBottom: 16, fontSize: 14 }}>Agent 配置</h3>
+      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+        <InputNumber addonBefore="最大工具调用次数" value={parseInt(agentConfig.max_tool_calls)} onChange={v => setAgentConfig({...agentConfig, max_tool_calls: String(v || 30)})} min={1} max={100} style={{ width: '100%', fontSize: 12 }} />
+        <InputNumber addonBefore="超时时间(ms)" value={parseInt(agentConfig.timeout_ms)} onChange={v => setAgentConfig({...agentConfig, timeout_ms: String(v || 60000)})} min={1000} max={300000} style={{ width: '100%', fontSize: 12 }} />
+        <Button onClick={saveAgent} loading={savingAgent} style={{ fontSize: 12 }}>保存Agent配置</Button>
       </div>
     </div>
   );

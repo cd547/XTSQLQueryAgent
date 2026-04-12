@@ -267,6 +267,16 @@ router.post('/generate', async (req, res) => {
             totalPromptTokens += chunk.usage.prompt_tokens;
             totalCompletionTokens += chunk.usage.completion_tokens;
             totalTokens += chunk.usage.total_tokens;
+            // 每轮API调用都保存token记录
+            if (sessionId) {
+              try {
+                const db = getDb();
+                db.prepare('INSERT INTO messages (session_id, role, content, prompt_tokens, completion_tokens, total_tokens) VALUES (?, ?, ?, ?, ?, ?)')
+                  .run(sessionId, 'usage', `Round token: ${chunk.usage.total_tokens} (prompt: ${chunk.usage.prompt_tokens}, completion: ${chunk.usage.completion_tokens})`, chunk.usage.prompt_tokens, chunk.usage.completion_tokens, chunk.usage.total_tokens);
+              } catch (e) {
+                logger.error('保存usage失败', { error: e.message });
+              }
+            }
           } else if (chunk.type === 'LLM' || chunk.type === 'tool' || chunk.type === 'tool_return') {
             const logContent = chunk.log || '';
             allLogs.push(logContent);

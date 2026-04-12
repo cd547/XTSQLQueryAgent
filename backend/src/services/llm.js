@@ -1,4 +1,4 @@
-import { getLlmConfig } from './config.js';
+import { getLlmConfig, getAgentConfig } from './config.js';
 import { logger } from '../logger.js';
 import { ChatOpenAI } from '@langchain/openai';
 import { loadTableIndex, loadSkillMd, tools } from './toolFuncs.js';
@@ -300,7 +300,8 @@ ${history}
     { role: 'user', content: question }
   ];
 
-  let maxToolCalls = 30;
+  const agentConfig = getAgentConfig();
+  let maxToolCalls = parseInt(agentConfig.agent_max_tool_calls || '30', 10);
   let responseText = '';
   let sql = '';
   
