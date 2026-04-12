@@ -13,7 +13,7 @@ function ResizableTitle(props) {
     </Resizable>
   );
 }
-import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined } from '@ant-design/icons';
+import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import Editor, { loader } from '@monaco-editor/react';
 
@@ -40,7 +40,7 @@ loader.config({
     vs: './node_modules/monaco-editor/min/vs'
   }
 });
-import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles } from './api';
+import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles, explainQuery } from './api';
 
 const { TextArea } = Input;
 const { Sider, Content } = Layout;
@@ -616,6 +616,31 @@ function App() {
       setLoading(false);
     }
   };
+
+  const handleExplain = async (sql) => {
+    if (!sql) return;
+    setLoading(true);
+    setSqlKey(['sql', 'result']);
+    setResultKey(['sql', 'result']);
+    try {
+      const res = await explainQuery({ sql });
+      if (res.error) {
+        message.error(res.error);
+      } else {
+        setTabs(prev => ({
+          ...prev,
+          [activeTabKey]: {
+            ...prev[activeTabKey],
+            results: res.results || [],
+            rowCount: res.rowCount || 0
+          }
+        }));
+        message.success(`EXPLAIN 完成，${res.rowCount} 行`);
+      }
+    } finally {
+      setLoading(false);
+    }
+  };
   
 const exportToExcel = async (data, cols) => {
     try {
@@ -978,7 +1003,13 @@ key: 'sql',
                                 }}
                               />
                             </div>
-                            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                              <Button 
+                                size="small" 
+                                icon={<SelectOutlined />}
+                                disabled={!sqlInput.trim() && !getSelectedSql()}
+                                onClick={() => handleExplain(getSelectedSql())}
+                              >EXPLAIN</Button>
                               <Button type="primary" size="small" disabled={!sqlInput.trim() && !getSelectedSql()} onClick={() => handleExecute(getSelectedSql())}>查询</Button>
                             </div>
                           </div>

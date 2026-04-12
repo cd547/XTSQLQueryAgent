@@ -32,6 +32,10 @@ export function queryExecute(data) {
   return api.post('/query/execute', data).then(r => r.data);
 }
 
+export function explainQuery(data) {
+  return api.post('/query/explain', data).then(r => r.data);
+}
+
 export function getSessions() {
   return api.get('/sessions').then(r => r.data);
 }

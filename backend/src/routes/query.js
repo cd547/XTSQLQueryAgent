@@ -505,4 +505,45 @@ router.post('/execute', async (req, res) => {
   }
 });
 
+router.post('/explain', async (req, res) => {
+  const { sql } = req.body;
+  
+  if (!sql || typeof sql !== 'string') {
+    return res.json({ error: '请提供 SQL 语句', rowCount: 0 });
+  }
+  
+  // 提取有效 SQL（去除注释，只保留 SQL 语句）
+  const lines = sql.split('\n');
+  const validLines = lines.filter(line => {
+    const trimmed = line.trim();
+    return trimmed && !trimmed.startsWith('--') && !trimmed.startsWith('/*');
+  });
+  const cleanSql = validLines.join(' ').trim();
+  
+  if (!cleanSql.toUpperCase().startsWith('SELECT') && !cleanSql.toUpperCase().startsWith('EXPLAIN')) {
+    const forbidden = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE'];
+    const upperSql = cleanSql.toUpperCase();
+    for (const word of forbidden) {
+      if (upperSql.includes(word)) {
+        return res.json({ error: `不允许执行 ${word} 操作`, rowCount: 0 });
+      }
+    }
+    return res.json({ error: '只允许 SELECT/EXPLAIN 查询', rowCount: 0 });
+  }
+
+  try {
+    const config = getConfig();
+    const connection = await mysql.createConnection(config);
+    
+    const explainSql = cleanSql.toUpperCase().startsWith('EXPLAIN') ? cleanSql : `EXPLAIN ${cleanSql}`;
+    const [rows] = await connection.query(explainSql);
+    await connection.end();
+    
+    res.json({ results: rows, rowCount: rows.length });
+  } catch (error) {
+    logger.error('EXPLAIN execution failed', { error: error.message, sql });
+    res.json({ error: error.message, rowCount: 0 });
+  }
+});
+
 export default router;

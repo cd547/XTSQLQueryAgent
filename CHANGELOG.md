@@ -2,6 +2,24 @@
 
 ## 2026-04-12
 
+### SQL EXPLAIN 功能 (新增)
+
+#### 功能
+- 在 SQL 预览区域添加 "EXPLAIN" 按钮
+- 点击后执行 SQL 执行计划分析
+- 结果显示在查询结果区域
+- 优先执行选中的 SQL，无选中则执行全部
+
+#### 后端 API
+- `POST /api/query/explain` - 执行 EXPLAIN 语句
+- 安全验证：仅允许 SELECT/EXPLAIN 开头
+- 禁止：INSERT, UPDATE, DELETE, DROP, CREATE, ALTER, TRUNCATE
+
+#### 前端
+- `explainQuery()` API 函数
+- `handleExplain()` 处理函数
+- 按钮使用 `SelectOutlined` 图标
+
 ### Skill查看器 - 表格添加功能 (新增)
 
 #### 功能流程
