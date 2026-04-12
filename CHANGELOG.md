@@ -2,6 +2,40 @@
 
 ## 2026-04-12
 
+### Skill查看器 - 表格添加功能 (新增)
+
+#### 功能流程
+- 点击"添加"按钮 → 弹出 Modal 引导框
+- 步骤1：输入表名 → 检查 table_index.json 是否存在
+  - 已存在：提示"表已存在，是否继续？"
+  - 不存在：进入步骤2
+- 步骤2：获取 DDL
+  - 后端使用已保存的数据库配置连接真实库
+  - 执行 `SHOW CREATE TABLE {table_name}` 获取 DDL
+  - 自动提取表注释和关联表（FOREIGN KEY）
+- 步骤3：生成文件
+  - 更新 table_index.json（添加表节点）
+  - 生成 ddl/{表名}.sql
+  - 生成 field_config/{表名}.json
+  - 操作记录写入 skill_logs 表
+
+#### 后端 API
+- `POST /api/skills/check-table`: 检查表是否存在
+- `POST /api/skills/fetch-ddl`: 从数据库获取 DDL
+- `POST /api/skills/create-table-files`: 创建表格相关文件
+
+#### 前端 API (frontend/src/api/index.js)
+- `checkTableExists(tableName)` - 检查表是否存在
+- `fetchTableDDL(tableName)` - 获取 DDL
+- `createTableFiles(tableName, ddl, description)` - 创建文件
+
+#### 自动提取
+- `related_tables`: 从 DDL 的 FOREIGN KEY 自动分析
+- `description`: 从 DDL 的 COMMENT 自动提取
+
+#### UI优化
+- skill-drawer-content 添加 `paddingTop: 5px`，解决目录结构与顶部线距离过近的问题
+
 ### Skill查看器 (新增功能)
 
 #### 锁定机制

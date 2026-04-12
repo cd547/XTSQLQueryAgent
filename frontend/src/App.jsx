@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Layout, Input, Button, Table, Card, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, InputNumber } from 'antd';
+import { Layout, Input, Button, Table, Card, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, InputNumber, Modal, Steps } from 'antd';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
 const { Panel } = Collapse;
@@ -40,7 +40,7 @@ loader.config({
     vs: './node_modules/monaco-editor/min/vs'
   }
 });
-import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens } from './api';
+import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles } from './api';
 
 const { TextArea } = Input;
 const { Sider, Content } = Layout;
@@ -219,6 +219,15 @@ function App() {
   const [skillEditorHeight, setSkillEditorHeight] = useState(300);
   const [skillTreeActionsVisible, setSkillTreeActionsVisible] = useState(false);
   const [currentModel, setCurrentModel] = useState('');
+  const [addTableModalOpen, setAddTableModalOpen] = useState(false);
+  const [addTableStep, setAddTableStep] = useState(1);
+  const [addTableName, setAddTableName] = useState('');
+  const [addTableChecking, setAddTableChecking] = useState(false);
+  const [addTableExists, setAddTableExists] = useState(false);
+  const [addTableDDL, setAddTableDDL] = useState('');
+  const [addTableDescription, setAddTableDescription] = useState('');
+  const [addTableRelatedTables, setAddTableRelatedTables] = useState([]);
+  const [addTableCreating, setAddTableCreating] = useState(false);
   const messageCountRef = useRef(0);
   const messagesEndRef = useRef(null);
   const inputResizerRef = useRef(null);
@@ -676,6 +685,77 @@ const exportToExcel = async (data, cols) => {
     }
   };
 
+  const handleAddTableStep1 = async () => {
+    if (!addTableName.trim()) return;
+    setAddTableChecking(true);
+    try {
+      const data = await checkTableExists(addTableName.trim());
+      setAddTableExists(data.exists);
+      if (data.exists) {
+        setAddTableStep(1.5);
+      } else {
+        setAddTableStep(2);
+        setAddTableDescription(data.tableComment || '');
+      }
+    } catch (e) {
+      message.error('检查失败: ' + e.message);
+    } finally {
+      setAddTableChecking(false);
+    }
+  };
+
+  const handleAddTableStep2 = async () => {
+    setAddTableChecking(true);
+    try {
+      const data = await fetchTableDDL(addTableName.trim());
+      if (data.success) {
+        setAddTableDDL(data.ddl);
+        setAddTableDescription(data.tableComment || addTableDescription);
+        setAddTableRelatedTables(data.relatedTables || []);
+        setAddTableStep(3);
+      } else {
+        message.error(data.message || '获取DDL失败');
+      }
+    } catch (e) {
+      message.error('获取DDL失败: ' + e.message);
+    } finally {
+      setAddTableChecking(false);
+    }
+  };
+
+  const handleAddTableStep3 = async () => {
+    setAddTableCreating(true);
+    try {
+      const data = await createTableFiles(addTableName.trim(), addTableDDL, addTableDescription);
+      if (data.success) {
+        message.success('表格文件创建成功');
+        setAddTableModalOpen(false);
+        loadSkillsList();
+        resetAddTableForm();
+      } else {
+        message.error(data.message || '创建失败');
+      }
+    } catch (e) {
+      message.error('创建失败: ' + e.message);
+    } finally {
+      setAddTableCreating(false);
+    }
+  };
+
+  const resetAddTableForm = () => {
+    setAddTableStep(1);
+    setAddTableName('');
+    setAddTableDDL('');
+    setAddTableDescription('');
+    setAddTableRelatedTables([]);
+    setAddTableExists(false);
+  };
+
+  const handleAddTableModalClose = () => {
+    setAddTableModalOpen(false);
+    resetAddTableForm();
+  };
+
 // 获取当前tab的结果
 const currentResults = activeTabKey !== 'chat' && tabs[activeTabKey]?.results ? tabs[activeTabKey].results : results;
 const currentRowCount = activeTabKey !== 'chat' && tabs[activeTabKey]?.rowCount ? tabs[activeTabKey].rowCount : rowCount;
@@ -1090,7 +1170,7 @@ key: 'result',
               document.addEventListener('mouseup', handleUp);
             }}
           />
-          <div className="skill-drawer-content" style={{ display: 'flex', flexDirection: 'column', height: '100%', borderRadius: 6, overflow: 'hidden' }}>
+          <div className="skill-drawer-content" style={{ display: 'flex', flexDirection: 'column', height: '100%', borderRadius: 6, overflow: 'hidden', paddingTop: 5 }}>
             <div style={{display:'flex',alignItems:'center',cursor:'pointer',marginBottom:4}} onClick={()=>setSkillTreeCollapsed(!skillTreeCollapsed)}>
               {skillTreeCollapsed?<CaretRightOutlined style={{marginRight:4,fontSize:10}}/>:<DownOutlined style={{marginRight:4,fontSize:10}}/>}
               <span style={{fontSize:12,fontWeight:500}}>目录结构</span>
@@ -1102,6 +1182,7 @@ key: 'result',
                   icon={<TableOutlined style={{ color: '#1890ff' }} />} 
                   style={{ fontSize: 11, color: '#1890ff' }}
                   title="添加表格"
+                  onClick={() => setAddTableModalOpen(true)}
                 >添加</Button>
               </div>
             )}
@@ -1220,6 +1301,89 @@ key: 'result',
             </div>}
           </div>
         </Drawer>
+        
+        <Modal
+          title="添加表格"
+          open={addTableModalOpen}
+          onCancel={handleAddTableModalClose}
+          footer={null}
+          width={600}
+        >
+          <Steps current={addTableStep === 1.5 ? 1 : addTableStep - 1} style={{ marginBottom: 24 }}>
+            <Steps.Step title="输入表名" />
+            <Steps.Step title="获取DDL" />
+            <Steps.Step title="生成文件" />
+          </Steps>
+          
+          {addTableStep === 1 && (
+            <div>
+              <div style={{ marginBottom: 16 }}>
+                <Input 
+                  placeholder="请输入要添加的表名" 
+                  value={addTableName}
+                  onChange={e => setAddTableName(e.target.value)}
+                  onPressEnter={handleAddTableStep1}
+                />
+              </div>
+              <div style={{ textAlign: 'right' }}>
+                <Button type="primary" onClick={handleAddTableStep1} loading={addTableChecking} disabled={!addTableName.trim()}>
+                  下一步
+                </Button>
+              </div>
+            </div>
+          )}
+          
+          {addTableStep === 1.5 && (
+            <div>
+              <div style={{ marginBottom: 16, padding: 16, background: '#fff7e6', border: '1px solid #faad14', borderRadius: 4 }}>
+                表 <strong>{addTableName}</strong> 已存在于 table_index.json 中，是否仍要继续？（可能覆盖已有信息）
+              </div>
+              <div style={{ textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <Button onClick={handleAddTableModalClose}>取消</Button>
+                <Button onClick={() => { setAddTableStep(2); }}>继续</Button>
+              </div>
+            </div>
+          )}
+          
+          {addTableStep === 2 && (
+            <div>
+              {addTableChecking ? (
+                <div style={{ textAlign: 'center', padding: 32 }}>
+                  <Spin tip="正在查询数据库获取DDL..." />
+                </div>
+              ) : (
+                <div>
+                  <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 4 }}>
+                    正在获取表 <strong>{addTableName}</strong> 的DDL...
+                  </div>
+                  <div style={{ textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                    <Button onClick={() => setAddTableStep(1)}>上一步</Button>
+                    <Button type="primary" onClick={handleAddTableStep2}>获取DDL</Button>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+          
+          {addTableStep === 3 && (
+            <div>
+              <div style={{ marginBottom: 16 }}>
+                <div style={{ marginBottom: 8, fontWeight: 500 }}>表名: {addTableName}</div>
+                <div style={{ marginBottom: 8 }}>描述: <Input value={addTableDescription} onChange={e => setAddTableDescription(e.target.value)} placeholder="请输入表描述（可选）" /></div>
+                {addTableRelatedTables.length > 0 && (
+                  <div style={{ marginBottom: 8 }}>关联表: {addTableRelatedTables.join(', ')}</div>
+                )}
+              </div>
+              <div style={{ marginBottom: 16, maxHeight: 200, overflow: 'auto', background: '#f5f5f5', padding: 8, borderRadius: 4, fontSize: 11 }}>
+                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{addTableDDL}</pre>
+              </div>
+              <div style={{ textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
+                <Button onClick={() => setAddTableStep(2)} disabled={addTableCreating}>上一步</Button>
+                <Button type="primary" onClick={handleAddTableStep3} loading={addTableCreating}>生成文件</Button>
+              </div>
+            </div>
+          )}
+        </Modal>
       </Layout>
     </ConfigProvider>
   );

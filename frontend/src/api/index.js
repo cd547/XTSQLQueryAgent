@@ -72,6 +72,18 @@ export function saveSkillFile(path, content) {
   return api.post('/skills/save', { path, content }).then(r => r.data);
 }
 
+export function checkTableExists(tableName) {
+  return api.post('/skills/check-table', { tableName }).then(r => r.data);
+}
+
+export function fetchTableDDL(tableName) {
+  return api.post('/skills/fetch-ddl', { tableName }).then(r => r.data);
+}
+
+export function createTableFiles(tableName, ddl, description) {
+  return api.post('/skills/create-table-files', { tableName, ddl, description }).then(r => r.data);
+}
+
 export function getAgentConfig() {
   return api.get('/config/agent').then(r => r.data);
 }

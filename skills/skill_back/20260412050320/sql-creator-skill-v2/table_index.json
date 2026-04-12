@@ -241,7 +241,7 @@
     {
       "name": "edu_campus_school",
       "description": "分校",
-      "tags": ["二级校区"],
+      "tags": [],
       "related_tables": [
         "edu_campus"
       ],

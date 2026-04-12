@@ -2,7 +2,9 @@ import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import mysql from 'mysql2/promise';
 import { getDb } from '../db/sqlite.js';
+import { getConfig } from '../services/config.js';
 
 const router = Router();
 
@@ -197,6 +199,166 @@ router.post('/save', (req, res) => {
       console.error('Failed to log error:', logErr);
     }
     
+    res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+const SKILL_V2_PATH = path.join(skillsPath, 'sql-creator-skill-v2');
+
+function loadTableIndex() {
+  const tableIndexPath = path.join(SKILL_V2_PATH, 'table_index.json');
+  if (fs.existsSync(tableIndexPath)) {
+    return JSON.parse(fs.readFileSync(tableIndexPath, 'utf-8'));
+  }
+  return null;
+}
+
+function saveTableIndex(data) {
+  const tableIndexPath = path.join(SKILL_V2_PATH, 'table_index.json');
+  fs.writeFileSync(tableIndexPath, JSON.stringify(data, null, 2), 'utf-8');
+}
+
+function extractRelatedTables(ddl) {
+  const relatedTables = [];
+  const fkRegex = /FOREIGN\s+KEY\s*\([^)]+\)\s+REFERENCES\s+`?(\w+)`?/gi;
+  let match;
+  while ((match = fkRegex.exec(ddl)) !== null) {
+    const tableName = match[1];
+    if (!relatedTables.includes(tableName)) {
+      relatedTables.push(tableName);
+    }
+  }
+  return relatedTables;
+}
+
+function extractTableComment(ddl) {
+  const commentMatch = ddl.match(/COMMENT\s*=\s*['"]([^'"]*)['"]/i);
+  if (commentMatch) {
+    return commentMatch[1];
+  }
+  return '';
+}
+
+router.post('/check-table', (req, res) => {
+  const { tableName } = req.body;
+  if (!tableName) {
+    return res.status(400).json({ success: false, message: 'Missing tableName' });
+  }
+
+  const tableIndex = loadTableIndex();
+  if (!tableIndex || !tableIndex.tables) {
+    return res.json({ success: true, exists: false, message: '表索引不存在' });
+  }
+
+  const exists = tableIndex.tables.some(t => t.name === tableName);
+  res.json({ 
+    success: true, 
+    exists, 
+    message: exists ? '表已存在' : '表不存在' 
+  });
+});
+
+router.post('/fetch-ddl', async (req, res) => {
+  const { tableName } = req.body;
+  if (!tableName) {
+    return res.status(400).json({ success: false, message: 'Missing tableName' });
+  }
+
+  try {
+    const dbConfig = getConfig();
+    const connection = await mysql.createConnection({
+      host: dbConfig.host,
+      port: dbConfig.port || 3306,
+      user: dbConfig.user,
+      password: dbConfig.password,
+      database: dbConfig.database
+    });
+
+    const [rows] = await connection.query(`SHOW CREATE TABLE \`${tableName}\``);
+    await connection.end();
+
+    if (!rows || rows.length === 0) {
+      return res.json({ success: false, message: `表 ${tableName} 不存在` });
+    }
+
+    const ddl = rows[0]['Create Table'] || rows[0]['Create View'];
+    const tableComment = extractTableComment(ddl);
+    const relatedTables = extractRelatedTables(ddl);
+
+    res.json({
+      success: true,
+      ddl,
+      tableComment,
+      relatedTables
+    });
+  } catch (e) {
+    console.error('Fetch DDL error:', e);
+    res.json({ success: false, message: e.message });
+  }
+});
+
+router.post('/create-table-files', (req, res) => {
+  const { tableName, ddl, description } = req.body;
+  if (!tableName || !ddl) {
+    return res.status(400).json({ success: false, message: 'Missing tableName or ddl' });
+  }
+
+  try {
+    const relatedTables = extractRelatedTables(ddl);
+    const tableComment = extractTableComment(ddl) || description || tableName;
+
+    const tableIndex = loadTableIndex();
+    if (!tableIndex) {
+      return res.status(500).json({ success: false, message: 'table_index.json 不存在' });
+    }
+
+    const newTableEntry = {
+      name: tableName,
+      description: tableComment,
+      tags: [],
+      related_tables: relatedTables,
+      business_constraints: [],
+      business_rules: []
+    };
+    tableIndex.tables.push(newTableEntry);
+    saveTableIndex(tableIndex);
+
+    const ddlPath = path.join(SKILL_V2_PATH, 'ddl', `${tableName}.sql`);
+    fs.writeFileSync(ddlPath, ddl, 'utf-8');
+
+    const fieldConfigPath = path.join(SKILL_V2_PATH, 'field_config', `${tableName}.json`);
+    const fieldConfig = {
+      table_name: tableName,
+      field_aliases: {},
+      field_enums: {},
+      virtual_associations: [],
+      calculated_fields: {},
+      business_constraints: {},
+      business_rules: []
+    };
+    fs.writeFileSync(fieldConfigPath, JSON.stringify(fieldConfig, null, 2), 'utf-8');
+
+    const db = getDb();
+    const stmt = db.prepare(`
+      INSERT INTO skill_logs (operation, file_path, backup_path, old_content, new_content, status, error_message)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `);
+    stmt.run(
+      'create_table_files',
+      `${tableName}`,
+      null,
+      '',
+      JSON.stringify({ tableName, ddl, relatedTables }),
+      'success',
+      null
+    );
+
+    res.json({
+      success: true,
+      files: ['table_index.json', `ddl/${tableName}.sql`, `field_config/${tableName}.json`]
+    });
+  } catch (e) {
+    console.error('Create table files error:', e);
     res.status(500).json({ success: false, message: e.message });
   }
 });
