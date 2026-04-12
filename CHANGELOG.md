@@ -2,6 +2,61 @@
 
 ## 2026-04-12
 
+### Skill查看器 (新增功能)
+
+#### 锁定机制
+- 标题栏右侧添加锁定按钮 (`LockOutlined`/`UnlockOutlined`)
+- 初始状态锁定 (`skillLocked: true`)
+- 锁定状态：Monaco Editor 为只读模式
+- 解锁状态：Editor 可编辑，显示保存按钮
+
+#### 保存功能
+- 保存按钮：仅在解锁且文件有改动时显示，小型图标按钮 (`EditOutlined`)
+- 备份机制：
+  - 备份目录：`skills/skill_back/{YYYYMMDDHHmmss}/{原目录结构}/`
+  - 保留完整目录结构
+- 数据库日志：`skill_logs` 表记录操作
+  - 字段：operation, file_path, backup_path, old_content, new_content, status, error_message
+
+#### 目录树优化
+- 后端自动过滤 `skill_back` 目录，不显示在列表中
+- 高度拖拽调整：80-400px，拖动条位于底部
+
+#### 文件编辑器优化
+- 高度拖拽调整：100-500px，拖动条位于顶部
+
+#### 操作面板
+- 位置：目录结构标题下方（仅解锁时显示）
+- 包含"添加"按钮：`TableOutlined` 图标，蓝色 #1890ff，悬停提示"添加表格"
+
+### UI调整 - 聊天输入区域
+
+#### 输入框重构
+- 分离为两部分：输入区域 + 操作行
+- 输入框：去除边框，使用 autoSize 自适应高度
+- 操作行：位于底部，包含模型名称 + token消耗 + 发送按钮
+
+#### 发送按钮
+- 缩小尺寸 (`size="small"`)
+- 图标化：`SendOutlined`，无文字
+- 字体 11px，内边距缩小
+
+#### 信息显示
+- 模型名称：12px，蓝色 #1890ff，加粗
+- Token消耗：11px，灰色 #999
+- 位置：发送按钮左侧，作为操作空间区域
+
+### 后端改动
+
+#### 数据库
+- `sqlite.js`: 新增 `initSkillLogTable()` 初始化 `skill_logs` 表
+
+#### 路由
+- `skill.js`:
+  - 新增 `POST /api/skills/save` 接口
+  - `buildTree()` 过滤 skill_back 目录
+  - 备份逻辑：创建备份目录，写入原文件，保存新内容，记录日志
+
 ### Agent配置功能 (backend + frontend)
 - **数据库存储**: configs 表新增 agent 配置项
   - `agent_max_tool_calls`: 最大工具调用次数 (默认30)

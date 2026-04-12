@@ -13,7 +13,7 @@ function ResizableTitle(props) {
     </Resizable>
   );
 }
-import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined } from '@ant-design/icons';
+import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import Editor, { loader } from '@monaco-editor/react';
 
@@ -218,6 +218,7 @@ function App() {
   const [skillTreeHeight, setSkillTreeHeight] = useState(200);
   const [skillEditorHeight, setSkillEditorHeight] = useState(300);
   const [skillTreeActionsVisible, setSkillTreeActionsVisible] = useState(false);
+  const [currentModel, setCurrentModel] = useState('');
   const messageCountRef = useRef(0);
   const messagesEndRef = useRef(null);
   const inputResizerRef = useRef(null);
@@ -225,7 +226,15 @@ function App() {
   
   useEffect(() => {
     loadSessions();
+    loadCurrentModel();
   }, []);
+
+  const loadCurrentModel = async () => {
+    try {
+      const data = await fetch('http://localhost:5002/api/config/llm').then(r => r.json());
+      setCurrentModel(data.model || '');
+    } catch (e) {}
+  };
 
   useEffect(() => {
     if (activeTabKey !== 'chat' && tabs[activeTabKey]?.sql !== undefined) {
@@ -964,7 +973,7 @@ key: 'result',
               <>
                 <div
                   ref={inputResizerRef}
-                  style={{ minHeight: inputHeight, borderTop: '1px solid #e8e8e8', background: '#fff', position: 'relative' }}
+                  style={{ minHeight: inputHeight, borderTop: '1px solid #e8e8e8', background: '#fff', position: 'relative', display: 'flex', flexDirection: 'column' }}
                 >
                   <div
                     style={{
@@ -996,18 +1005,30 @@ key: 'result',
                     }}
                   />
                   <div style={{ position: 'absolute', top: 1, left: '50%', transform: 'translateX(-50%)', width: 40, height: 4, background: '#d9d9d9', borderRadius: 2, cursor: 'ns-resize', pointerEvents: 'none', zIndex: 15 }} />
-                  <div style={{ display: 'flex', gap: 12, alignItems: 'center', height: '100%', padding: '8px 24px' }}>
+                  <div style={{ flex: 1, padding: '8px 24px 0' }}>
                     <TextArea
                       value={input}
                       onChange={e => setInput(e.target.value)}
                       onPressEnter={e => { if (!e.shiftKey) { e.preventDefault(); handleSend(); } }}
                       placeholder="输入自然语言查询，按Enter发送，Shift+Enter换行"
-                      style={{ flex: 1, resize: 'none', height: '100%' }}
+                      style={{ resize: 'none', width: '100%', border: 'none', boxShadow: 'none' }}
+                      autoSize={{ minRows: 1, maxRows: 10 }}
                     />
-                    <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 2 }}>
-                      <Button type="primary" onClick={handleSend} loading={loading} disabled={!input.trim()}>发送</Button>
-                      {currentTokens > 0 && <span style={{ fontSize: 10, color: '#999' }}>{currentTokens} tokens</span>}
+                  </div>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 24px 8px' }}>
+                    <div style={{ fontSize: 11, fontWeight: 500, color: '#1890ff', display: 'flex', gap: 8 }}>
+                      {currentModel && <span>{currentModel}</span>}
+                      {currentTokens > 0 && <span style={{ color: '#999', fontWeight: 'normal' }}>{currentTokens} tokens</span>}
                     </div>
+                    <Button 
+                    size="small" 
+                    type="primary" 
+                    onClick={handleSend} 
+                    loading={loading} 
+                    disabled={!input.trim()} 
+                    icon={<SendOutlined />}
+                    style={{ fontSize: 11, padding: '4px 8px' }} 
+                  />
                   </div>
                 </div>
               </>
