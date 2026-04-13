@@ -149,7 +149,7 @@ function ChatMessage({ role, content, isStreaming, onExecute, timestamp, collaps
             <div style={{ fontSize: 9, color: 'rgba(255,255,255,0.7)', marginBottom: 2 }}>{timeStr}</div>
             <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 12 }}>{content}</div>
           </div>
-        ) : (
+) : (
           <div>
             <div style={{ fontSize: 9, color: '#999', marginBottom: 2 }}>{timeStr}</div>
             {messageText && (
@@ -228,6 +228,10 @@ function App() {
   const [addTableDescription, setAddTableDescription] = useState('');
   const [addTableRelatedTables, setAddTableRelatedTables] = useState([]);
   const [addTableCreating, setAddTableCreating] = useState(false);
+  const [explainAnalyzeModalOpen, setExplainAnalyzeModalOpen] = useState(false);
+  const [explainAnalysisContent, setExplainAnalysisContent] = useState('');
+  const [explainAnalysisLoading, setExplainAnalysisLoading] = useState(false);
+  const contentRef = useRef('');
   const messageCountRef = useRef(0);
   const messagesEndRef = useRef(null);
   const inputResizerRef = useRef(null);
@@ -641,6 +645,66 @@ function App() {
       setLoading(false);
     }
   };
+
+  const handleExplainAnalyze = async () => {
+    const currentResults = activeTabKey !== 'chat' && tabs[activeTabKey]?.results 
+      ? tabs[activeTabKey].results 
+      : results;
+    
+    if (!sqlInput || !currentResults || currentResults.length === 0) return;
+    
+    setExplainAnalyzeModalOpen(true);
+    contentRef.current = '';
+    setExplainAnalysisContent('');
+    setExplainAnalysisLoading(true);
+    
+    try {
+      const response = await fetch('http://localhost:5002/api/query/explain-analyze', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ sql: getSelectedSql(), explainResults: currentResults })
+      });
+      
+      if (!response.ok) {
+        message.error('请求失败');
+        setExplainAnalysisLoading(false);
+        return;
+      }
+      
+      const reader = response.body.getReader();
+      const decoder = new TextDecoder();
+      
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        
+        const text = decoder.decode(value);
+        const lines = text.split('\n');
+        
+        for (const line of lines) {
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.type === 'chunk') {
+                contentRef.current += data.content;
+                setTimeout(() => setExplainAnalysisContent(contentRef.current), 10);
+              } else if (data.type === 'error') {
+                message.error(data.content);
+                setExplainAnalysisLoading(false);
+              } else if (data.type === 'done') {
+                setExplainAnalysisLoading(false);
+              }
+            } catch (e) {
+              console.warn('Parse SSE error:', e);
+            }
+          }
+        }
+      }
+    } catch (error) {
+      message.error(error.message);
+      setExplainAnalysisLoading(false);
+    }
+  };
   
 const exportToExcel = async (data, cols) => {
     try {
@@ -1008,6 +1072,12 @@ key: 'sql',
                                 disabled={!sqlInput.trim() && !getSelectedSql()}
                                 onClick={() => handleExplain(getSelectedSql())}
                               >EXPLAIN</Button>
+                              <Button 
+                                size="small" 
+                                style={{ marginLeft: 8 }}
+                                disabled={currentResults.length === 0}
+                                onClick={handleExplainAnalyze}
+                              >AI分析</Button>
                               <Button type="primary" size="small" disabled={!sqlInput.trim() && !getSelectedSql()} onClick={() => handleExecute(getSelectedSql())}>查询</Button>
                             </div>
                           </div>
@@ -1412,6 +1482,27 @@ key: 'result',
               </div>
             </div>
           )}
+        </Modal>
+        
+        <Modal
+          title="AI 分析 EXPLAIN 结果"
+          open={explainAnalyzeModalOpen}
+          onCancel={() => setExplainAnalyzeModalOpen(false)}
+          footer={null}
+          width={700}
+          style={{ top: 20 }}
+        >
+          <div style={{ 
+            maxHeight: '70vh', 
+            overflow: 'auto',
+            padding: '8px 12px',
+            background: '#f5f5f5',
+            borderRadius: 4
+          }}>
+            {explainAnalysisLoading ? <><Spin /> 正在分析...</> : (
+              <ReactMarkdown>{explainAnalysisContent}</ReactMarkdown>
+            )}
+          </div>
         </Modal>
       </Layout>
     </ConfigProvider>

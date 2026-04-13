@@ -55,3 +55,6 @@ Response:
 ## 变更记录
 
 - 2026-04-12: 初始实现
+- 2026-04-13: 添加 AI 分析功能
+  - 新增 /api/query/explain-analyze 路由（流式输出）
+  - 前端添加 "AI分析" 按钮和 Modal

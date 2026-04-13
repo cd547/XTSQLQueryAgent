@@ -550,4 +550,121 @@ router.post('/explain', async (req, res) => {
   }
 });
 
+router.post('/explain-analyze', async (req, res) => {
+  const { sql, explainResults } = req.body;
+  
+  if (!sql || !explainResults || !Array.isArray(explainResults)) {
+    return res.json({ error: '请提供 SQL 语句和 EXPLAIN 结果', rowCount: 0 });
+  }
+
+  try {
+    const config = getLlmConfig();
+    if (!config || !config.apiKey) {
+      return res.json({ error: 'LLM 未配置', rowCount: 0 });
+    }
+
+    const prompt = `你是数据库性能优化专家。请分析以下 MySQL EXPLAIN 执行计划，找出潜在的性能问题并给出优化建议。
+
+## SQL 语句
+\`\`\`sql
+${sql}
+\`\`\`
+
+## EXPLAIN 执行计划
+\`\`\`json
+${JSON.stringify(explainResults, null, 2)}
+\`\`\`
+
+请分析以下内容：
+1. 是否使用了合适的索引（type 字段）
+2. 是否有全表扫描（type=ALL）
+3. 是否使用了 filesort 或 temporary
+4. 可能的优化建议
+
+请用中文回复，结构化输出分析结果。`;
+
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    res.flushHeaders();
+
+    const provider = config.provider || 'deepseek';
+    const apiKey = config.apiKey;
+    const model = config.model || 'deepseek-chat';
+    
+    let apiUrl = '';
+    let requestBody = {};
+    
+    if (provider === 'deepseek') {
+      apiUrl = 'https://api.deepseek.com/chat/completions';
+      requestBody = {
+        model: model,
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0,
+        stream: true
+      };
+    } else if (provider === 'openai') {
+      apiUrl = 'https://api.openai.com/v1/chat/completions';
+      requestBody = {
+        model: model || 'gpt-4o',
+        messages: [{ role: 'user', content: prompt }],
+        temperature: 0,
+        stream: true
+      };
+    } else {
+      return res.json({ error: '不支持的 LLM provider', rowCount: 0 });
+    }
+
+    const response = await fetch(apiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify(requestBody)
+    });
+
+    if (!response.ok) {
+      throw new Error('LLM API 请求失败');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let fullContent = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+
+      const text = decoder.decode(value);
+      const lines = text.split('\n');
+
+      for (const line of lines) {
+        if (line.startsWith('data: ')) {
+          const dataStr = line.slice(6);
+          if (dataStr === '[DONE]') {
+            res.write(`data: ${JSON.stringify({ type: 'done', analysis: fullContent })}\n\n`);
+            break;
+          }
+          try {
+            const data = JSON.parse(dataStr);
+            const content = data.choices?.[0]?.delta?.content || '';
+            if (content) {
+              fullContent += content;
+              res.write(`data: ${JSON.stringify({ type: 'chunk', content })}\n\n`);
+            }
+          } catch (e) {
+          }
+        }
+      }
+    }
+
+    res.end();
+  } catch (error) {
+    logger.error('EXPLAIN analyze failed', { error: error.message });
+    res.write(`data: ${JSON.stringify({ type: 'error', content: error.message })}\n\n`);
+    res.end();
+  }
+});
+
 export default router;

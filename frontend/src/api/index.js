@@ -36,6 +36,14 @@ export function explainQuery(data) {
   return api.post('/query/explain', data).then(r => r.data);
 }
 
+export function explainAnalyze(sql, explainResults) {
+  return fetch('/api/query/explain-analyze', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ sql, explainResults })
+  });
+}
+
 export function getSessions() {
   return api.get('/sessions').then(r => r.data);
 }
