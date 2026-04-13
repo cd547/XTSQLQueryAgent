@@ -922,12 +922,10 @@ const columns = currentResults.length > 0
                       timestamp={msg.timestamp}
                       collapsed={msg.collapsed !== undefined ? msg.collapsed : true}
                       onToggleCollapse={() => {
-                        console.log('toggle idx:', idx, 'current collapsed:', messages[idx]?.collapsed);
                         setMessages(prev => {
                           const newMsgs = [...prev];
                           const current = newMsgs[idx]?.collapsed ?? true;
                           const newCollapsed = !current;
-                          console.log('setting collapsed to:', newCollapsed);
                           newMsgs[idx] = { ...newMsgs[idx], collapsed: newCollapsed };
                           return newMsgs;
                         });

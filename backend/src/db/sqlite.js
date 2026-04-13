@@ -1,6 +1,7 @@
 import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { logger } from '../logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = path.join(__dirname, '../../../data/app.db');
@@ -31,7 +32,13 @@ export function initDatabase() {
   try {
     db.exec(`ALTER TABLE sessions ADD COLUMN sort_order INTEGER DEFAULT 0`);
   } catch (e) {
-    // 列已存在，忽略
+    logger.debug('Column sort_order already exists');
+  }
+
+  try {
+    db.exec(`ALTER TABLE sessions ADD COLUMN total_tokens INTEGER DEFAULT 0`);
+  } catch (e) {
+    logger.debug('Column total_tokens already exists');
   }
 
   // 如果 total_tokens 列不存在，添加它
@@ -57,13 +64,19 @@ export function initDatabase() {
   // 添加 token 字段
   try {
     db.exec(`ALTER TABLE messages ADD COLUMN prompt_tokens INTEGER DEFAULT 0`);
-  } catch (e) {}
+  } catch (e) {
+    logger.debug('Column prompt_tokens already exists');
+  }
   try {
     db.exec(`ALTER TABLE messages ADD COLUMN completion_tokens INTEGER DEFAULT 0`);
-  } catch (e) {}
+  } catch (e) {
+    logger.debug('Column completion_tokens already exists');
+  }
   try {
     db.exec(`ALTER TABLE messages ADD COLUMN total_tokens INTEGER DEFAULT 0`);
-  } catch (e) {}
+  } catch (e) {
+    logger.debug('Column total_tokens already exists');
+  }
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS configs (
@@ -83,7 +96,9 @@ export function initDatabase() {
   for (const cfg of defaultConfigs) {
     try {
       db.prepare('INSERT OR IGNORE INTO configs (key, value) VALUES (?, ?)').run(cfg.key, cfg.value);
-    } catch (e) {}
+    } catch (e) {
+      logger.debug('Default config already exists', { key: cfg.key });
+    }
   }
 
   db.exec(`
@@ -99,6 +114,13 @@ export function initDatabase() {
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+
+  // 创建索引提升查询性能
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_session_role ON messages(session_id, role)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_sort_order ON sessions(sort_order)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_table_schemas_table_name ON table_schemas(table_name)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_skill_logs_created_at ON skill_logs(created_at)`);
 
   console.log('SQLite initialized');
 }

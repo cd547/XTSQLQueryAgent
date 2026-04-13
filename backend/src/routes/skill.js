@@ -5,6 +5,7 @@ import { fileURLToPath } from 'url';
 import mysql from 'mysql2/promise';
 import { getDb } from '../db/sqlite.js';
 import { getConfig } from '../services/config.js';
+import { logger } from '../logger.js';
 
 const router = Router();
 
@@ -13,7 +14,6 @@ const __dirname = path.dirname(__filename);
 const projectRoot = path.resolve(__dirname, '../../../');
 const skillsPath = path.join(projectRoot, 'skills');
 const skillBackPath = path.join(projectRoot, 'skills', 'skill_back');
-console.log('skillsPath initialized:', skillsPath);
 
 function getFileLanguage(filename) {
   const ext = path.extname(filename).toLowerCase();
@@ -59,7 +59,7 @@ function buildTree(dirPath, relativePath = '') {
       }
     }
   } catch (e) {
-    console.error('Error reading directory:', dirPath, e);
+    logger.error('Error reading directory', { dirPath, error: e.message });
   }
   return items.sort((a, b) => {
     if (a.isFolder && !b.isFolder) return -1;
@@ -196,7 +196,7 @@ router.post('/save', (req, res) => {
         e.message
       );
     } catch (logErr) {
-      console.error('Failed to log error:', logErr);
+      logger.error('Failed to log skill error', { error: logErr.message });
     }
     
     res.status(500).json({ success: false, message: e.message });
@@ -205,17 +205,22 @@ router.post('/save', (req, res) => {
 
 const SKILL_V2_PATH = path.join(skillsPath, 'sql-creator-skill-v2');
 
+// 缓存机制
+let tableIndexCache = null;
+
 function loadTableIndex() {
+  if (tableIndexCache) return tableIndexCache;
   const tableIndexPath = path.join(SKILL_V2_PATH, 'table_index.json');
   if (fs.existsSync(tableIndexPath)) {
-    return JSON.parse(fs.readFileSync(tableIndexPath, 'utf-8'));
+    tableIndexCache = JSON.parse(fs.readFileSync(tableIndexPath, 'utf-8'));
   }
-  return null;
+  return tableIndexCache;
 }
 
 function saveTableIndex(data) {
   const tableIndexPath = path.join(SKILL_V2_PATH, 'table_index.json');
   fs.writeFileSync(tableIndexPath, JSON.stringify(data, null, 2), 'utf-8');
+  tableIndexCache = data; // 更新缓存
 }
 
 function extractRelatedTables(ddl) {
@@ -266,6 +271,9 @@ router.post('/fetch-ddl', async (req, res) => {
 
   try {
     const dbConfig = getConfig();
+    if (!dbConfig) {
+      return res.json({ success: false, message: '数据库未配置' });
+    }
     const connection = await mysql.createConnection({
       host: dbConfig.host,
       port: dbConfig.port || 3306,
@@ -292,7 +300,7 @@ router.post('/fetch-ddl', async (req, res) => {
       relatedTables
     });
   } catch (e) {
-    console.error('Fetch DDL error:', e);
+    logger.error('Fetch DDL failed', { error: e.message, tableName });
     res.json({ success: false, message: e.message });
   }
 });
@@ -358,7 +366,7 @@ router.post('/create-table-files', (req, res) => {
       files: ['table_index.json', `ddl/${tableName}.sql`, `field_config/${tableName}.json`]
     });
   } catch (e) {
-    console.error('Create table files error:', e);
+    logger.error('Create table files failed', { error: e.message, tableName });
     res.status(500).json({ success: false, message: e.message });
   }
 });

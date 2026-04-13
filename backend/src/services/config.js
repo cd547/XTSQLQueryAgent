@@ -1,17 +1,34 @@
 import { getDb } from '../db/sqlite.js';
+import { logger } from '../logger.js';
 
 export function getConfig() {
-  const db = getDb();
-  const row = db.prepare('SELECT value FROM configs WHERE key = ?').get('db_config');
-  if (!row) throw new Error('数据库未配置');
-  return JSON.parse(row.value);
+  try {
+    const db = getDb();
+    const row = db.prepare('SELECT value FROM configs WHERE key = ?').get('db_config');
+    if (!row) {
+      logger.warn('Database config not found');
+      return null;
+    }
+    return JSON.parse(row.value);
+  } catch (e) {
+    logger.error('Failed to get database config', { error: e.message });
+    return null;
+  }
 }
 
 export function getLlmConfig() {
-  const db = getDb();
-  const row = db.prepare('SELECT value FROM configs WHERE key = ?').get('llm_config');
-  if (!row) throw new Error('LLM未配置');
-  return JSON.parse(row.value);
+  try {
+    const db = getDb();
+    const row = db.prepare('SELECT value FROM configs WHERE key = ?').get('llm_config');
+    if (!row) {
+      logger.warn('LLM config not found');
+      return null;
+    }
+    return JSON.parse(row.value);
+  } catch (e) {
+    logger.error('Failed to get LLM config', { error: e.message });
+    return null;
+  }
 }
 
 export function getAgentConfig() {

@@ -380,7 +380,6 @@ async function callLLM(provider, prompt, apiKey, model) {
 
   const providers = {
     openai: async () => {
-            console.log("openai");
       const response = await fetch('https://api.openai.com/v1/chat/completions', {
         method: 'POST',
         headers: {
@@ -397,7 +396,6 @@ async function callLLM(provider, prompt, apiKey, model) {
       return data.choices?.[0]?.message?.content || '';
     },
     deepseek: async () => {
-      console.log("dddeeeppp");
       const response = await fetch('https://api.deepseek.com/chat/completions', {
         method: 'POST',
         headers: {
@@ -478,6 +476,9 @@ router.post('/execute', async (req, res) => {
 
   try {
     const config = getConfig();
+    if (!config) {
+      return res.json({ error: '数据库未配置', rowCount: 0 });
+    }
     const connection = await mysql.createConnection(config);
 
     // 去除SQL末尾的分号，避免拼接LIMIT出错
@@ -533,6 +534,9 @@ router.post('/explain', async (req, res) => {
 
   try {
     const config = getConfig();
+    if (!config) {
+      return res.json({ error: '数据库未配置', rowCount: 0 });
+    }
     const connection = await mysql.createConnection(config);
     
     const explainSql = cleanSql.toUpperCase().startsWith('EXPLAIN') ? cleanSql : `EXPLAIN ${cleanSql}`;

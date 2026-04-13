@@ -61,12 +61,10 @@ router.post('/:id/messages', (req, res) => {
   try {
     const db = getDb();
     const { role, content, sql, results } = req.body;
-    console.log('保存消息:', { sessionId: req.params.id, role, content: content?.substring(0, 30), sql: sql?.substring(0, 30) });
     db.prepare('INSERT INTO messages (session_id, role, content, sql, results) VALUES (?, ?, ?, ?, ?)')
       .run(req.params.id, role, content, sql || '', results || '');
     res.json({ success: true });
   } catch (error) {
-    console.error('保存消息失败:', error);
     res.json({ error: error.message });
   }
 });
