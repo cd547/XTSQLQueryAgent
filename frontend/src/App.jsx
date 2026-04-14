@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Layout, Input, Button, Table, Card, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, InputNumber, Modal, Steps } from 'antd';
+import { Layout, Input, Button, Table, Card, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, InputNumber, Modal, Steps, Space } from 'antd';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
 const { Panel } = Collapse;
@@ -13,8 +13,9 @@ function ResizableTitle(props) {
     </Resizable>
   );
 }
-import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined } from '@ant-design/icons';
+import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined, RobotOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import Editor, { loader } from '@monaco-editor/react';
 
 window.MonacoEnvironment = {
@@ -231,6 +232,7 @@ function App() {
   const [explainAnalyzeModalOpen, setExplainAnalyzeModalOpen] = useState(false);
   const [explainAnalysisContent, setExplainAnalysisContent] = useState('');
   const [explainAnalysisLoading, setExplainAnalysisLoading] = useState(false);
+  const [isExplainResult, setIsExplainResult] = useState(false);
   const contentRef = useRef('');
   const messageCountRef = useRef(0);
   const messagesEndRef = useRef(null);
@@ -606,6 +608,7 @@ function App() {
       if (res.error) {
         message.error(res.error);
       } else {
+        setIsExplainResult(false);
         setTabs(prev => ({
           ...prev,
           [activeTabKey]: {
@@ -631,6 +634,7 @@ function App() {
       if (res.error) {
         message.error(res.error);
       } else {
+        setIsExplainResult(true);
         setTabs(prev => ({
           ...prev,
           [activeTabKey]: {
@@ -685,9 +689,9 @@ function App() {
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
-              if (data.type === 'chunk') {
+              if (data.type === 'chunk' && data.content) {
                 contentRef.current += data.content;
-                setTimeout(() => setExplainAnalysisContent(contentRef.current), 10);
+                setExplainAnalysisContent(contentRef.current);
               } else if (data.type === 'error') {
                 message.error(data.content);
                 setExplainAnalysisLoading(false);
@@ -1072,12 +1076,7 @@ key: 'sql',
                                 disabled={!sqlInput.trim() && !getSelectedSql()}
                                 onClick={() => handleExplain(getSelectedSql())}
                               >EXPLAIN</Button>
-                              <Button 
-                                size="small" 
-                                style={{ marginLeft: 8 }}
-                                disabled={currentResults.length === 0}
-                                onClick={handleExplainAnalyze}
-                              >AI分析</Button>
+                              
                               <Button type="primary" size="small" disabled={!sqlInput.trim() && !getSelectedSql()} onClick={() => handleExecute(getSelectedSql())}>查询</Button>
                             </div>
                           </div>
@@ -1115,8 +1114,15 @@ key: 'result',
                                 document.addEventListener('mouseup', handleUp);
                               }}
                             />
-                            <div style={{ marginBottom: 8, marginTop: 6, flexShrink: 0 }}>
+                            <div style={{ marginBottom: 8, marginTop: 6, flexShrink: 0, display: 'flex', gap: 8 }}>
                               <Button size="small" onClick={() => exportToExcel(currentResults, columns)}>导出Excel</Button>
+                              {isExplainResult && (
+                                <Button 
+                                  size="small" 
+                                  icon={<RobotOutlined />}
+                                  onClick={handleExplainAnalyze}
+                                >AI分析</Button>
+                              )}
                             </div>
                             <div style={{ height: resultTableHeight, overflow: 'visible' }}>
                               <Table
@@ -1499,8 +1505,10 @@ key: 'result',
             background: '#f5f5f5',
             borderRadius: 4
           }}>
-            {explainAnalysisLoading ? <><Spin /> 正在分析...</> : (
-              <ReactMarkdown>{explainAnalysisContent}</ReactMarkdown>
+            {explainAnalysisLoading && !explainAnalysisContent ? (
+              <><Spin /> 正在分析...</>
+            ) : (
+              <ReactMarkdown remarkPlugins={[remarkGfm]}>{explainAnalysisContent || (explainAnalysisLoading ? '正在分析...' : '')}</ReactMarkdown>
             )}
           </div>
         </Modal>
@@ -1570,11 +1578,26 @@ function ConfigPanel({ compact }) {
     <div style={{ fontSize: 12 }}>
       <h3 style={{ marginBottom: 16, fontSize: 14 }}>数据库配置</h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <Input addonBefore="Host" value={dbConfig.host} onChange={e => setDbConfig({...dbConfig, host: e.target.value})} style={{ fontSize: 12 }} />
-        <Input addonBefore="Port" value={dbConfig.port} onChange={e => setDbConfig({...dbConfig, port: parseInt(e.target.value)})} style={{ fontSize: 12 }} />
-        <Input addonBefore="User" value={dbConfig.user} onChange={e => setDbConfig({...dbConfig, user: e.target.value})} style={{ fontSize: 12 }} />
-        <Input.Password addonBefore="Password" value={dbConfig.password} onChange={e => setDbConfig({...dbConfig, password: e.target.value})} style={{ fontSize: 12 }} />
-        <Input addonBefore="Database" value={dbConfig.database} onChange={e => setDbConfig({...dbConfig, database: e.target.value})} style={{ fontSize: 12 }} />
+        <Space>
+          <span style={{ width: 70 }}>Host</span>
+          <Input value={dbConfig.host} onChange={e => setDbConfig({...dbConfig, host: e.target.value})} style={{ fontSize: 12 }} />
+        </Space>
+        <Space>
+          <span style={{ width: 70 }}>Port</span>
+          <Input value={dbConfig.port} onChange={e => setDbConfig({...dbConfig, port: parseInt(e.target.value)})} style={{ fontSize: 12 }} />
+        </Space>
+        <Space>
+          <span style={{ width: 70 }}>User</span>
+          <Input value={dbConfig.user} onChange={e => setDbConfig({...dbConfig, user: e.target.value})} style={{ fontSize: 12 }} />
+        </Space>
+        <Space>
+          <span style={{ width: 70 }}>Password</span>
+          <Input.Password value={dbConfig.password} onChange={e => setDbConfig({...dbConfig, password: e.target.value})} style={{ fontSize: 12 }} />
+        </Space>
+        <Space>
+          <span style={{ width: 70 }}>Database</span>
+          <Input value={dbConfig.database} onChange={e => setDbConfig({...dbConfig, database: e.target.value})} style={{ fontSize: 12 }} />
+        </Space>
         <div style={{ display: 'flex', gap: 8 }}>
           <Button onClick={testDb} loading={testing} style={{ fontSize: 12 }}>测试连接</Button>
           <Button type="primary" onClick={saveDb} style={{ fontSize: 12 }}>保存</Button>
@@ -1591,8 +1614,14 @@ function ConfigPanel({ compact }) {
 
       <h3 style={{ marginTop: 24, marginBottom: 16, fontSize: 14 }}>Agent 配置</h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <InputNumber addonBefore="最大工具调用次数" value={parseInt(agentConfig.max_tool_calls)} onChange={v => setAgentConfig({...agentConfig, max_tool_calls: String(v || 30)})} min={1} max={100} style={{ width: '100%', fontSize: 12 }} />
-        <InputNumber addonBefore="超时时间(ms)" value={parseInt(agentConfig.timeout_ms)} onChange={v => setAgentConfig({...agentConfig, timeout_ms: String(v || 60000)})} min={1000} max={300000} style={{ width: '100%', fontSize: 12 }} />
+        <Space>
+          <span style={{ width: 100 }}>最大工具调用次数</span>
+          <InputNumber value={parseInt(agentConfig.max_tool_calls)} onChange={v => setAgentConfig({...agentConfig, max_tool_calls: String(v || 30)})} min={1} max={100} style={{ fontSize: 12 }} />
+        </Space>
+        <Space>
+          <span style={{ width: 100 }}>超时时间(ms)</span>
+          <InputNumber value={parseInt(agentConfig.timeout_ms)} onChange={v => setAgentConfig({...agentConfig, timeout_ms: String(v || 60000)})} min={1000} max={300000} style={{ fontSize: 12 }} />
+        </Space>
         <Button onClick={saveAgent} loading={savingAgent} style={{ fontSize: 12 }}>保存Agent配置</Button>
       </div>
     </div>

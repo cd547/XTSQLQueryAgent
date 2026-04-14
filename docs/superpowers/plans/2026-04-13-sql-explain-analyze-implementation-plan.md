@@ -299,6 +299,72 @@ Expected: 编译成功
 
 ---
 
+### Task 5: UI 调整 (2026-04-14)
+
+**Files:**
+- Modify: `frontend/src/App.jsx`
+
+- [ ] **Step 1: 添加 isExplainResult 状态变量**
+
+在状态定义区域添加（大约 235 行）：
+
+```javascript
+const [isExplainResult, setIsExplainResult] = useState(false);
+```
+
+- [ ] **Step 2: 修改 handleExplain 函数**
+
+在设置结果后添加 `setIsExplainResult(true)`：
+
+```javascript
+setIsExplainResult(true);
+setTabs(prev => ({ ... }));
+```
+
+- [ ] **Step 3: 修改 handleExecute 函数**
+
+在设置结果后添加 `setIsExplainResult(false)`：
+
+```javascript
+setIsExplainResult(false);
+setTabs(prev => ({ ... }));
+```
+
+- [ ] **Step 4: 修改按钮显示位置**
+
+移除 SQL 预览区域的 AI 分析按钮，添加至查询结果区域：
+
+```javascript
+// 移除原 AI 分析按钮（原第1079-1084行）
+
+// 在查询结果区域 (约 1122 行) 添加：
+<div style={{ marginBottom: 8, marginTop: 6, flexShrink: 0, display: 'flex', gap: 8 }}>
+  <Button size="small" onClick={() => exportToExcel(currentResults, columns)}>导出Excel</Button>
+  {isExplainResult && (
+    <Button 
+      size="small" 
+      icon={<RobotOutlined />}
+      onClick={handleExplainAnalyze}
+    >AI分析</Button>
+  )}
+</div>
+```
+
+- [ ] **Step 5: 添加 RobotOutlined 图标导入**
+
+在 `@ant-design/icons` 导入中添加 `RobotOutlined`：
+
+```javascript
+import { ..., RobotOutlined } from '@ant-design/icons';
+```
+
+- [ ] **Step 6: 验证**
+
+运行: `cd frontend && npm run build`
+Expected: 编译成功
+
+---
+
 ## 验证步骤
 
 完成后手动验证：

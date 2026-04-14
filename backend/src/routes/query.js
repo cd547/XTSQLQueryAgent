@@ -463,8 +463,8 @@ router.post('/execute', async (req, res) => {
     .replace(/\/\*[\s\S]*?\*\//g, '')
     .trim();
   
-  // 先检查是否以SELECT开头（最准确的检测方法）
-  if (!cleanSql.startsWith('SELECT')) {
+  // 先检查是否以SELECT或WITH开头（最准确的检测方法）
+  if (!cleanSql.startsWith('SELECT') && !cleanSql.toUpperCase().startsWith('WITH')) {
     const forbidden = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE'];
     for (const word of forbidden) {
       if (cleanSql.includes(word)) {
@@ -521,7 +521,7 @@ router.post('/explain', async (req, res) => {
   });
   const cleanSql = validLines.join(' ').trim();
   
-  if (!cleanSql.toUpperCase().startsWith('SELECT') && !cleanSql.toUpperCase().startsWith('EXPLAIN')) {
+  if (!cleanSql.toUpperCase().startsWith('SELECT') && !cleanSql.toUpperCase().startsWith('EXPLAIN') && !cleanSql.toUpperCase().startsWith('WITH')) {
     const forbidden = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE'];
     const upperSql = cleanSql.toUpperCase();
     for (const word of forbidden) {
@@ -537,9 +537,15 @@ router.post('/explain', async (req, res) => {
     if (!config) {
       return res.json({ error: '数据库未配置', rowCount: 0 });
     }
-    const connection = await mysql.createConnection(config);
+const connection = await mysql.createConnection(config);
     
-    const explainSql = cleanSql.toUpperCase().startsWith('EXPLAIN') ? cleanSql : `EXPLAIN ${cleanSql}`;
+    // 对于普通SELECT查询，使用标准EXPLAIN格式（不是JSON）
+    const isSelectOrWith = cleanSql.toUpperCase().startsWith('SELECT') || cleanSql.toUpperCase().startsWith('WITH');
+    const explainSql = cleanSql.toUpperCase().startsWith('EXPLAIN') 
+      ? cleanSql 
+      : isSelectOrWith
+        ? `EXPLAIN ${cleanSql}`  // 使用标准表格格式
+        : `EXPLAIN ${cleanSql}`;
     const [rows] = await connection.query(explainSql);
     await connection.end();
     
@@ -552,6 +558,8 @@ router.post('/explain', async (req, res) => {
 
 router.post('/explain-analyze', async (req, res) => {
   const { sql, explainResults } = req.body;
+  
+  logger.info('EXPLAIN analyze called', { sql: sql?.substring(0, 100), resultsLength: explainResults?.length });
   
   if (!sql || !explainResults || !Array.isArray(explainResults)) {
     return res.json({ error: '请提供 SQL 语句和 EXPLAIN 结果', rowCount: 0 });
@@ -652,6 +660,7 @@ ${JSON.stringify(explainResults, null, 2)}
             if (content) {
               fullContent += content;
               res.write(`data: ${JSON.stringify({ type: 'chunk', content })}\n\n`);
+              res.flush();
             }
           } catch (e) {
           }

@@ -39,9 +39,16 @@ Response:
 
 ## 前端 UI
 
+### SQL 预览区域
 - "查询" 按钮左侧添加 "EXPLAIN" 按钮
 - 使用 `SelectOutlined` 图标
 - 点击后调用 API，结果显示在查询结果区域
+
+### 查询结果区域
+- 导出Excel按钮右侧添加 "AI分析" 按钮
+- 仅在执行EXPLAIN后显示（使用 `isExplainResult` 状态标识）
+- 使用 `RobotOutlined` 图标
+- 点击后打开 AI 分析 Modal
 
 ## 实现文件
 
@@ -58,3 +65,8 @@ Response:
 - 2026-04-13: 添加 AI 分析功能
   - 新增 /api/query/explain-analyze 路由（流式输出）
   - 前端添加 "AI分析" 按钮和 Modal
+- 2026-04-14: UI 调整
+  - 移除 SQL 预览区域的 AI 分析按钮
+  - AI 分析按钮移至查询结果区域（导出Excel旁边）
+  - 仅 EXPLAIN 结果时显示
+  - 图标改为 RobotOutlined
