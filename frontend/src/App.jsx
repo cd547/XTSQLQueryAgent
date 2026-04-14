@@ -441,9 +441,11 @@ function App() {
   
   const handleAddTab = () => {
     const newKey = `sql-${Date.now()}`;
-    setTabs(prev => ({ ...prev, [newKey]: { title: 'SQL查询', sql: '' } }));
+    setTabs(prev => ({ ...prev, [newKey]: { title: 'SQL查询', sql: '', results: [], rowCount: 0 } }));
     setActiveTabKey(newKey);
     setSqlInput('');
+    setResults([]);
+    setColumnWidths({});
   };
   
   const handleDeleteTab = (key) => {
@@ -455,14 +457,18 @@ function App() {
     });
     if (activeTabKey === key) {
       setActiveTabKey('chat');
+      setResults([]);
+      setColumnWidths({});
     }
   };
   
   const handleOpenSqlTab = (sql) => {
     const newKey = `sql-${Date.now()}`;
-    setTabs(prev => ({ ...prev, [newKey]: { title: 'SQL查询', sql } }));
+    setTabs(prev => ({ ...prev, [newKey]: { title: 'SQL查询', sql, results: [], rowCount: 0 } }));
     setActiveTabKey(newKey);
     setSqlInput(sql || '');
+    setResults([]);
+    setColumnWidths({});
   };
   
   const handleSend = async () => {
@@ -603,21 +609,26 @@ function App() {
     setLoading(true);
     setSqlKey(['sql', 'result']);
     setResultKey(['sql', 'result']);
+    const startTime = Date.now();
     try {
       const res = await queryExecute({ sql });
+      const elapsed = Date.now() - startTime;
       if (res.error) {
         message.error(res.error);
       } else {
+        const newResults = res.results || [];
+        setColumnWidths({});
+        setResults(newResults);
         setIsExplainResult(false);
         setTabs(prev => ({
           ...prev,
           [activeTabKey]: {
             ...prev[activeTabKey],
-            results: res.results || [],
+            results: newResults,
             rowCount: res.rowCount || 0
           }
         }));
-        message.success(`查询成功，${res.rowCount} 条结果`);
+        message.success(`查询成功，${res.rowCount} 条结果，耗时 ${elapsed}ms`);
       }
     } finally {
       setLoading(false);
@@ -629,11 +640,16 @@ function App() {
     setLoading(true);
     setSqlKey(['sql', 'result']);
     setResultKey(['sql', 'result']);
+    const startTime = Date.now();
     try {
       const res = await explainQuery({ sql });
+      const elapsed = Date.now() - startTime;
       if (res.error) {
         message.error(res.error);
-      } else {
+} else {
+        const newResults = res.results || [];
+        setColumnWidths({});
+        setResults(newResults);
         setIsExplainResult(true);
         setTabs(prev => ({
           ...prev,
@@ -643,7 +659,7 @@ function App() {
             rowCount: res.rowCount || 0
           }
         }));
-        message.success(`EXPLAIN 完成，${res.rowCount} 行`);
+        message.success(`EXPLAIN 完成，${res.rowCount} 行，耗时 ${elapsed}ms`);
       }
     } finally {
       setLoading(false);
@@ -858,14 +874,14 @@ const handleResize = (columnKey) => (e, { size }) => {
 };
 
 const columns = currentResults.length > 0
-? Object.keys(currentResults[0]).map(key => ({ 
+? Object.keys(currentResults[0]).map((key, idx) => ({ 
     title: (props) => (
       <ResizableTitle width={columnWidths[key] || 150} onResize={handleResize(key)}>
         <span style={{ fontSize: 12 }}>{key}</span>
       </ResizableTitle>
     ),
     dataIndex: key, 
-    key,
+    key: `col-${idx}`,
     ellipsis: true,
     width: columnWidths[key] || 150
   }))
@@ -1009,14 +1025,15 @@ const columns = currentResults.length > 0
                   <Collapse
                     activeKey={sqlKey}
                     onChange={(key) => {
-                      setSqlKey(key);
-                      setResultKey(key);
+                      const k = Array.isArray(key) ? key : [key];
+                      setSqlKey(k);
+                      setResultKey(k);
                     }}
                     style={{ flex: 1, overflow: 'auto' }}
                     className="custom-collapse"
-                    items={[
+items={[
                       {
-key: 'sql',
+                    key: 'sql',
                         label: <span style={{ fontWeight: 500, fontSize: 12 }}>SQL预览</span>,
                         children: (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} ref={resizerRef}>
@@ -1082,9 +1099,9 @@ key: 'sql',
                           </div>
                         )
                       },
-                      {
-key: 'result',
-                label: <span style={{ fontWeight: 500, fontSize: 12 }}>查询结果 ({currentRowCount} 条)</span>,
+{
+                    key: 'result',
+                        label: <span style={{ fontWeight: 500, fontSize: 12 }}>查询结果 ({currentRowCount} 条)</span>,
                 children: currentResults.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
                             <div
@@ -1508,7 +1525,19 @@ key: 'result',
             {explainAnalysisLoading && !explainAnalysisContent ? (
               <><Spin /> 正在分析...</>
             ) : (
-              <ReactMarkdown remarkPlugins={[remarkGfm]}>{explainAnalysisContent || (explainAnalysisLoading ? '正在分析...' : '')}</ReactMarkdown>
+              <ReactMarkdown 
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  p: ({node, ...props}) => <p style={{fontSize: 12, marginTop: 0, marginBottom: 8}} {...props} />,
+                  h1: ({node, ...props}) => <h1 style={{fontSize: 16, marginTop: 12, marginBottom: 8}} {...props} />,
+                  h2: ({node, ...props}) => <h2 style={{fontSize: 14, marginTop: 10, marginBottom: 6}} {...props} />,
+                  h3: ({node, ...props}) => <h3 style={{fontSize: 13, marginTop: 8, marginBottom: 6}} {...props} />,
+                  ul: ({node, ...props}) => <ul style={{fontSize: 12, paddingLeft: 20, marginTop: 4, marginBottom: 8}} {...props} />,
+                  li: ({node, ...props}) => <li style={{fontSize: 12, marginBottom: 4}} {...props} />,
+                  code: ({node, ...props}) => <code style={{fontSize: 11, background: '#eee', padding: '1px 4px', borderRadius: 3}} {...props} />,
+                  pre: ({node, ...props}) => <pre style={{fontSize: 11, background: '#eee', padding: 8, borderRadius: 4, overflow: 'auto'}} {...props} />
+                }}
+              >{explainAnalysisContent || (explainAnalysisLoading ? '正在分析...' : '')}</ReactMarkdown>
             )}
           </div>
         </Modal>
