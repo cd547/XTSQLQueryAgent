@@ -10,7 +10,7 @@
 2. 获取当前 SQL（优先选中部分，无选中则用全部）
 3. 验证 SQL 安全性（仅允许 SELECT/EXPLAIN 开头）
 4. 调用后端 API 执行 EXPLAIN
-5. 在查询结果区域显示执行计划
+5. 在"执行计划"面板显示结果
 
 ## 后端 API
 
@@ -42,13 +42,15 @@ Response:
 ### SQL 预览区域
 - "查询" 按钮左侧添加 "EXPLAIN" 按钮
 - 使用 `SelectOutlined` 图标
-- 点击后调用 API，结果显示在查询结果区域
 
 ### 查询结果区域
-- 导出Excel按钮右侧添加 "AI分析" 按钮
-- 仅在执行EXPLAIN后显示（使用 `isExplainResult` 状态标识）
-- 使用 `RobotOutlined` 图标
-- 点击后打开 AI 分析 Modal
+- Tab区域内显示普通查询结果
+
+### 执行计划面板（新增）
+- 位置：查询结果Tab下方，外部独立
+- 默认折叠，点击"EXPLAIN"按钮后自动展开
+- 包含"AI分析"按钮（使用 `RobotOutlined` 图标）
+- 仅在执行EXPLAIN后显示
 
 ## 实现文件
 
@@ -70,3 +72,8 @@ Response:
   - AI 分析按钮移至查询结果区域（导出Excel旁边）
   - 仅 EXPLAIN 结果时显示
   - 图标改为 RobotOutlined
+- 2026-04-15: 面板分离
+  - 新增"执行计划"独立折叠面板
+  - 位于查询结果Tab下方
+  - 添加 explainColumns 支持
+  - AI分析按钮移至执行计划面板内

@@ -233,6 +233,8 @@ function App() {
   const [explainAnalysisContent, setExplainAnalysisContent] = useState('');
   const [explainAnalysisLoading, setExplainAnalysisLoading] = useState(false);
   const [isExplainResult, setIsExplainResult] = useState(false);
+  const [explainResults, setExplainResults] = useState([]);
+  const [explainPanelOpen, setExplainPanelOpen] = useState(false);
   const contentRef = useRef('');
   const messageCountRef = useRef(0);
   const messagesEndRef = useRef(null);
@@ -635,43 +637,32 @@ function App() {
     }
   };
 
-  const handleExplain = async (sql) => {
-    if (!sql) return;
-    setLoading(true);
-    setSqlKey(['sql', 'result']);
-    setResultKey(['sql', 'result']);
-    const startTime = Date.now();
-    try {
-      const res = await explainQuery({ sql });
-      const elapsed = Date.now() - startTime;
-      if (res.error) {
-        message.error(res.error);
-} else {
-        const newResults = res.results || [];
-        setColumnWidths({});
-        setResults(newResults);
-        setIsExplainResult(true);
-        setTabs(prev => ({
-          ...prev,
-          [activeTabKey]: {
-            ...prev[activeTabKey],
-            results: res.results || [],
-            rowCount: res.rowCount || 0
-          }
-        }));
-        message.success(`EXPLAIN 完成，${res.rowCount} 行，耗时 ${elapsed}ms`);
-      }
-    } finally {
-      setLoading(false);
+const handleExplain = async (sql) => {
+  if (!sql) return;
+  setLoading(true);
+  setSqlKey(['sql', 'result']);
+  setResultKey(['sql', 'result']);
+  const startTime = Date.now();
+  try {
+    const res = await explainQuery({ sql });
+    const elapsed = Date.now() - startTime;
+    if (res.error) {
+      message.error(res.error);
+    } else {
+      const newResults = res.results || [];
+      setColumnWidths({});
+      setExplainResults(newResults);
+      setExplainPanelOpen(true);
+      setIsExplainResult(true);
+      message.success(`EXPLAIN 完成，${res.rowCount} 行，耗时 ${elapsed}ms`);
     }
-  };
+  } finally {
+    setLoading(false);
+  }
+};
 
   const handleExplainAnalyze = async () => {
-    const currentResults = activeTabKey !== 'chat' && tabs[activeTabKey]?.results 
-      ? tabs[activeTabKey].results 
-      : results;
-    
-    if (!sqlInput || !currentResults || currentResults.length === 0) return;
+    if (!sqlInput || explainResults.length === 0) return;
     
     setExplainAnalyzeModalOpen(true);
     contentRef.current = '';
@@ -682,7 +673,7 @@ function App() {
       const response = await fetch('http://localhost:5002/api/query/explain-analyze', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql: getSelectedSql(), explainResults: currentResults })
+        body: JSON.stringify({ sql: getSelectedSql(), explainResults: explainResults })
       });
       
       if (!response.ok) {
@@ -875,6 +866,20 @@ const handleResize = (columnKey) => (e, { size }) => {
 
 const columns = currentResults.length > 0
 ? Object.keys(currentResults[0]).map((key, idx) => ({ 
+    title: (props) => (
+      <ResizableTitle width={columnWidths[key] || 150} onResize={handleResize(key)}>
+        <span style={{ fontSize: 12 }}>{key}</span>
+      </ResizableTitle>
+    ),
+    dataIndex: key, 
+    key: `col-${idx}`,
+    ellipsis: true,
+    width: columnWidths[key] || 150
+  }))
+: [];
+
+const explainColumns = explainResults.length > 0
+? Object.keys(explainResults[0]).map((key, idx) => ({ 
     title: (props) => (
       <ResizableTitle width={columnWidths[key] || 150} onResize={handleResize(key)}>
         <span style={{ fontSize: 12 }}>{key}</span>
@@ -1102,7 +1107,7 @@ items={[
 {
                     key: 'result',
                         label: <span style={{ fontWeight: 500, fontSize: 12 }}>查询结果 ({currentRowCount} 条)</span>,
-                children: currentResults.length > 0 ? (
+children: currentResults.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
                             <div
                               style={{
@@ -1133,13 +1138,7 @@ items={[
                             />
                             <div style={{ marginBottom: 8, marginTop: 6, flexShrink: 0, display: 'flex', gap: 8 }}>
                               <Button size="small" onClick={() => exportToExcel(currentResults, columns)}>导出Excel</Button>
-                              {isExplainResult && (
-                                <Button 
-                                  size="small" 
-                                  icon={<RobotOutlined />}
-                                  onClick={handleExplainAnalyze}
-                                >AI分析</Button>
-                              )}
+
                             </div>
                             <div style={{ height: resultTableHeight, overflow: 'visible' }}>
                               <Table
@@ -1166,6 +1165,41 @@ items={[
                       }
                     ]}
                   />
+                  {(isExplainResult || explainResults.length > 0) && (
+                    <Collapse
+                      activeKey={explainPanelOpen ? ['explain'] : []}
+                      onChange={(key) => setExplainPanelOpen(key && key.includes('explain'))}
+                      style={{ marginTop: 8 }}
+                      items={[
+                        {
+                          key: 'explain',
+                          label: <span style={{ fontWeight: 500, fontSize: 12 }}>执行计划</span>,
+                          children: (
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                                <Button size="small" icon={<RobotOutlined />} onClick={handleExplainAnalyze}>AI分析</Button>
+                              </div>
+                              <Table
+                                dataSource={explainResults}
+                                columns={explainColumns}
+                                pagination={{
+                                  pageSize: pageSize,
+                                  showSizeChanger: true,
+                                  pageSizeOptions: ['10', '20', '50', '100'],
+                                  onShowSizeChange: (_, size) => setPageSize(size)
+                                }}
+                                scroll={{ x: 'max-content' }}
+                                size="small"
+                                className="sql-result-table"
+                                style={{ fontSize: 10 }}
+                                rootClassName="sticky-table-header"
+                              />
+                            </div>
+                          )
+                        }
+                      ]}
+                    />
+                  )}
                 </div>
               )}
               {activeTabKey === 'chat' && <div ref={messagesEndRef} />}
