@@ -611,6 +611,7 @@ function App() {
     setLoading(true);
     setSqlKey(['sql', 'result']);
     setResultKey(['sql', 'result']);
+    setExplainPanelOpen(false);
     const startTime = Date.now();
     try {
       const res = await queryExecute({ sql });
@@ -641,7 +642,8 @@ const handleExplain = async (sql) => {
   if (!sql) return;
   setLoading(true);
   setSqlKey(['sql', 'result']);
-  setResultKey(['sql', 'result']);
+  setResultKey(['sql', 'result', 'explain']);
+  setExplainPanelOpen(true);
   const startTime = Date.now();
   try {
     const res = await explainQuery({ sql });
@@ -983,6 +985,7 @@ const explainColumns = explainResults.length > 0
         }}
         items={Object.keys(tabs).map(key => ({
           key,
+          closable: key !== 'chat',
           label: (
             <span>
               {key === 'chat' ? currentChatLabel : (tabs[key].title || 'SQL查询')}
@@ -1162,44 +1165,35 @@ children: currentResults.length > 0 ? (
                         ) : (
                           <div style={{ color: '#999' }}>暂无结果</div>
                         )
-                      }
+                      },
+                      ...(explainResults.length > 0 ? [{
+                        key: 'explain',
+                        label: <span style={{ fontWeight: 500, fontSize: 12 }}>执行计划</span>,
+                        children: (
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
+                              <Button size="small" icon={<RobotOutlined />} onClick={handleExplainAnalyze}>AI分析</Button>
+                            </div>
+                            <Table
+                              dataSource={explainResults}
+                              columns={explainColumns}
+                              pagination={{
+                                pageSize: pageSize,
+                                showSizeChanger: true,
+                                pageSizeOptions: ['10', '20', '50', '100'],
+                                onShowSizeChange: (_, size) => setPageSize(size)
+                              }}
+                              scroll={{ x: 'max-content' }}
+                              size="small"
+                              className="sql-result-table"
+                              style={{ fontSize: 10 }}
+                              rootClassName="sticky-table-header"
+                            />
+                          </div>
+                        )
+                      }] : [])
                     ]}
                   />
-                  {(isExplainResult || explainResults.length > 0) && (
-                    <Collapse
-                      activeKey={explainPanelOpen ? ['explain'] : []}
-                      onChange={(key) => setExplainPanelOpen(key && key.includes('explain'))}
-                      style={{ marginTop: 8 }}
-                      items={[
-                        {
-                          key: 'explain',
-                          label: <span style={{ fontWeight: 500, fontSize: 12 }}>执行计划</span>,
-                          children: (
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                              <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                                <Button size="small" icon={<RobotOutlined />} onClick={handleExplainAnalyze}>AI分析</Button>
-                              </div>
-                              <Table
-                                dataSource={explainResults}
-                                columns={explainColumns}
-                                pagination={{
-                                  pageSize: pageSize,
-                                  showSizeChanger: true,
-                                  pageSizeOptions: ['10', '20', '50', '100'],
-                                  onShowSizeChange: (_, size) => setPageSize(size)
-                                }}
-                                scroll={{ x: 'max-content' }}
-                                size="small"
-                                className="sql-result-table"
-                                style={{ fontSize: 10 }}
-                                rootClassName="sticky-table-header"
-                              />
-                            </div>
-                          )
-                        }
-                      ]}
-                    />
-                  )}
                 </div>
               )}
               {activeTabKey === 'chat' && <div ref={messagesEndRef} />}
