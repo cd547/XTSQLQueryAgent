@@ -1,0 +1,21 @@
+CREATE TABLE `edu_student_parent` (
+  `id` bigint(11) NOT NULL AUTO_INCREMENT,
+  `student_id` bigint(11) NOT NULL COMMENT '学生ID',
+  `my_user_id` bigint(11) DEFAULT NULL COMMENT '注册用户ID',
+  `main_contact` int(11) NOT NULL DEFAULT '2' COMMENT '是否主要联系人 1是 2否',
+  `type_name` varchar(255) DEFAULT NULL COMMENT '家长类型（称呼）',
+  `name` varchar(255) NOT NULL COMMENT '家长姓名',
+  `phone` bigint(11) NOT NULL COMMENT '家长手机',
+  `certificates_type` int(11) DEFAULT NULL COMMENT '证件类型edu_student_certificates_type',
+  `certificates` varchar(255) DEFAULT NULL COMMENT '证件号码',
+  `email` varchar(255) DEFAULT NULL COMMENT '邮箱',
+  `created_time` bigint(20) NOT NULL,
+  `update_time` bigint(20) NOT NULL,
+  `del` int(255) NOT NULL DEFAULT '0',
+  `rel` int(255) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  KEY `edu_student_parent1` (`student_id`) USING BTREE,
+  KEY `edu_student_parent2` (`my_user_id`) USING BTREE,
+  CONSTRAINT `edu_student_parent1` FOREIGN KEY (`student_id`) REFERENCES `edu_student` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `edu_student_parent2` FOREIGN KEY (`my_user_id`) REFERENCES `my_user` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB AUTO_INCREMENT=4360 DEFAULT CHARSET=utf8mb4 COMMENT='学生家长表'
