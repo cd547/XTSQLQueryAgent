@@ -242,18 +242,26 @@ function App() {
   const messagesEndRef = useRef(null);
   const inputResizerRef = useRef(null);
   const resizerRef = useRef(null);
+  const initialLoadRef = useRef(false);
   
   useEffect(() => {
+    if (initialLoadRef.current) return;
+    initialLoadRef.current = true;
     loadSessions();
     loadCurrentModel();
   }, []);
 
   const loadCurrentModel = async () => {
+    if (loadCurrentModel.loading) return;
+    loadCurrentModel.loading = true;
     try {
       const data = await fetch('http://localhost:5002/api/config/llm').then(r => r.json());
       setCurrentModel(data.model || '');
-    } catch (e) {}
+    } catch (e) {} finally {
+      loadCurrentModel.loading = false;
+    }
   };
+  loadCurrentModel.loading = false;
 
   useEffect(() => {
     if (activeTabKey !== 'chat' && tabs[activeTabKey]?.sql !== undefined) {
@@ -352,6 +360,8 @@ function App() {
   };
 
   const loadSessions = async () => {
+    if (loadSessions.loading) return;
+    loadSessions.loading = true;
     try {
       const data = await getSessions();
       setSessions(data.sessions || []);
@@ -360,14 +370,18 @@ function App() {
         setCurrentSessionId(firstSession.id);
         setCurrentTokens(firstSession.total_tokens || 0);
         setCurrentSessionName(firstSession.name ? `${firstSession.name}#${firstSession.id}` : '聊天');
-        loadMessages(firstSession.id);
       }
     } catch (e) {
       console.error('加载会话失败:', e);
+    } finally {
+      loadSessions.loading = false;
     }
   };
+  loadSessions.loading = false;
   
   const loadMessages = async (sessionId) => {
+    if (loadMessages.loading === sessionId) return;
+    loadMessages.loading = sessionId;
     try {
       const data = await getSessionMessages(sessionId);
       if (data.messages) {
@@ -383,8 +397,11 @@ function App() {
       }
     } catch (e) {
       console.error('加载消息失败:', e);
+    } finally {
+      loadMessages.loading = null;
     }
   };
+  loadMessages.loading = null;
   
   useEffect(() => {
     if (messages.length > messageCountRef.current) {
@@ -418,7 +435,6 @@ function App() {
     setActiveTabKey('chat');
     const newName = session.name ? `${session.name}#${session.id}` : '聊天';
     setCurrentSessionName(newName);
-    loadMessages(session.id);
     messageCountRef.current = 0;
     // 获取当前会话的token消耗
     try {
