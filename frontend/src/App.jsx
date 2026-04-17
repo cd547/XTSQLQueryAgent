@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Layout, Input, Button, Table, Card, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, InputNumber, Modal, Steps, Space } from 'antd';
+import { Layout, Input, Button, Table, Card, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, InputNumber, Modal, Steps, Space, Dropdown } from 'antd';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
 const { Panel } = Collapse;
@@ -13,7 +13,7 @@ function ResizableTitle(props) {
     </Resizable>
   );
 }
-import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined, RobotOutlined } from '@ant-design/icons';
+import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined, RobotOutlined, MoreOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Editor, { loader } from '@monaco-editor/react';
@@ -41,7 +41,7 @@ loader.config({
     vs: './node_modules/monaco-editor/min/vs'
   }
 });
-import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles, explainQuery } from './api';
+import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles, explainQuery, updateSession } from './api';
 
 const { TextArea } = Input;
 const { Sider, Content } = Layout;
@@ -235,6 +235,8 @@ function App() {
   const [isExplainResult, setIsExplainResult] = useState(false);
   const [explainResults, setExplainResults] = useState([]);
   const [explainPanelOpen, setExplainPanelOpen] = useState(false);
+  const [editingSessionId, setEditingSessionId] = useState(null);
+  const [editingSessionName, setEditingSessionName] = useState('');
   const contentRef = useRef('');
   const messageCountRef = useRef(0);
   const messagesEndRef = useRef(null);
@@ -413,6 +415,7 @@ function App() {
   
   const handleSessionClick = async (session) => {
     setCurrentSessionId(session.id);
+    setActiveTabKey('chat');
     const newName = session.name ? `${session.name}#${session.id}` : '聊天';
     setCurrentSessionName(newName);
     loadMessages(session.id);
@@ -426,21 +429,47 @@ function App() {
     }
   };
   
-  const handleDeleteSession = async (sessionId, e) => {
-    e.stopPropagation();
-    try {
-      await deleteSession(sessionId);
-      setSessions(prev => prev.filter(s => s.id !== sessionId));
-      if (currentSessionId === sessionId) {
-        setCurrentSessionId(null);
-        setMessages([]);
+  const handleDeleteSession = async (sessionId) => {
+    Modal.confirm({
+      title: '确定删除此对话？',
+      okText: '确定',
+      cancelText: '取消',
+      onOk: async () => {
+        try {
+          await deleteSession(sessionId);
+          setSessions(prev => prev.filter(s => s.id !== sessionId));
+          if (currentSessionId === sessionId) {
+            setCurrentSessionId(null);
+            setMessages([]);
+          }
+          message.success('对话已删除');
+        } catch (e) {
+          message.error('删除失败');
+        }
       }
-      message.success('对话已删除');
+    });
+  };
+
+  const handleRenameSession = async (sessionId) => {
+    if (!editingSessionName.trim()) return;
+    try {
+      await updateSession(sessionId, editingSessionName.trim());
+      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, name: editingSessionName.trim() } : s));
+      if (currentSessionId === sessionId) {
+        setCurrentSessionName(`${editingSessionName.trim()}#${sessionId}`);
+      }
+      setEditingSessionId(null);
+      message.success('重命名成功');
     } catch (e) {
-      message.error('删除失败');
+      message.error('重命名失败');
     }
   };
-  
+
+  const handleStartRename = (session) => {
+    setEditingSessionId(session.id);
+    setEditingSessionName(session.name || '');
+  };
+
   const handleAddTab = () => {
     const newKey = `sql-${Date.now()}`;
     setTabs(prev => ({ ...prev, [newKey]: { title: 'SQL查询', sql: '', results: [], rowCount: 0 } }));
@@ -448,6 +477,7 @@ function App() {
     setSqlInput('');
     setResults([]);
     setColumnWidths({});
+    setExplainResults([]);
   };
   
   const handleDeleteTab = (key) => {
@@ -471,6 +501,7 @@ function App() {
     setSqlInput(sql || '');
     setResults([]);
     setColumnWidths({});
+    setExplainResults([]);
   };
   
   const handleSend = async () => {
@@ -641,8 +672,7 @@ function App() {
 const handleExplain = async (sql) => {
   if (!sql) return;
   setLoading(true);
-  setSqlKey(['sql', 'result']);
-  setResultKey(['sql', 'result', 'explain']);
+  setSqlKey(['sql', 'explain']);
   setExplainPanelOpen(true);
   const startTime = Date.now();
   try {
@@ -926,19 +956,34 @@ const explainColumns = explainResults.length > 0
                     style={{ padding: '4px 8px', cursor: 'pointer', background: currentSessionId === item.id ? '#e6f7ff' : 'transparent', borderLeft: currentSessionId === item.id ? '3px solid #1890ff' : '3px solid transparent' }}
                     onClick={() => handleSessionClick(item)}
                     actions={[
-                      <Popconfirm
-                        key="delete"
-                        title="确定删除此对话？"
-                        onConfirm={(e) => handleDeleteSession(item.id, e)}
-                        okText="确定"
-                        cancelText="取消"
+                      <Dropdown
+                        key="more"
+                        menu={{
+                          items: [
+                            { key: 'rename', label: '重命名', icon: <EditOutlined />, onClick: () => handleStartRename(item) },
+                            { key: 'delete', label: '删除', icon: <DeleteIcon style={deleteIconStyle} />, danger: true, onClick: () => handleDeleteSession(item.id) }
+                          ]
+                        }}
+                        trigger={['click']}
                       >
-                        <DeleteIcon style={deleteIconStyle} />
-                      </Popconfirm>
+                        <MoreOutlined style={{ color: '#999', cursor: 'pointer', fontSize: 14 }} />
+                      </Dropdown>
                     ]}
                   >
                     <List.Item.Meta
-                      title={<span style={{ fontSize: 11 }}>{item.name} <span style={{ color: '#999' }}>#{item.id}</span></span>}
+                      title={editingSessionId === item.id ? (
+                        <Input
+                          size="small"
+                          value={editingSessionName}
+                          onChange={(e) => setEditingSessionName(e.target.value)}
+                          onPressEnter={() => handleRenameSession(item.id)}
+                          onBlur={() => handleRenameSession(item.id)}
+                          onClick={(e) => e.stopPropagation()}
+                          autoFocus
+                        />
+                      ) : (
+                        <span style={{ fontSize: 11 }}>{item.name} <span style={{ color: '#999' }}>#{item.id}</span></span>
+                      )}
                       description={<span style={{ fontSize: 9, color: '#999' }}>{item.created_at ? new Date(item.created_at).toLocaleString() : ''}</span>}
                     />
                   </List.Item>
@@ -1580,7 +1625,7 @@ function ConfigPanel({ compact }) {
   const [agentConfig, setAgentConfig] = useState({ max_tool_calls: '30', timeout_ms: '60000' });
   const [testing, setTesting] = useState(false);
   const [testingLlm, setTestingLlm] = useState(false);
-  const [savingAgent, setSavingAgent] = useState(false);
+const [savingAgent, setSavingAgent] = useState(false);
 
   useEffect(() => {
     fetch('http://localhost:5002/api/config/agent').then(r => r.json()).then(data => {
