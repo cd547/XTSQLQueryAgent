@@ -48,6 +48,13 @@ export function initDatabase() {
     // 列已存在，忽略
   }
 
+  // 添加 summary 字段
+  try {
+    db.exec(`ALTER TABLE sessions ADD COLUMN summary TEXT`);
+  } catch (e) {
+    logger.debug('Column summary already exists');
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS messages (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

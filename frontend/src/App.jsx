@@ -13,7 +13,7 @@ function ResizableTitle(props) {
     </Resizable>
   );
 }
-import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined, RobotOutlined, MoreOutlined } from '@ant-design/icons';
+import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined, RobotOutlined, MoreOutlined, DeleteOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Editor, { loader } from '@monaco-editor/react';
@@ -41,30 +41,10 @@ loader.config({
     vs: './node_modules/monaco-editor/min/vs'
   }
 });
-import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles, explainQuery, updateSession } from './api';
+import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles, explainQuery, updateSession, summarizeSession } from './api';
 
 const { TextArea } = Input;
 const { Sider, Content } = Layout;
-
-const deleteIconStyle = {
-  color: '#999',
-  cursor: 'pointer',
-  fontSize: 12,
-  marginLeft: 8,
-  transition: 'color 0.2s'
-};
-
-function DeleteIcon({ onClick, style }) {
-  const [hover, setHover] = useState(false);
-  return (
-    <CloseOutlined 
-      style={{ ...style, color: hover ? '#ff4d4f' : style.color }}
-      onMouseEnter={() => setHover(true)}
-      onMouseLeave={() => setHover(false)}
-      onClick={onClick}
-    />
-  );
-}
 
 function ChatMessage({ role, content, isStreaming, onExecute, timestamp, collapsed, onToggleCollapse, logType, sql, onOpenSqlTab }) {
   const isUser = role === 'user';
@@ -484,6 +464,24 @@ function App() {
   const handleStartRename = (session) => {
     setEditingSessionId(session.id);
     setEditingSessionName(session.name || '');
+  };
+
+  const handleSummarizeSession = async (sessionId) => {
+    try {
+      message.loading({ content: '正在总结聊天记录...', key: 'summarize' });
+      const res = await summarizeSession(sessionId);
+      if (res.error) {
+        message.error({ content: res.error, key: 'summarize' });
+      } else {
+        setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, name: res.name } : s));
+        if (currentSessionId === sessionId) {
+          setCurrentSessionName(`${res.name}#${sessionId}`);
+        }
+        message.success({ content: '总结完成', key: 'summarize' });
+      }
+    } catch (e) {
+      message.error({ content: '总结失败', key: 'summarize' });
+    }
   };
 
   const handleAddTab = () => {
@@ -976,8 +974,9 @@ const explainColumns = explainResults.length > 0
                         key="more"
                         menu={{
                           items: [
-                            { key: 'rename', label: '重命名', icon: <EditOutlined />, onClick: () => handleStartRename(item) },
-                            { key: 'delete', label: '删除', icon: <DeleteIcon style={deleteIconStyle} />, danger: true, onClick: () => handleDeleteSession(item.id) }
+                            { key: 'summarize', label: '总结聊天', icon: <FileTextOutlined style={{ fontSize: 14 }} />, onClick: () => handleSummarizeSession(item.id) },
+                            { key: 'rename', label: '重命名', icon: <EditOutlined style={{ fontSize: 14 }} />, onClick: () => handleStartRename(item) },
+                            { key: 'delete', label: '删除', icon: <DeleteOutlined style={{ fontSize: 14 }} />, danger: true, onClick: () => handleDeleteSession(item.id) }
                           ]
                         }}
                         trigger={['click']}

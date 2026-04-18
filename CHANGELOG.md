@@ -1,6 +1,56 @@
 # 更新日志
 
-## 2026-04-12
+## 2026-04-18
+
+### 总结聊天记录功能 (新增)
+
+#### 功能
+- 点击会话列表中每个会话的「更多」按钮，选择「总结聊天」
+- 将该会话的 user 和 assistant 对话按顺序发送给大模型
+- 大模型生成两个内容：
+  - 100字左右的总结 (summary)
+  - 20字以内的标签 (name)
+- 自动更新 sessions 表的 name 字段为标签内容
+- sessions 表新增 summary 字段存储详细总结
+
+#### 后端 API
+- `POST /api/sessions/:id/summarize` - 总结指定会话
+- 数据库 sessions 表新增 `summary` TEXT 字段
+
+#### 前端
+- `summarizeSession()` API 函数
+- `handleSummarizeSession()` 处理函数
+- 会话下拉菜单新增「总结聊天」选项 (FileTextOutlined 图标)
+
+### 查询结果显示耗时 (新增)
+
+#### 功能
+- 查询结果标题显示：查询结果 (100 条 耗时: 300ms)
+- 后端返回 queryTime 字段，前端解析并显示
+
+#### 后端 API
+- `POST /api/query/execute` 返回新增 `queryTime` 字段（毫秒）
+
+#### 前端
+- App.jsx 新增 `queryTime` state
+- QueryPanel.jsx 新增 `queryTime` state
+- 标题格式：`查询结果 ({rowCount} 条 耗时: {queryTime}ms)`
+
+### Ollama 本地模型支持 (新增)
+
+#### 功能
+- 配置面板新增 Ollama (本地) Provider 选项
+- 支持连接本地部署的大语言模型
+- API Key 填写 Ollama 地址（默认 http://localhost:11434）
+- 模型填写本地模型名（如 llama3.2, qwen2.5 等）
+
+#### 后端改动 (backend/src/services/llm.js)
+- `getProviderConfig()` 添加 ollama 配置: baseURL=http://localhost:11434, model=llama3.2
+- `generateSQLWithLangChainStreamGenV2()` switch 添加 case 'ollama'
+
+#### 前端改动
+- ConfigPanel.jsx 下拉选项已支持：`<Select.Option value="ollama">Ollama (本地)</Select.Option>`
+- API Key 改为可填写本地地址
 
 ### SQL EXPLAIN 功能 (新增)
 

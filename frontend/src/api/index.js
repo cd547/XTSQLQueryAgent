@@ -72,6 +72,10 @@ export function deleteSession(sessionId) {
   return api.delete(`/sessions/${sessionId}`).then(r => r.data);
 }
 
+export function summarizeSession(sessionId) {
+  return api.post(`/sessions/${sessionId}/summarize`).then(r => r.data);
+}
+
 export function getSkillsList() {
   return api.get('/skills/list').then(r => r.data);
 }

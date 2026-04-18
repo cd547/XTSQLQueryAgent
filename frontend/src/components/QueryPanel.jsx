@@ -4,6 +4,7 @@ import ReactMarkdown from 'react-markdown';
 import { queryExecute } from '../api';
 
 const { TextArea } = Input;
+const API_BASE = '/api';
 
 function ChatMessage({ role, content, isStreaming, onExecute }) {
   const isUser = role === 'user';
@@ -117,6 +118,7 @@ function QueryPanel() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [results, setResults] = useState([]);
   const [rowCount, setRowCount] = useState(0);
+  const [queryTime, setQueryTime] = useState(0);
   const [showResults, setShowResults] = useState(false);
   const messagesEndRef = useRef(null);
 
@@ -136,7 +138,7 @@ function QueryPanel() {
     setIsStreaming(true);
 
     try {
-      const response = await fetch('http://localhost:5002/api/query/generate', {
+      const response = await fetch(`${API_BASE}/query/generate`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: userMessage, schemaMode: 'stream' })
@@ -226,6 +228,7 @@ function QueryPanel() {
   };
 
   const handleExecute = async (sql) => {
+    const startTime = Date.now();
     setLoading(true);
     try {
       const res = await queryExecute({ sql });
@@ -234,6 +237,7 @@ function QueryPanel() {
       } else {
         setResults(res.results || []);
         setRowCount(res.rowCount || 0);
+        setQueryTime(res.queryTime || Date.now() - startTime);
         setShowResults(true);
         message.success(`查询成功，${res.rowCount} 条结果`);
       }
@@ -324,7 +328,7 @@ function QueryPanel() {
 
       {showResults && results.length > 0 && (
         <Card 
-          title={`查询结果 (${rowCount} 条)`} 
+          title={`查询结果 (${rowCount} 条 耗时: ${queryTime}ms)`} 
           size="small"
           style={{ marginTop: 16 }}
           extra={

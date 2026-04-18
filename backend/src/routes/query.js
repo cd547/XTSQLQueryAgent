@@ -450,9 +450,10 @@ async function callLLM(provider, prompt, apiKey, model) {
 
 router.post('/execute', async (req, res) => {
   const { sql, sessionId } = req.body;
+  const startTime = Date.now();
 
   if (!sql || typeof sql !== 'string') {
-    return res.json({ error: 'SQL不能为空', rowCount: 0 });
+    return res.json({ error: 'SQL不能为空', rowCount: 0, queryTime: 0 });
   }
 
   const upper = sql.toUpperCase().trim();
@@ -468,16 +469,16 @@ router.post('/execute', async (req, res) => {
     const forbidden = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE'];
     for (const word of forbidden) {
       if (cleanSql.includes(word)) {
-        return res.json({ error: `不允许执行 ${word} 操作`, rowCount: 0 });
+        return res.json({ error: `不允许执行 ${word} 操作`, rowCount: 0, queryTime: 0 });
       }
     }
-    return res.json({ error: '只允许SELECT查询', rowCount: 0 });
+    return res.json({ error: '只允许SELECT查询', rowCount: 0, queryTime: 0 });
   }
 
   try {
     const config = getConfig();
     if (!config) {
-      return res.json({ error: '数据库未配置', rowCount: 0 });
+      return res.json({ error: '数据库未配置', rowCount: 0, queryTime: 0 });
     }
     const connection = await mysql.createConnection(config);
 
@@ -499,10 +500,11 @@ router.post('/execute', async (req, res) => {
       `).run(sessionId, JSON.stringify({ rowCount: rows.length }));
     }
 
-    res.json({ results: rows, rowCount: rows.length });
+    const queryTime = Date.now() - startTime;
+    res.json({ results: rows, rowCount: rows.length, queryTime });
   } catch (error) {
     logger.error('SQL execution failed', { error: error.message, sql });
-    res.json({ error: error.message, rowCount: 0 });
+    res.json({ error: error.message, rowCount: 0, queryTime: Date.now() - startTime });
   }
 });
 

@@ -45,7 +45,8 @@ function getProviderConfig(provider, model) {
   const configs = {
     openai: { baseURL: 'https://api.openai.com/v1', model: 'gpt-4o' },
     deepseek: { baseURL: 'https://api.deepseek.com', model: 'deepseek-chat' },
-    minimax: { baseURL: 'https://api.minimax.chat/v1', model: 'abab6.5s-chat' }
+    minimax: { baseURL: 'https://api.minimax.chat/v1', model: 'abab6.5s-chat' },
+    ollama: { baseURL: 'http://localhost:11434', model: 'llama3.2' }
   };
   const cfg = configs[provider];
   if (!cfg) throw new Error(`不支持的provider: ${provider}`);
@@ -839,6 +840,10 @@ export async function* generateSQLWithLangChainStreamGenV2(question, history = '
     case 'minimax':
       baseURL = 'https://api.minimax.chat/v1';
       llmModel = model || 'abab6.5s-chat';
+      break;
+    case 'ollama':
+      baseURL = apiKey || 'http://localhost:11434';
+      llmModel = model || 'llama3.2';
       break;
     default:
       throw new Error(`不支持的provider: ${provider}`);
