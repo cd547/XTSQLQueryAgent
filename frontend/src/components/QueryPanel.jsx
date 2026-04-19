@@ -166,6 +166,10 @@ function QueryPanel() {
 
         const text = decoder.decode(value);
         console.log('收到 SSE 数据:', text.substring(0, 200));
+        if (!text.includes('data:')) {
+          console.log('No data: prefix in text');
+          continue;
+        }
         const lines = text.split('\n');
 
         for (const line of lines) {
@@ -191,6 +195,8 @@ function QueryPanel() {
                 console.log('Received tool message:', data);
                 // 检查是否是 request_tag_confirmation 工具
                 const toolLog = data.log || '';
+                console.log('toolLog:', toolLog);
+                console.log('includes request_tag_confirmation:', toolLog.includes('request_tag_confirmation'));
                 if (toolLog.includes('request_tag_confirmation')) {
                   console.log('Found request_tag_confirmation in tool log');
                   // 从日志中提取参数
