@@ -171,6 +171,7 @@ function App() {
   const [isStreaming, setIsStreaming] = useState(false);
   const [results, setResults] = useState([]);
   const [rowCount, setRowCount] = useState(0);
+  const [queryTime, setQueryTime] = useState(0);
   const [showResults, setShowResults] = useState(false);
   const [configOpen, setConfigOpen] = useState(false);
   const [skillOpen, setSkillOpen] = useState(false);
@@ -720,13 +721,16 @@ function App() {
         const newResults = res.results || [];
         setColumnWidths({});
         setResults(newResults);
+        setRowCount(res.rowCount || 0);
+        setQueryTime(elapsed);
         setIsExplainResult(false);
         setTabs(prev => ({
           ...prev,
           [activeTabKey]: {
             ...prev[activeTabKey],
             results: newResults,
-            rowCount: res.rowCount || 0
+            rowCount: res.rowCount || 0,
+            queryTime: elapsed
           }
         }));
         message.success(`查询成功，${res.rowCount} 条结果，耗时 ${elapsed}ms`);
@@ -958,6 +962,7 @@ const exportToExcel = async (data, cols) => {
 // 获取当前tab的结果
 const currentResults = activeTabKey !== 'chat' && tabs[activeTabKey]?.results ? tabs[activeTabKey].results : results;
 const currentRowCount = activeTabKey !== 'chat' && tabs[activeTabKey]?.rowCount ? tabs[activeTabKey].rowCount : rowCount;
+const currentQueryTime = activeTabKey !== 'chat' && tabs[activeTabKey]?.queryTime ? tabs[activeTabKey].queryTime : queryTime;
 
 const handleResize = (columnKey) => (e, { size }) => {
   setColumnWidths(prev => ({ ...prev, [columnKey]: size.width }));
@@ -1222,7 +1227,7 @@ items={[
                       },
 {
                     key: 'result',
-                        label: <span style={{ fontWeight: 500, fontSize: 12 }}>查询结果 ({currentRowCount} 条)</span>,
+                        label: <span style={{ fontWeight: 500, fontSize: 12 }}>查询结果 ({currentRowCount} 条{currentQueryTime ? `, ${currentQueryTime}ms` : ''})</span>,
 children: currentResults.length > 0 ? (
                   <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
                             <div

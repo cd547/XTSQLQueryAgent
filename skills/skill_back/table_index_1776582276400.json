@@ -312,9 +312,7 @@
     {
       "name": "my_user",
       "description": "用户基本表",
-      "tags": [
-        "c端用户"
-      ],
+      "tags": [],
       "related_tables": [],
       "business_constraints": [],
       "business_rules": []
