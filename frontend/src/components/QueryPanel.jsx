@@ -186,6 +186,27 @@ function QueryPanel() {
                   }
                   return newMsgs;
                 });
+              } else if (data.type === 'tool') {
+                // 检查是否是 request_tag_confirmation 工具
+                const toolLog = data.log || '';
+                if (toolLog.includes('request_tag_confirmation')) {
+                  // 从日志中提取参数
+                  const paramMatch = toolLog.match(/参数:\s*(\{[^}]+\})/);
+                  if (paramMatch) {
+                    try {
+                      const params = JSON.parse(paramMatch[1]);
+                      console.log('request_tag_confirmation detected:', params);
+                      setConfirmTagAdd({
+                        visible: true,
+                        term: params.term || '',
+                        table: params.table || '',
+                        description: params.description || ''
+                      });
+                    } catch (e) {
+                      console.warn('Parse tool params failed:', e);
+                    }
+                  }
+                }
               } else if (data.type === 'error') {
                 message.error(data.content);
                 setMessages(prev => {
