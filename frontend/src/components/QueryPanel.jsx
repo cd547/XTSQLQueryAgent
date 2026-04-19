@@ -201,6 +201,7 @@ function QueryPanel() {
                   return newMsgs;
                 });
               } else if (data.type === 'done') {
+                console.log('Received done message:', data);
                 // 检查是否有 confirm_tag_add
                 if (data.confirm_tag_add) {
                   setConfirmTagAdd({
