@@ -172,6 +172,7 @@ function QueryPanel() {
           if (line.startsWith('data: ')) {
             try {
               const data = JSON.parse(line.slice(6));
+              console.log('SSE data type:', data.type, 'data:', JSON.stringify(data));
               if (data.type === 'chunk') {
                 fullContent += data.content;
                 setMessages(prev => {
@@ -187,9 +188,11 @@ function QueryPanel() {
                   return newMsgs;
                 });
               } else if (data.type === 'tool') {
+                console.log('Received tool message:', data);
                 // 检查是否是 request_tag_confirmation 工具
                 const toolLog = data.log || '';
                 if (toolLog.includes('request_tag_confirmation')) {
+                  console.log('Found request_tag_confirmation in tool log');
                   // 从日志中提取参数
                   const paramMatch = toolLog.match(/参数:\s*(\{[^}]+\})/);
                   if (paramMatch) {
