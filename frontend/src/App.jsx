@@ -4,6 +4,8 @@ import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
 const { Panel } = Collapse;
 
+import ConfirmDialog from './components/ConfirmDialog';
+
 function ResizableTitle(props) {
   const { onResize, width, children, ...restProps } = props;
   if (!width) return <th {...restProps}>{children}</th>;
@@ -212,6 +214,12 @@ function App() {
   const [explainAnalyzeModalOpen, setExplainAnalyzeModalOpen] = useState(false);
   const [explainAnalysisContent, setExplainAnalysisContent] = useState('');
   const [explainAnalysisLoading, setExplainAnalysisLoading] = useState(false);
+  const [confirmTagAdd, setConfirmTagAdd] = useState({
+    visible: false,
+    term: '',
+    table: '',
+    description: ''
+  });
   const [isExplainResult, setIsExplainResult] = useState(false);
   const [explainResults, setExplainResults] = useState([]);
   const [explainPanelOpen, setExplainPanelOpen] = useState(false);
@@ -572,6 +580,25 @@ function App() {
                 });
               } else if (data.type === 'LLM' || data.type === 'tool' || data.type === 'tool_return') {
                 const logContent = data.log || '';
+                
+                // 检测 request_tag_confirmation 工具调用
+                if (data.type === 'tool' && logContent.includes('request_tag_confirmation')) {
+                  const paramMatch = logContent.match(/参数:\s*(\{[^}]+\})/);
+                  if (paramMatch) {
+                    try {
+                      const params = JSON.parse(paramMatch[1]);
+                      setConfirmTagAdd({
+                        visible: true,
+                        term: params.term || '',
+                        table: params.table || '',
+                        description: params.description || ''
+                      });
+                    } catch (e) {
+                      console.warn('Parse tool params failed:', e);
+                    }
+                  }
+                }
+                
                 let logType = 'call';
                 if (data.type === 'LLM') logType = 'llm';
                 else if (data.type === 'tool_return') logType = 'return';
@@ -635,6 +662,34 @@ function App() {
       setLoading(false);
       setIsStreaming(false);
     }
+  };
+
+  const handleConfirmTagAdd = async () => {
+    const { table, term } = confirmTagAdd;
+    try {
+      const res = await fetch('http://localhost:5002/api/skills/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filePath: 'skills/sql-creator-skill-v2/table_index.json',
+          action: 'add_tag',
+          tableName: table,
+          tag: term
+        })
+      });
+      if (res.ok) {
+        message.success(`已将 "${term}" 添加到 ${table} 的标签`);
+      } else {
+        message.error('添加标签失败');
+      }
+    } catch (e) {
+      message.error('添加标签失败: ' + e.message);
+    }
+    setConfirmTagAdd(prev => ({ ...prev, visible: false }));
+  };
+
+  const handleCancelTagAdd = () => {
+    setConfirmTagAdd(prev => ({ ...prev, visible: false }));
   };
   
   const getSelectedSql = () => {
@@ -946,6 +1001,14 @@ const explainColumns = explainResults.length > 0
   
   return (
     <ConfigProvider>
+      <ConfirmDialog
+        visible={confirmTagAdd.visible}
+        term={confirmTagAdd.term}
+        table={confirmTagAdd.table}
+        description={confirmTagAdd.description}
+        onConfirm={handleConfirmTagAdd}
+        onCancel={handleCancelTagAdd}
+      />
       <Layout style={{ height: '100vh', background: '#fff', overflow: 'hidden' }}>
         <Sider 
           width={260} 

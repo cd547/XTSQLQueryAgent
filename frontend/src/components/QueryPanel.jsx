@@ -112,6 +112,7 @@ function ChatMessage({ role, content, isStreaming, onExecute }) {
 }
 
 function QueryPanel() {
+  console.log('QueryPanel mounted');
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -134,6 +135,7 @@ function QueryPanel() {
   }, [messages]);
 
   const handleSend = async () => {
+    console.log('handleSend called');
     if (!input.trim() || loading) return;
     
     const userMessage = input.trim();
