@@ -420,9 +420,7 @@
     {
       "name": "order_student_refund",
       "description": "订单退款记录",
-      "tags": [
-        "退款申请审批表"
-      ],
+      "tags": [],
       "related_tables": [
         "order_student",
         "admin_user"

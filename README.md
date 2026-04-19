@@ -14,6 +14,7 @@
 | 结果导出 | 支持导出为 Excel (.xlsx)、CSV、HTML 格式 |
 | 多会话管理 | 支持创建、切换、重命名、删除会话 |
 | Token 统计 | 统计每次 LLM 调用的 token 消耗 |
+| 智能标签关联 | 用户纠正表名时，自动建议将术语添加到表标签 |
 
 ### AI 能力
 
@@ -116,6 +117,7 @@ XTSQLQueryAgent/
 | GET | /api/skills/list | 获取 Skill 列表 |
 | GET | /api/skills/read | 读取文件内容 |
 | POST | /api/skills/save | 保存文件 (带备份) |
+| POST | /api/skills/add-tag | 添加表标签 |
 
 ## 配置说明
 
@@ -174,6 +176,17 @@ npm run dev
 - **ddl/** - 建表语句
 
 支持锁定/解锁编辑，保存时自动备份。
+
+### 智能标签关联
+
+当用户纠正表名时，Agent 会自动检测并询问用户是否将术语添加到对应表的标签中：
+
+1. 用户说"aa表就是edu_student"
+2. Agent 调用 `request_tag_confirmation` 工具
+3. 前端显示确认框："是否将'aa'添加到 edu_student 的标签？"
+4. 用户确认后，调用 `/api/skills/add-tag` 更新 table_index.json
+
+这样下次查询时，Agent 可以通过新术语直接匹配到对应表。
 
 ### 会话总结
 
