@@ -27,13 +27,6 @@ description: 智能SQL生成，基于表索引、字段配置、DDL，输出安�
 - **说明**: 简要解释
 ```
 
-## 可用工具
-
-- **get_tables**: 从 table_index.json 获取所有可用表列表
-- **get_table_schema(table_name)**: 获取指定表的详细字段信息
-- **get_table_ddl(table_name)**: 获取指定表的 DDL 建表语句
-- **get_output_format**: 获取 SQL 输出的格式规范和模板
-- **request_tag_confirmation(term, table, description)**: 请求用户确认是否将术语添加到表的标签中。当用户纠正表名或提供新的术语-表关联时使用。**重要：检测到用户纠正表名时，必须调用此工具并返回结果，触发前端确认框。**
 
 ## 上下文纠正与标签更新
 

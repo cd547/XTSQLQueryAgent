@@ -226,7 +226,9 @@
     {
       "name": "edu_student",
       "description": "学生",
-      "tags": [],
+      "tags": [
+        "a1a"
+      ],
       "related_tables": [
         "my_user",
         "edu_campus_school",

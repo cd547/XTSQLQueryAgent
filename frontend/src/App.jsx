@@ -667,12 +667,10 @@ function App() {
   const handleConfirmTagAdd = async () => {
     const { table, term } = confirmTagAdd;
     try {
-      const res = await fetch('http://localhost:5002/api/skills/save', {
+      const res = await fetch('http://localhost:5002/api/skills/add-tag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          filePath: 'skills/sql-creator-skill-v2/table_index.json',
-          action: 'add_tag',
           tableName: table,
           tag: term
         })
