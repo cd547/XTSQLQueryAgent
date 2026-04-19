@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Input, Button, Table, Space, Card, message, Select, Spin, Empty } from 'antd';
 import ReactMarkdown from 'react-markdown';
 import { queryExecute } from '../api';
+import ConfirmDialog from './ConfirmDialog';
 
 const { TextArea } = Input;
 const API_BASE = '/api';
@@ -120,6 +121,12 @@ function QueryPanel() {
   const [rowCount, setRowCount] = useState(0);
   const [queryTime, setQueryTime] = useState(0);
   const [showResults, setShowResults] = useState(false);
+  const [confirmTagAdd, setConfirmTagAdd] = useState({
+    visible: false,
+    term: '',
+    table: '',
+    description: ''
+  });
   const messagesEndRef = useRef(null);
 
   useEffect(() => {
@@ -194,13 +201,25 @@ function QueryPanel() {
                   return newMsgs;
                 });
               } else if (data.type === 'done') {
+                // 检查是否有 confirm_tag_add
+                if (data.confirm_tag_add) {
+                  setConfirmTagAdd({
+                    visible: true,
+                    term: data.confirm_tag_add.term,
+                    table: data.confirm_tag_add.table,
+                    description: data.confirm_tag_add.description || ''
+                  });
+                }
                 setMessages(prev => {
                   const newMsgs = [...prev];
                   const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
                   if (lastAssistantIdx !== -1) {
+                    // 移除 confirm_tag_add 标记，只显示实际消息
+                    const cleanMessage = (data.message || data.sql || fullContent)
+                      .replace(/<!--confirm_tag_add:\{[^}]+\}-->/g, '');
                     newMsgs[lastAssistantIdx] = {
                       ...newMsgs[lastAssistantIdx],
-                      content: data.sql || data.message || fullContent,
+                      content: cleanMessage,
                       isStreaming: false
                     };
                   }
@@ -244,6 +263,34 @@ function QueryPanel() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleConfirmTagAdd = async () => {
+    const { table, term } = confirmTagAdd;
+    try {
+      const res = await fetch(`${API_BASE}/skills/save`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          filePath: 'skills/sql-creator-skill-v2/table_index.json',
+          action: 'add_tag',
+          tableName: table,
+          tag: term
+        })
+      });
+      if (res.ok) {
+        message.success(`已将 "${term}" 添加到 ${table} 的标签`);
+      } else {
+        message.error('添加标签失败');
+      }
+    } catch (e) {
+      message.error('添加标签失败: ' + e.message);
+    }
+    setConfirmTagAdd(prev => ({ ...prev, visible: false }));
+  };
+
+  const handleCancelTagAdd = () => {
+    setConfirmTagAdd(prev => ({ ...prev, visible: false }));
   };
 
   const columns = results.length > 0
@@ -295,6 +342,15 @@ function QueryPanel() {
           )}
           <div ref={messagesEndRef} />
         </div>
+
+        <ConfirmDialog
+          visible={confirmTagAdd.visible}
+          term={confirmTagAdd.term}
+          table={confirmTagAdd.table}
+          description={confirmTagAdd.description}
+          onConfirm={handleConfirmTagAdd}
+          onCancel={handleCancelTagAdd}
+        />
 
         <div style={{ 
           display: 'flex', 
