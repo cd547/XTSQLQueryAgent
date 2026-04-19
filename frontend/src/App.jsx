@@ -1001,14 +1001,6 @@ const explainColumns = explainResults.length > 0
   
   return (
     <ConfigProvider>
-      <ConfirmDialog
-        visible={confirmTagAdd.visible}
-        term={confirmTagAdd.term}
-        table={confirmTagAdd.table}
-        description={confirmTagAdd.description}
-        onConfirm={handleConfirmTagAdd}
-        onCancel={handleCancelTagAdd}
-      />
       <Layout style={{ height: '100vh', background: '#fff', overflow: 'hidden' }}>
         <Sider 
           width={260} 
@@ -1320,6 +1312,17 @@ children: currentResults.length > 0 ? (
                 </div>
               )}
               {activeTabKey === 'chat' && <div ref={messagesEndRef} />}
+              
+              {activeTabKey === 'chat' && confirmTagAdd.visible && (
+                <ConfirmDialog
+                  visible={true}
+                  term={confirmTagAdd.term}
+                  table={confirmTagAdd.table}
+                  description={confirmTagAdd.description}
+                  onConfirm={handleConfirmTagAdd}
+                  onCancel={handleCancelTagAdd}
+                />
+              )}
             </div>
             
             {activeTabKey === 'chat' && (
