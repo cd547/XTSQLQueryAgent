@@ -118,8 +118,43 @@ router.get('/read', (req, res) => {
 export default router;
 
 router.post('/save', (req, res) => {
-  const { path: filePath, content } = req.body;
+  const { path: filePath, content, action, tableName, tag } = req.body;
   
+  // 处理 add_tag action
+  if (action === 'add_tag') {
+    if (!tableName || !tag) {
+      return res.status(400).json({ success: false, message: 'Missing tableName or tag' });
+    }
+    
+    try {
+      const tableIndexPath = path.join(SKILL_V2_PATH, 'table_index.json');
+      const tableIndex = JSON.parse(fs.readFileSync(tableIndexPath, 'utf-8'));
+      
+      const table = tableIndex.tables.find(t => t.name === tableName);
+      if (!table) {
+        return res.json({ success: false, error: `表 ${tableName} 不存在` });
+      }
+      
+      if (!table.tags) {
+        table.tags = [];
+      }
+      if (!table.tags.includes(tag)) {
+        table.tags.push(tag);
+      }
+      
+      const backupPath = path.join(skillBackPath, `table_index_${Date.now()}.json`);
+      fs.copyFileSync(tableIndexPath, backupPath);
+      fs.writeFileSync(tableIndexPath, JSON.stringify(tableIndex, null, 2), 'utf-8');
+      
+      logger.info('Tag added', { tableName, tag });
+      return res.json({ success: true, message: `已将 "${tag}" 添加到 ${tableName} 的标签` });
+    } catch (e) {
+      logger.error('Add tag failed', { error: e.message, tableName, tag });
+      return res.status(500).json({ success: false, message: e.message });
+    }
+  }
+  
+  // 原有保存文件逻辑
   if (!filePath || content === undefined) {
     return res.status(400).json({ success: false, message: 'Missing path or content parameter' });
   }
