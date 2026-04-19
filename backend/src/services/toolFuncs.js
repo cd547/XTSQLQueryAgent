@@ -7,21 +7,14 @@ import { logger } from '../logger.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const SKILL_V2_PATH = path.join(__dirname, '../../../skills/sql-creator-skill-v2');
 
-let cachedTableIndex = null;
 let cachedSkillMd = null;
 
 export function loadTableIndex() {
-  if (cachedTableIndex) return cachedTableIndex;
-  
   const tableIndexPath = path.join(SKILL_V2_PATH, 'table_index.json');
   if (fs.existsSync(tableIndexPath)) {
-    cachedTableIndex = JSON.parse(fs.readFileSync(tableIndexPath, 'utf-8'));
+    return JSON.parse(fs.readFileSync(tableIndexPath, 'utf-8'));
   }
-  return cachedTableIndex;
-}
-
-export function clearTableIndexCache() {
-  cachedTableIndex = null;
+  return null;
 }
 
 export function loadSkillMd() {

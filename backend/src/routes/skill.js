@@ -6,7 +6,6 @@ import mysql from 'mysql2/promise';
 import { getDb } from '../db/sqlite.js';
 import { getConfig } from '../services/config.js';
 import { logger } from '../logger.js';
-import { clearTableIndexCache } from '../services/toolFuncs.js';
 
 const router = Router();
 
@@ -142,8 +141,6 @@ router.post('/add-tag', (req, res) => {
     const backupPath = path.join(skillBackPath, `table_index_${Date.now()}.json`);
     fs.copyFileSync(tableIndexPath, backupPath);
     fs.writeFileSync(tableIndexPath, JSON.stringify(tableIndex, null, 2), 'utf-8');
-    
-    clearTableIndexCache();
     
     logger.info('Tag added', { tableName, tag });
     return res.json({ success: true, message: `已将 "${tag}" 添加到 ${tableName} 的标签` });
