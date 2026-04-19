@@ -64,6 +64,10 @@ export function getMysqlLimits() {
   return 'MySQL 5.7 限制信息不存在';
 }
 
+export function requestTagConfirmation(term, table, description) {
+  return `<!--confirm_tag_add:${JSON.stringify({ term, table, description })}-->`;
+}
+
 export const tools = [
   new DynamicTool({
     name: "get_tables",
@@ -133,6 +137,32 @@ export const tools = [
     func: () => {
       console.log('get_output_format called');
       return getOutputFormat();
+    }
+  }),
+  new DynamicTool({
+    name: "request_tag_confirmation",
+    description: "请求用户确认是否将术语添加到表的标签中。当用户纠正表名或提供新的术语-表关联时使用。参数: term(术语/关键词), table(表名), description(表的描述)。返回带特殊标记的字符串，会触发前端确认框弹出。",
+    func: (params) => {
+      console.log('request_tag_confirmation called with:', params);
+      let term, table, description;
+      try {
+        if (typeof params === 'object') {
+          term = params.term;
+          table = params.table;
+          description = params.description;
+        } else if (typeof params === 'string') {
+          const parsed = JSON.parse(params);
+          term = parsed.term;
+          table = parsed.table;
+          description = parsed.description;
+        }
+      } catch (e) { logger.debug('Parse params failed', { error: e.message }); }
+      
+      if (!term || !table) {
+        return '请提供 term(术语) 和 table(表名) 参数';
+      }
+      
+      return requestTagConfirmation(term, table, description || '');
     }
   }),
   // new DynamicTool({

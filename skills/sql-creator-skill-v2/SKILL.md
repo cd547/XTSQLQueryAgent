@@ -27,23 +27,31 @@ description: 智能SQL生成，基于表索引、字段配置、DDL，输出安�
 - **说明**: 简要解释
 ```
 
+## 可用工具
+
+- **get_tables**: 从 table_index.json 获取所有可用表列表
+- **get_table_schema(table_name)**: 获取指定表的详细字段信息
+- **get_table_ddl(table_name)**: 获取指定表的 DDL 建表语句
+- **get_output_format**: 获取 SQL 输出的格式规范和模板
+- **request_tag_confirmation(term, table, description)**: 请求用户确认是否将术语添加到表的标签中。当用户纠正表名或提供新的术语-表关联时使用。**重要：检测到用户纠正表名时，必须调用此工具并返回结果，触发前端确认框。**
+
 ## 上下文纠正与标签更新
 
 当用户纠正表名时，执行以下逻辑：
 
-1. **检测纠正**: 用户说"是 XXX 表"、"查 XXX 表"、"用 XXX 表"时，表示之前提到的术语与表名产生了关联
+1. **检测纠正**: 用户说"是 XXX 表"、"查 XXX 表"、"用 XXX 表"、"aa表就是edu_student"时，表示之前提到的术语与表名产生了关联
 2. **术语提取**: 提取用户之前问题中未被匹配的关键词/术语
-3. **主动询问**: 发送特殊消息类型 `confirm_tag_add`，前端弹出确认框：
-   - 消息格式: `{ type: 'confirm_tag_add', term: '术语', table: '表名', description: '表描述' }`
-4. **等待确认**: Agent 不自动执行，等待用户点击确认/取消
-5. **执行更新**: 用户确认后，使用工具更新 `table_index.json` 中对应表的 tags 字段
+3. **调用工具**: 使用 `request_tag_confirmation` 工具，传入 term(术语)、table(表名)、description(表的描述)
+4. **触发确认**: 工具返回带 `<!--confirm_tag_add:{}-->` 标记的字符串，触发前端确认框
+5. **等待确认**: Agent 不自动执行，等待用户点击确认/取消
+6. **执行更新**: 用户确认后，使用工具更新 `table_index.json` 中对应表的 tags 字段
 
 ### 示例场景
 
-用户: "帮我查下课程销量"
-Agent: 查找表，tags 中无"课程"关键词，匹配失败
-用户: "是 edu_course 表"
-Agent: 识别到"课程"与"edu_course"关联，发送 confirm_tag_add 类型消息
-前端显示: "是否将'课程'添加到 edu_course 的标签？"
-用户点击"是" → Agent 执行更新
+用户: "帮我查下aa表的数据"
+Agent: 查找表，tags 中无"aa"关键词，匹配失败
+用户: "aa表就是edu_student表"
+Agent: 识别到"aa"与"edu_student"关联，调用 `request_tag_confirmation(term="aa", table="edu_student", description="学生")`
+前端显示: "是否将'aa'添加到 edu_student 的标签？"
+用户点击"是" → 标签添加成功
 用户点击"否" → 忽略
