@@ -20,6 +20,10 @@ export function loadTableIndex() {
   return cachedTableIndex;
 }
 
+export function clearTableIndexCache() {
+  cachedTableIndex = null;
+}
+
 export function loadSkillMd() {
   if (cachedSkillMd) return cachedSkillMd;
 

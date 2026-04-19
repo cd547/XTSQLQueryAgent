@@ -416,6 +416,17 @@
       ],
       "business_constraints": [],
       "business_rules": []
+    },
+    {
+      "name": "order_student_refund",
+      "description": "订单退款记录",
+      "tags": [],
+      "related_tables": [
+        "order_student",
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
     }
   ]
 }
