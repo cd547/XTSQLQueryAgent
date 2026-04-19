@@ -542,6 +542,7 @@ ${JSON.stringify(tableIndex, null, 2)}
 - get_table_ddl(table_name): 获取指定表的DDL建表语句
 - get_output_format: 获取SQL输出的格式规范和模板
 - request_tag_confirmation(term, table, description): 请求用户确认是否将术语添加到表的标签中。当用户纠正表名或提供新的术语-表关联时使用。
+- get_mysql_limits: 获取MySQL 5.7的语法限制和注意事项
 
 ## 返回格式（必须严格遵守）
 使用 markdown 格式返回，包含以下部分：
@@ -866,6 +867,7 @@ ${JSON.stringify(tableIndex, null, 2)}
 - get_table_ddl(table_name): 获取指定表的DDL建表语句。参数: table_name(表名，必须)。
 - get_output_format: 获取SQL输出的格式规范和模板。
 - request_tag_confirmation(term, table, description): 请求用户确认是否将术语添加到表的标签中。当用户纠正表名或提供新的术语-表关联时使用。
+- get_mysql_limits: 获取MySQL 5.7的语法限制和注意事项。
 
 ## 工具使用方法
 1. 首先使用 get_tables 工具获取所有可用表列表，了解数据库结构
