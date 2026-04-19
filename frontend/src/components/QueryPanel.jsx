@@ -204,6 +204,7 @@ function QueryPanel() {
                 console.log('Received done message:', data);
                 // 检查是否有 confirm_tag_add
                 if (data.confirm_tag_add) {
+                  console.log('confirm_tag_add detected:', data.confirm_tag_add);
                   setConfirmTagAdd({
                     visible: true,
                     term: data.confirm_tag_add.term,
