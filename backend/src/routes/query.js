@@ -358,7 +358,25 @@ logger.info('Stream done, sending final result', { sql: sql?.substring(0, 50), m
           }
         }
         
-        res.write(`data: ${JSON.stringify({ type: 'done', sql, message, sessionId, totalTokens })}\n\n`);
+        const doneData = {
+          type: 'done',
+          sql,
+          message,
+          sessionId,
+          totalTokens
+        };
+
+        const confirmMatch = message.match(/<!--confirm_tag_add:(\{[^}]+\})-->/);
+        if (confirmMatch) {
+          try {
+            const confirmData = JSON.parse(confirmMatch[1]);
+            doneData.confirm_tag_add = confirmData;
+          } catch (e) {
+            logger.warn('confirm_tag_add parse failed', { error: e.message });
+          }
+        }
+
+        res.write(`data: ${JSON.stringify(doneData)}\n\n`);
       } catch (error) {
         logger.error('Stream query failed', { error: error.message, stack: error.stack });
         res.write(`data: ${JSON.stringify({ type: 'error', content: error.message })}\n\n`);
