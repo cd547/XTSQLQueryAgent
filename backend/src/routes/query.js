@@ -366,12 +366,6 @@ logger.info('Stream done, sending final result', { sql: sql?.substring(0, 50), m
           totalTokens
         };
 
-        logger.info('Sending done message', { 
-          messageLength: message?.length, 
-          hasConfirmTag: message?.includes('confirm_tag_add'),
-          confirmTagData: message?.match(/<!--confirm_tag_add:(\{[^}]+\})-->/)?.[1]
-        });
-
         const confirmMatch = message.match(/<!--confirm_tag_add:(\{[^}]+\})-->/);
         if (confirmMatch) {
           try {

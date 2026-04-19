@@ -69,7 +69,6 @@ async function generateSQLWithLangChain(question, history = '') {
   let config;
   try {
     config = getLlmConfig();
-    console.log(config);
   } catch (e) {
     logger.error('getLlmConfig failed', { error: e.message });
     throw new Error('LLM未配置，请先在配置面板设置LLM Provider和API Key');
@@ -158,8 +157,6 @@ ${history}
       }))
     };
 
-    console.log('=== DeepSeek API Request (round ' + (21 - maxToolCalls) + ') ===');
-
     try {
       const fetchResponse = await fetch(`${baseURL}/chat/completions`, {
         method: 'POST',
@@ -171,8 +168,6 @@ ${history}
       });
       
       const json = await fetchResponse.json();
-      console.log('=== DeepSeek API Response (round ' + (21 - maxToolCalls) + ') ===');
-      console.log(JSON.stringify(json, null, 2));
       
       const assistantMessage = json.choices?.[0]?.message;
       responseText = assistantMessage?.content || '';
@@ -184,12 +179,10 @@ ${history}
       });
 
       if (assistantMessage?.tool_calls && assistantMessage.tool_calls.length > 0) {
-        console.log('=== Tool calls detected ===');
         
         for (const toolCall of assistantMessage.tool_calls) {
           const toolName = toolCall.function.name;
           const toolArgs = toolCall.function.arguments || '{}';
-          console.log('Calling tool:', toolName, 'with args:', toolArgs);
           
           const tool = toolsMap.get(toolName);
           if (tool) {
@@ -197,7 +190,6 @@ ${history}
               const parsedArgs = JSON.parse(toolArgs);
               const paramValue = parsedArgs.table_name || parsedArgs[Object.keys(parsedArgs)[0]] || '';
               const toolResult = tool.func(parsedArgs);
-              console.log('Tool result:', toolResult);
               
               messages.push({
                 role: 'tool',
@@ -307,8 +299,6 @@ ${history}
   let sql = '';
   
   while (maxToolCalls > 0) {
-    console.log(`第${31 - maxToolCalls}次调用`);
-
     const requestParams = {
       model: llmModel,
       messages: messages,
@@ -578,8 +568,6 @@ ${history}
   let responseText = '';
   
   while (maxToolCalls > 0) {
-    console.log(`第${16 - maxToolCalls}次调用`);
-    
     const requestParams = {
       model: llmModel,
       messages: messages,
@@ -773,39 +761,24 @@ ${history}
   let sql = '';
   let message = '';
 
-  console.log('=== 解析最终响应 ===');
-  console.log('responseText 长度:', responseText?.length);
-  console.log('responseText 前200字符:', responseText?.substring(0, 200) + '...');
-
   // 提取 JSON 从 code block 中
   let jsonText = responseText;
   const codeBlockMatch = responseText.match(/```json\s*([\s\S]*?)\s*```/);
   if (codeBlockMatch && codeBlockMatch[1]) {
     jsonText = codeBlockMatch[1];
-    console.log('提取到 code block JSON，长度:', jsonText.length);
-    console.log('提取的 JSON 前200字符:', jsonText.substring(0, 200) + '...');
   }
 
   try {
-    console.log('准备解析的 JSON 前200字符:', jsonText?.trim().substring(0, 200) + '...');
     const parsed = JSON.parse(jsonText.trim());
     sql = parsed.sql || responseText;
     message = parsed.message || '';
-    console.log('解析成功 - sql长度:', sql?.length, 'message长度:', message?.length);
   } catch (e) {
-    console.log('JSON解析失败:', e.message);
-    console.log('失败的内容前200字符:', jsonText?.trim().substring(0, 200) + '...');
-    
     // 尝试提取 SQL 代码块
     const sqlCodeBlockMatch = responseText.match(/```sql\s*([\s\S]*?)\s*```/);
     if (sqlCodeBlockMatch && sqlCodeBlockMatch[1]) {
-      console.log('找到 SQL 代码块，提取 SQL');
       sql = sqlCodeBlockMatch[1].trim();
       message = '从 SQL 代码块中提取的查询';
-      console.log('SQL 提取成功，长度:', sql.length);
     } else {
-      // 如果都失败，使用原始文本
-      console.log('未找到 SQL 代码块，使用原始文本');
       sql = responseText;
     }
   }
@@ -1019,20 +992,12 @@ ${history}
       const codeBlockMatch = fullContent.match(/```json\s*([\s\S]*?)\s*```/);
       if (codeBlockMatch && codeBlockMatch[1]) {
         jsonText = codeBlockMatch[1];
-        console.log('提取到 code block JSON，长度:', jsonText.length);
-      } else {
-        console.log('未找到 code block，使用完整内容，长度:', fullContent.length);
-        console.log('完整内容前200字符:', fullContent.substring(0, 200) + '...');
       }
       
-      console.log('准备解析的 JSON 前200字符:', jsonText.trim().substring(0, 200) + '...');
       const parsed = JSON.parse(jsonText.trim());
       sql = parsed.sql || fullContent;
       message = parsed.message || '';
-      console.log('JSON 解析成功，sql长度:', sql?.length, 'message长度:', message?.length);
     } catch (e) {
-      console.log('JSON 解析失败:', e.message);
-      console.log('失败的内容前200字符:', fullContent.substring(0, 200) + '...');
       sql = fullContent;
     }
     

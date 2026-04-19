@@ -101,7 +101,6 @@ export const tools = [
     name: "get_table_schema",
     description: "获取指定表的部分字段的详细信息，包括字段别名、枚举值、业务约束等。参数: table_name(表名，必须)",
     func: (tableName) => {
-      console.log('get_table_schema called with:', tableName);
       if (!tableName) return '请提供表名参数';
       try {
         if (typeof tableName === 'object') {
@@ -118,7 +117,6 @@ export const tools = [
     name: "get_table_ddl",
     description: "获取指定表的DDL建表语句。参数: table_name(表名，必须)",
     func: (tableName) => {
-      console.log('get_table_ddl called with:', tableName);
       if (!tableName) return '请提供表名参数';
       try {
         if (typeof tableName === 'object') {
@@ -135,7 +133,6 @@ export const tools = [
     name: "get_output_format",
     description: "获取SQL输出的格式规范和模板。",
     func: () => {
-      console.log('get_output_format called');
       return getOutputFormat();
     }
   }),
@@ -143,7 +140,6 @@ export const tools = [
     name: "request_tag_confirmation",
     description: "请求用户确认是否将术语添加到表的标签中。当用户纠正表名或提供新的术语-表关联时使用。参数: term(术语/关键词), table(表名), description(表的描述)。返回带特殊标记的字符串，会触发前端确认框弹出。",
     func: (params) => {
-      console.log('request_tag_confirmation called with:', params);
       let term, table, description;
       try {
         if (typeof params === 'object') {
@@ -169,7 +165,6 @@ export const tools = [
     name: "get_mysql_limits",
     description: "获取MySQL 5.7的语法限制和注意事项。",
     func: () => {
-      console.log('get_mysql_limits called');
       return getMysqlLimits();
     }
   })
