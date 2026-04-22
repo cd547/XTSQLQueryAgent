@@ -1,0 +1,9 @@
+{
+  "table_name": "edu_course_exam_subject_name_price_list",
+  "field_aliases": {},
+  "field_enums": {},
+  "virtual_associations": [],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}

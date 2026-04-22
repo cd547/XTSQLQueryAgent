@@ -429,6 +429,67 @@
       ],
       "business_constraints": [],
       "business_rules": []
+    },
+    {
+      "name": "edu_goods",
+      "description": "产品-主表",
+      "tags": [],
+      "related_tables": [
+        "admin_user",
+        "edu_course_exam_subject_name_price",
+        "order_pattern",
+        "edu_goods_section",
+        "order_contract_template",
+        "edu_student_type",
+        "admin_division",
+        "edu_goods_year",
+        "edu_campus"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_course_exam_subject_name_price",
+      "description": "科目名称标准单价",
+      "tags": [],
+      "related_tables": [
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_course_exam_subject_name_price_list",
+      "description": "科目名称标准单价详细信息",
+      "tags": [],
+      "related_tables": [
+        "edu_course_exam_subject_name_price",
+        "edu_course_exam_subject_name"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "order_student_class",
+      "description": "订单关联科目",
+      "tags": [],
+      "related_tables": [
+        "order_student",
+        "edu_course_exam_subject_name"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_goods_subject_name",
+      "description": "产品-绑定的科目名称",
+      "tags": [],
+      "related_tables": [
+        "edu_course_exam_subject_name",
+        "edu_goods"
+      ],
+      "business_constraints": [],
+      "business_rules": []
     }
   ]
 }

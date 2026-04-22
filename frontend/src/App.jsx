@@ -5,6 +5,7 @@ import 'react-resizable/css/styles.css';
 const { Panel } = Collapse;
 
 import ConfirmDialog from './components/ConfirmDialog';
+import * as api from './api/index.js';
 
 function ResizableTitle(props) {
   const { onResize, width, children, ...restProps } = props;
@@ -244,7 +245,7 @@ function App() {
     if (loadCurrentModel.loading) return;
     loadCurrentModel.loading = true;
     try {
-      const data = await fetch('http://localhost:5002/api/config/llm').then(r => r.json());
+      const data = await api.getLlMConfig();
       setCurrentModel(data.model || '');
     } catch (e) {} finally {
       loadCurrentModel.loading = false;
@@ -544,7 +545,7 @@ function App() {
     setIsStreaming(true);
     
     try {
-      const response = await fetch('http://localhost:5002/api/query/generate', {
+      const response = await fetch('/api/query/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ question: userMessage, schemaMode: 'stream', sessionId: currentSessionId })
@@ -668,7 +669,7 @@ function App() {
   const handleConfirmTagAdd = async () => {
     const { table, term } = confirmTagAdd;
     try {
-      const res = await fetch('http://localhost:5002/api/skills/add-tag', {
+      const res = await fetch('/api/skills/add-tag', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -773,11 +774,7 @@ const handleExplain = async (sql) => {
     setExplainAnalysisLoading(true);
     
     try {
-      const response = await fetch('http://localhost:5002/api/query/explain-analyze', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ sql: getSelectedSql(), explainResults: explainResults })
-      });
+      const response = await api.explainAnalyze(getSelectedSql(), explainResults);
       
       if (!response.ok) {
         message.error('请求失败');
@@ -1712,7 +1709,7 @@ function ConfigPanel({ compact }) {
 const [savingAgent, setSavingAgent] = useState(false);
 
   useEffect(() => {
-    fetch('http://localhost:5002/api/config/agent').then(r => r.json()).then(data => {
+    api.getAgentConfig().then(data => {
       setAgentConfig({
         max_tool_calls: data.agent_max_tool_calls || '30',
         timeout_ms: data.agent_timeout_ms || '60000'
@@ -1723,8 +1720,7 @@ const [savingAgent, setSavingAgent] = useState(false);
   const testDb = async () => {
     setTesting(true);
     try {
-      const res = await fetch('http://localhost:5002/api/config/test', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dbConfig) });
-      const data = await res.json();
+      const data = await api.testConnection(dbConfig);
       message[data.success ? 'success' : 'error'](data.message);
     } catch (e) { message.error('连接失败'); }
     finally { setTesting(false); }
@@ -1733,8 +1729,7 @@ const [savingAgent, setSavingAgent] = useState(false);
   const saveDb = async () => {
     setTesting(true);
     try {
-      const res = await fetch('http://localhost:5002/api/config/db', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(dbConfig) });
-      const data = await res.json();
+      const data = await api.saveDbConfig(dbConfig);
       message[data.success ? 'success' : 'error'](data.success ? '数据库配置已保存' : '保存失败');
     } catch (e) { message.error('保存失败'); }
     finally { setTesting(false); }
@@ -1743,8 +1738,7 @@ const [savingAgent, setSavingAgent] = useState(false);
   const saveLlm = async () => {
     setTestingLlm(true);
     try {
-      const res = await fetch('http://localhost:5002/api/config/llm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(llmConfig) });
-      const data = await res.json();
+      const data = await api.saveLlMConfig(llmConfig);
       message[data.success ? 'success' : 'error'](data.success ? '保存成功' : '保存失败');
     } catch (e) { message.error('保存失败'); }
     finally { setTestingLlm(false); }
@@ -1753,8 +1747,8 @@ const [savingAgent, setSavingAgent] = useState(false);
   const saveAgent = async () => {
     setSavingAgent(true);
     try {
-      await fetch('http://localhost:5002/api/config/agent/max_tool_calls', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: agentConfig.max_tool_calls }) });
-      await fetch('http://localhost:5002/api/config/agent/timeout_ms', { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ value: agentConfig.timeout_ms }) });
+      await api.updateAgentConfig('max_tool_calls', agentConfig.max_tool_calls);
+      await api.updateAgentConfig('timeout_ms', agentConfig.timeout_ms);
       message.success('Agent配置已保存');
     } catch (e) { message.error('保存失败'); }
     finally { setSavingAgent(false); }
