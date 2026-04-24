@@ -65,12 +65,19 @@ XTSQLQueryAgent/
 │           └── sqlite.js  # SQLite 初始化
 ├── frontend/               # React 前端
 │   └── src/
-│       ├── App.jsx        # 主应用 + ConfigPanel (约1730行)
+│   ├── App.jsx        # 主应用 + ConfigPanel (~1600行)
+│       ├── App.css
+│       ├── main.jsx
 │       ├── api/           # API 调用
-│   └── components/   # 组件
-│           ├── ChatMessage.jsx    # 聊天消息 (约180行)
-│           ├── ResizableTitle.jsx # 可调整列宽的标题 (约14行)
-│           └── ConfirmDialog.jsx # 确认对话框
+│       ├── components/   # 组件
+│       │   ├── ConfigPanel.jsx  # 配置面板 (~108行)
+│       │   ├── ChatMessage.jsx   # 聊天消息 (~180行)
+│       │   ├── ResizableTitle.jsx # 可调整列宽的标题 (~14行)
+│       │   └── ConfirmDialog.jsx # 确认对话框
+│       ├── utils/
+│       │   └── monacoEnv.js   # Monaco Editor 配置 (~25行)
+│       └── public/            # 静态资源（打包后保留）
+│           └── monaco/vs/    # Monaco Editor 语言文件 (121个)
 ├── skills/                # Skill 配置
 │   └── sql-creator-skill-v2/
 │       ├── SKILL.md       # 技能说明

@@ -4,12 +4,25 @@
 
 ### 代码拆分
 
-#### 拆分 ChatMessage 和 ResizableTitle 组件
-- 拆分为独立组件：
-  - `components/ChatMessage.jsx` - 聊天消息组件 (~180行)
-  - `components/ResizableTitle.jsx` - 表格列宽可调组件 (~14行)
-- 清理未使用的 import：Card, Resizable
-- App.jsx 从 1879 行减少到 1728 行
+#### 拆分 ConfigPanel 组件
+- 拆分为独立组件：`components/ConfigPanel.jsx` (~108行)
+- App.jsx 从 1729 行减少到 1621 行
+
+#### Monaco 配置本地化
+
+##### 问题
+- 原配置使用 `./node_modules/monaco-editor/min/vs` 路径
+- 打包后静态文件会尝试访问 node_modules 目录，导致资源加载失败
+
+##### 解决方案
+- 将 monaco-editor 的 vs 目录复制到 `public/monaco/vs/`
+- 修改 `utils/monacoEnv.js` 使用绝对路径 `/monaco/vs`
+- 移除 vite.config.js 中的 `optimizeDeps`
+
+##### 文件变更
+- 新增 `public/monaco/vs/` 目录（121个文件）
+- 新增 `utils/monacoEnv.js` - Monaco 配置
+- 修改 `vite.config.js` - 移除 optimizeDeps
 
 #### 删除未使用的组件
 - 删除 `components/ConfigPanel.jsx` - 未被引用
