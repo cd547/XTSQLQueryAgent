@@ -2,6 +2,32 @@
 
 ## 2026-04-24
 
+### 滚动条优化
+
+#### 功能
+- 左侧会话列表滚动条、聊天消息滚动条、右侧配置面板滚动条统一调细
+- 从默认粗细调整为 6px 宽度
+
+#### 修改文件
+- `frontend/src/App.css` 添加全局滚动条样式：
+  ```css
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: #f1f1f1; }
+  ::-webkit-scrollbar-thumb { background: #c1c1c1; border-radius: 3px; }
+  * { scrollbar-width: thin; scrollbar-color: #c1c1c1 #f1f1f1; }  /* Firefox */
+  ```
+
+### 聊天消息表格支持
+
+#### 功能
+- 聊天消息中的 Markdown 响应支持 GFM 表格语法渲染
+- 添加自定义表格样式：边框、padding、背景色等
+
+#### 修改文件
+- `frontend/src/App.jsx` - ChatMessage 组件：
+  - 添加 `markdownComponents` 配置表格渲染样式
+  - ReactMarkdown 添加 `remarkPlugins={[remarkGfm]}`
+
 ### Monaco Editor 搜索框问题修复
 
 #### 问题

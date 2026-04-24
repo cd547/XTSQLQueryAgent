@@ -109,10 +109,38 @@ function ChatMessage({ role, content, isStreaming, onExecute, timestamp, collaps
   }
   
   let messageText = '';
-  
+
   if (!isUser && content) {
     messageText = content;
   }
+
+  const markdownComponents = {
+    table: ({children, ...props}) => (
+      <table style={{ borderCollapse: 'collapse', width: '100%', margin: '8px 0', fontSize: 11 }} {...props}>
+        {children}
+      </table>
+    ),
+    thead: ({children, ...props}) => (
+      <thead style={{ background: '#f5f5f5' }} {...props}>
+        {children}
+      </thead>
+    ),
+    th: ({children, ...props}) => (
+      <th style={{ border: '1px solid #ddd', padding: '4px 8px', textAlign: 'left' }} {...props}>
+        {children}
+      </th>
+    ),
+    td: ({children, ...props}) => (
+      <td style={{ border: '1px solid #ddd', padding: '4px 8px' }} {...props}>
+        {children}
+      </td>
+    ),
+    tr: ({children, ...props}) => (
+      <tr style={{ background: '#fff' }} {...props}>
+        {children}
+      </tr>
+    )
+  };
   
   return (
     <div style={{
@@ -139,7 +167,7 @@ function ChatMessage({ role, content, isStreaming, onExecute, timestamp, collaps
             <div style={{ fontSize: 9, color: '#999', marginBottom: 2 }}>{timeStr}</div>
             {messageText && (
               <div style={{ color: '#333', fontSize: 12 }}>
-                <ReactMarkdown>{messageText}</ReactMarkdown>
+                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>{messageText}</ReactMarkdown>
               </div>
             )}
             {isStreaming && (
