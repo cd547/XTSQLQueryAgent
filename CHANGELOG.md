@@ -2,6 +2,20 @@
 
 ## 2026-04-24
 
+### 代码拆分
+
+#### 拆分 ChatMessage 和 ResizableTitle 组件
+- 拆分为独立组件：
+  - `components/ChatMessage.jsx` - 聊天消息组件 (~180行)
+  - `components/ResizableTitle.jsx` - 表格列宽可调组件 (~14行)
+- 清理未使用的 import：Card, Resizable
+- App.jsx 从 1879 行减少到 1728 行
+
+#### 删除未使用的组件
+- 删除 `components/ConfigPanel.jsx` - 未被引用
+- 删除 `components/QueryPanel.jsx` - 未被引用
+- App.jsx 使用内部定义的 ConfigPanel
+
 ### 滚动条优化
 
 #### 功能

@@ -65,11 +65,12 @@ XTSQLQueryAgent/
 │           └── sqlite.js  # SQLite 初始化
 ├── frontend/               # React 前端
 │   └── src/
-│       ├── App.jsx        # 主应用
+│       ├── App.jsx        # 主应用 + ConfigPanel (约1730行)
 │       ├── api/           # API 调用
-│       └── components/    # 组件
-│           ├── QueryPanel.jsx   # SQL 查询面板
-│           └── ConfigPanel.jsx  # 配置面板
+│   └── components/   # 组件
+│           ├── ChatMessage.jsx    # 聊天消息 (约180行)
+│           ├── ResizableTitle.jsx # 可调整列宽的标题 (约14行)
+│           └── ConfirmDialog.jsx # 确认对话框
 ├── skills/                # Skill 配置
 │   └── sql-creator-skill-v2/
 │       ├── SKILL.md       # 技能说明
