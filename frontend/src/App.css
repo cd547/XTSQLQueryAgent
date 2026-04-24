@@ -1,0 +1,39 @@
+/* 禁用 Monaco editor 的所有 hover 提示 */
+.monaco-editor .monaco-hover,
+.monaco-editor .hover-contents,
+.monaco-editor .monaco-hover-widget,
+.monaco-editor .workbench-hover,
+.monaco-editor .workbench-hover-container,
+.monaco-editor .monaco-editor-hover,
+.monaco-editor .find-widget .monaco-tooltip,
+.monaco-editor .find-widget .monaco-tooltip-trigger,
+.monaco-editor .overflowingContentWidget,
+.monaco-editor .monacomousecursorwidget,
+.monaco-editor .monaco-scrollable-element > .scrollbar > .slider {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  height: 0 !important;
+  width: 0 !important;
+  pointer-events: none !important;
+}
+
+/* 修复 find-widget 按钮点击问题 */
+.monaco-editor .find-widget .monaco-action-bar .action-label {
+  opacity: 1 !important;
+  visibility: visible !important;
+}
+
+.monaco-editor .find-widget .monaco-action-bar .action-label:hover {
+  opacity: 1 !important;
+}
+
+.monaco-editor .find-widget .monaco-action-bar .action-label:before,
+.monaco-editor .find-widget .monaco-action-bar .action-label:after {
+  display: none !important;
+}
+
+/* 确保 find-widget 按钮可点击 */
+.monaco-editor .find-widget .monaco-action-bar {
+  pointer-events: auto !important;
+}

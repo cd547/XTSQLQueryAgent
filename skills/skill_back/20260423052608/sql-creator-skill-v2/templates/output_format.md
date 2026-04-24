@@ -23,4 +23,3 @@ LIMIT 1000;
 - 不使用 SELECT *
 - 大表查询添加 LIMIT
 - DELETE/UPDATE 必须有 WHERE 条件
-- 只输出一条最合适的SQL语句

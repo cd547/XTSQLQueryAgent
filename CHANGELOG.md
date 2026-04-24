@@ -1,5 +1,29 @@
 # 更新日志
 
+## 2026-04-24
+
+### Monaco Editor 搜索框问题修复
+
+#### 问题
+- 代码编辑器搜索框 (Ctrl+F) 的关闭按钮无法点击
+- 鼠标悬停时提示框不停闪烁
+
+#### 解决方案
+- 在 `onMount` 中动态注入 CSS 样式
+- 使用定时器每 100ms 检测并隐藏 tooltip 元素
+- 禁用 Monaco Editor 的多个提示功能：
+  - `hover: { enabled: false }`
+  - `quickSuggestions: false`
+  - `parameterHints: { enabled: false }`
+  - `suggestOnTriggerCharacters: false`
+  - `acceptSuggestionOnEnter: 'off'`
+  - `tabCompletion: 'off'`
+  - `wordBasedSuggestions: 'off'`
+
+#### 修改文件
+- `frontend/src/App.jsx` - SQL Editor 配置和 onMount 逻辑
+- `frontend/src/App.css` - CSS 样式覆盖
+
 ## 2026-04-18
 
 ### 总结聊天记录功能 (新增)

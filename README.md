@@ -24,6 +24,7 @@
 | 流式输出 | SSE 实时显示 LLM 思考过程 |
 | Tool 调用 | 自动获取表结构、DDL、输出格式等 |
 | Skill V2 | 结构化表结构说明和字段配置 |
+| Markdown 表格 | 支持 GFM 表格语法渲染 |
 
 ### 辅助功能
 
@@ -144,14 +145,20 @@ XTSQLQueryAgent/
 
 ### 启动
 
-```bash
-# 后端
-cd backend
-npm start
+从项目根目录一键启动（自动先启动后端，等待就绪后再启动前端）：
 
-# 前端
-cd frontend
+```bash
 npm run dev
+```
+
+或分别启动：
+
+```bash
+# 后端 (端口 5002)
+npm run dev:backend
+
+# 前端 (端口 5173)
+npm run dev:frontend
 ```
 
 访问 http://localhost:5173

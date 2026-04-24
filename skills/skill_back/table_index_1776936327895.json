@@ -451,9 +451,7 @@
     {
       "name": "edu_course_exam_subject_name_price",
       "description": "科目名称标准单价",
-      "tags": [
-        "价格体系"
-      ],
+      "tags": [],
       "related_tables": [
         "admin_user"
       ],
@@ -489,38 +487,6 @@
       "related_tables": [
         "edu_course_exam_subject_name",
         "edu_goods"
-      ],
-      "business_constraints": [],
-      "business_rules": []
-    },
-    {
-      "name": "order_contract_template",
-      "description": "合同模版(datasy)",
-      "tags": [],
-      "related_tables": [
-        "admin_division"
-      ],
-      "business_constraints": [],
-      "business_rules": []
-    },
-    {
-      "name": "order_contract",
-      "description": "合同",
-      "tags": [],
-      "related_tables": [
-        "order_student"
-      ],
-      "business_constraints": [],
-      "business_rules": []
-    },
-    {
-      "name": "order_list",
-      "description": "订单列表",
-      "tags": [],
-      "related_tables": [
-        "my_user",
-        "admin_user",
-        "admin_pay_order"
       ],
       "business_constraints": [],
       "business_rules": []

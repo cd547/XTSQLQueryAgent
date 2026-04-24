@@ -1,0 +1,23 @@
+CREATE TABLE `order_contract` (
+  `id` bigint(11) NOT NULL AUTO_INCREMENT,
+  `order_student_id` bigint(11) NOT NULL COMMENT '订单ID',
+  `type` int(11) NOT NULL COMMENT '类型1合同2收据',
+  `name` varchar(255) DEFAULT NULL COMMENT '学生姓名',
+  `birthday` varchar(255) DEFAULT NULL COMMENT '学生出生日期',
+  `first_name` varchar(255) DEFAULT NULL COMMENT '甲方姓名',
+  `first_name_english` varchar(1024) DEFAULT NULL COMMENT '甲方姓名英文',
+  `contact` varchar(255) DEFAULT NULL COMMENT '甲方联系方式',
+  `personal_id` varchar(255) DEFAULT NULL COMMENT '甲方身份证或护照号',
+  `apply_country` varchar(255) DEFAULT NULL COMMENT '申请国家',
+  `relation` varchar(255) DEFAULT NULL COMMENT '学生与甲方的关系',
+  `first_sign_url` varchar(2048) NOT NULL COMMENT '甲方签字URL',
+  `contract_url` varchar(2048) NOT NULL COMMENT '合同PDF URL',
+  `preview_url` varchar(2048) NOT NULL COMMENT '合同预览 URL',
+  `pay_method` varchar(255) DEFAULT NULL COMMENT '支付方式',
+  `created_time` bigint(11) NOT NULL,
+  `update_time` bigint(11) NOT NULL,
+  `del` int(11) NOT NULL DEFAULT '0',
+  PRIMARY KEY (`id`),
+  KEY `order_contract1` (`order_student_id`) USING BTREE,
+  CONSTRAINT `order_contract_ibfk_1` FOREIGN KEY (`order_student_id`) REFERENCES `order_student` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB AUTO_INCREMENT=6718 DEFAULT CHARSET=utf8mb4 COMMENT='合同'

@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Layout, Input, Button, Table, Card, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, InputNumber, Modal, Steps, Space, Dropdown } from 'antd';
 import { Resizable } from 'react-resizable';
 import 'react-resizable/css/styles.css';
+import './App.css';
 const { Panel } = Collapse;
 
 import ConfirmDialog from './components/ConfirmDialog';
@@ -1162,7 +1163,38 @@ items={[
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} ref={resizerRef}>
                             <div style={{ border: '1px solid #d9d9d9', borderRadius: 4, position: 'relative' }}>
 <Editor
-                                onMount={(editor) => setSqlEditorInst(editor)}
+                                onMount={(editor, monaco) => {
+                                  setSqlEditorInst(editor);
+                                  
+                                  const styleId = 'monaco-tooltip-disable-style';
+                                  if (!document.getElementById(styleId)) {
+                                    const style = document.createElement('style');
+                                    style.id = styleId;
+                                    style.textContent = `
+                                      .monaco-hover, 
+                                      .monaco-editor-hover, 
+                                      .workbench-hover,
+                                      .find-widget .monaco-tooltip {
+                                        display: none !important;
+                                        visibility: hidden !important;
+                                      }
+                                      .find-widget .monaco-action-bar .action-label::before,
+                                      .find-widget .monaco-action-bar .action-label::after {
+                                        display: none !important;
+                                      }
+                                    `;
+                                    document.head.appendChild(style);
+                                  }
+                                  
+                                  setInterval(() => {
+                                    const widgets = document.querySelectorAll('.monaco-hover, .monaco-editor-hover, .workbench-hover, .monaco-tooltip');
+                                    widgets.forEach(w => {
+                                      if (w.style.display !== 'none') {
+                                        w.style.display = 'none';
+                                      }
+                                    });
+                                  }, 100);
+                                }}
                                 height={sqlPreviewHeight}
                                 defaultLanguage="sql"
                                 value={sqlInput}
@@ -1177,7 +1209,14 @@ items={[
                                   wordWrap: 'on',
                                   folding: false,
                                   glyphMargin: false,
-                                  renderLineHighlight: 'none'
+                                  renderLineHighlight: 'none',
+                                  hover: { enabled: false },
+                                  quickSuggestions: false,
+                                  parameterHints: { enabled: false },
+                                  suggestOnTriggerCharacters: false,
+                                  acceptSuggestionOnEnter: 'off',
+                                  tabCompletion: 'off',
+                                  wordBasedSuggestions: 'off'
                                 }}
                               />
                               <div
@@ -1570,7 +1609,8 @@ children: currentResults.length > 0 ? (
                     lineNumbers: 'on',
                     scrollBeyondLastLine: false,
                     automaticLayout: true,
-                    wordWrap: 'on'
+                    wordWrap: 'on',
+                    hover: { enabled: false }
                   }}
                 />
               </div>
