@@ -6,8 +6,7 @@
       "name": "edu_course",
       "description": "课程(一级)",
       "tags": [
-        "一级科目",
-        "AAA"
+        "一级科目"
       ],
       "related_tables": [
         "edu_course_exam"

@@ -44,7 +44,7 @@ function queueLog(content, immediate = false) {
 function getProviderConfig(provider, model) {
   const configs = {
     openai: { baseURL: 'https://api.openai.com/v1', model: 'gpt-4o' },
-    deepseek: { baseURL: 'https://api.deepseek.com', model: 'deepseek-chat' },
+    deepseek: { baseURL: 'https://api.deepseek.com', model: 'deepseek-v4-flash' },
     minimax: { baseURL: 'https://api.minimax.chat/v1', model: 'abab6.5s-chat' },
     ollama: { baseURL: 'http://localhost:11434', model: 'llama3.2' }
   };
@@ -305,7 +305,10 @@ ${history}
       temperature: 0,
       stream: true,
       stream_options: { include_usage: true },
-      tools: toolsDefinition
+      tools: toolsDefinition,
+      thinking: {
+        type: 'enabled'
+      }
     };
 
     queueLog('generateSQLWithLangChainStreamGen_BAK Round ' + (31 - maxToolCalls) + ' Request:\n' + JSON.stringify(requestParams, null, 2), true);
@@ -331,7 +334,7 @@ ${history}
       let buffer = '';
       const streamToolCalls = [];
       responseText = '';
-
+      let reasoningContent = '';
 while (true) {
         const { done, value } = await reader.read();
         
@@ -356,6 +359,11 @@ while (true) {
               if (content) {
                 responseText += content;
                 yield { type: 'chunk', content: content };
+              }
+                            // 提取 reasoning_content（DeepSeek API 要求）
+              const reasoning = data.choices?.[0]?.delta?.reasoning_content || '';
+              if (reasoning) {
+                reasoningContent += reasoning;
               }
               
               // 检查工具调用
@@ -399,8 +407,8 @@ while (true) {
       }
 
       // 输出LLM的思考过程（reasoning）
-      if (responseText) {
-        yield { type: 'LLM', log: `💭 LLM思考过程:\n${responseText.slice(0, 10000)}` };
+      if (reasoningContent) {
+        yield { type: 'LLM', log: `💭 LLM思考过程:\n${reasoningContent.slice(0, 10000)}` };
       }
 
       // 过滤出有实际工具名称的工具调用
@@ -423,7 +431,8 @@ while (true) {
       // 保存 assistant 消息，需要包含 tool_calls
       const assistantMsg = {
         role: 'assistant',
-        content: responseText || ''
+        content: responseText || '',
+        reasoning_content: reasoningContent || '',
       };
       if (validToolCalls.length > 0) {
         // 为每个 tool_call 确保有 id

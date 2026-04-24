@@ -618,7 +618,7 @@ ${JSON.stringify(explainResults, null, 2)}
 
     const provider = config.provider || 'deepseek';
     const apiKey = config.apiKey;
-    const model = config.model || 'deepseek-chat';
+    const model =config.model || 'deepseek-chat';
     
     let apiUrl = '';
     let requestBody = {};
@@ -627,6 +627,9 @@ ${JSON.stringify(explainResults, null, 2)}
       apiUrl = 'https://api.deepseek.com/chat/completions';
       requestBody = {
         model: model,
+        thinking:{
+          type: 'disabled'
+        },
         messages: [{ role: 'user', content: prompt }],
         temperature: 0,
         stream: true
@@ -642,7 +645,6 @@ ${JSON.stringify(explainResults, null, 2)}
     } else {
       return res.json({ error: '不支持的 LLM provider', rowCount: 0 });
     }
-
     const response = await fetch(apiUrl, {
       method: 'POST',
       headers: {
@@ -666,7 +668,6 @@ ${JSON.stringify(explainResults, null, 2)}
 
       const text = decoder.decode(value);
       const lines = text.split('\n');
-
       for (const line of lines) {
         if (line.startsWith('data: ')) {
           const dataStr = line.slice(6);
