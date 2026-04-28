@@ -48,9 +48,9 @@ export function getTableDDL(tableNames) {
   return names.map(name => {
     const ddlPath = path.join(SKILL_V2_PATH, 'ddl', `${name}.sql`);
     if (fs.existsSync(ddlPath)) {
-      return `-- ========== ${name} ==========\n${fs.readFileSync(ddlPath, 'utf-8')}`;
+      return `-- @@TABLE ${name}\n${fs.readFileSync(ddlPath, 'utf-8')}`;
     }
-    return `-- ========== ${name} ==========\n-- 表 ${name} 的DDL不存在`;
+    return `-- @@TABLE ${name}\n-- 表 ${name} 的DDL不存在`;
   }).join('\n\n');
 }
 
@@ -157,18 +157,6 @@ export const tools = [
     }
   }),
   new DynamicTool({
-    name: "get_output_format",
-    description: "获取SQL输出的格式规范和模板。",
-    params: {
-      type: 'object',
-      properties: {},
-      required: []
-    },
-    func: () => {
-      return getOutputFormat();
-    }
-  }),
-  new DynamicTool({
     name: "request_tag_confirmation",
     description: "请求用户确认是否将术语添加到表的标签中。当用户纠正表名或提供新的术语-表关联时使用。返回带特殊标记的字符串，会触发前端确认框弹出。",
     params: {
@@ -200,18 +188,6 @@ export const tools = [
       }
       
       return requestTagConfirmation(term, table, description || '');
-    }
-  }),
-  new DynamicTool({
-    name: "get_mysql_limits",
-    description: "获取MySQL 5.7的语法限制和注意事项。",
-    params: {
-      type: 'object',
-      properties: {},
-      required: []
-    },
-    func: () => {
-      return getMysqlLimits();
     }
   })
 ];

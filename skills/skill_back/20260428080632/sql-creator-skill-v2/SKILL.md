@@ -4,14 +4,14 @@ description: 智能SQL生成，基于表索引、字段配置、DDL，输出安�
 ---
 
 ## 核心规则（必须遵守）
-1. **不回答与SQL生成无关的问题**：对无关问题必须直接拒绝输出，不得补充任何信息性回答或猜测内容。
-2. **查询类型**：SELECT/INSERT/UPDATE/DELETE，根据用户需求判断。
-3. **找表**：从 `table_index.json` 用 tags/description 匹配。找不到或不确定 → 停止调用工具，询问用户，禁止猜测。
-4. **关联表**：先用 matched 表的 `related_tables`，再用 `field_config/*.json` 中的 `virtual_associations`。
-5. **字段**：必须来自对应表的 DDL（`ddl/表名.sql`）。读取 `field_config/表名.json` 获取别名/枚举/约束。
-6. **输出字段**：严格按 DDL 字段名，不用 SELECT *。
-7. **MySQL 5.7 限制**：不支持窗口函数、CTE、JSON_TABLE 等，用替代方案（子查询/临时表）。
-8. **生成 SQL**：必须按以下模板输出，大表加 LIMIT 1000，UPDATE/DELETE 必须有 WHERE。
+
+1. **查询类型**：SELECT/INSERT/UPDATE/DELETE，根据用户需求判断。
+2. **找表**：从 `table_index.json` 用 tags/description 匹配。找不到或不确定 → 停止调用工具，询问用户，禁止猜测。
+3. **关联表**：先用 matched 表的 `related_tables`，再用 `field_config/*.json` 中的 `virtual_associations`。
+4. **字段**：必须来自对应表的 DDL（`ddl/表名.sql`）。读取 `field_config/表名.json` 获取别名/枚举/约束。
+5. **输出字段**：严格按 DDL 字段名，不用 SELECT *。
+6. **MySQL 5.7 限制**：不支持窗口函数、CTE、JSON_TABLE 等，用替代方案（子查询/临时表）。
+7. **生成 SQL**：必须按以下模板输出，大表加 LIMIT 1000，UPDATE/DELETE 必须有 WHERE。
 
 ## SQL 输出模板
 
@@ -29,8 +29,8 @@ LIMIT 1000;
 
 -- 说明: {详细业务说明}
 -- 警告: {如有风险操作}
-9. **歧义处理**：一个业务词匹配多个表 → 询问用户确认。
-10. **工具调用约束**：只在确定需要用到某个表的字段或关联时，才调用工具获取其信息。禁止因为存在虚拟关联而主动扩展查询不相关的表。
+8. **歧义处理**：一个业务词匹配多个表 → 询问用户确认。
+9. **不回答与SQL生成无关的问题**：对无关问题必须直接拒绝输出，不得补充任何信息性回答或猜测内容。
     
 ## 数据源
 

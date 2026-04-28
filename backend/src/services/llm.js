@@ -264,7 +264,7 @@ export async function* generateSQLWithLangChainStreamGen_BAK(question, history =
   const toolsMap = new Map(tools.map(t => [t.name, t]));
   //const tableIndex = loadTableIndex();
 
-  const systemMessage = `你是一个SQL查询专家。必须先读取并严格遵守 skills/sql-creator-skill-v2/SKILL.md 的规范，随后根据用户问题生成SQL。
+  const systemMessage = `你是一个SQL查询专家。必须先读取并严格遵守 SKILL.md 的规范，随后根据用户问题生成SQL。
 
 ## SKILL.md 内容（只读，严格执行）
 ${skillMd}
