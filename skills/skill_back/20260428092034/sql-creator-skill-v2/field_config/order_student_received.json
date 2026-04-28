@@ -5,5 +5,5 @@
   "virtual_associations": [],
   "calculated_fields": {},
   "business_constraints": {},
-  "business_rules": ["collection_date字段存的是13位时间戳"]
+  "business_rules": []
 }

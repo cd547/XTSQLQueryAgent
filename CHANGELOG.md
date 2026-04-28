@@ -1,5 +1,39 @@
 # 更新日志
 
+## 2026-04-28
+
+### 工具函数重构
+
+#### 统一参数处理逻辑
+- **参数解析统一**：使用 `lc_kwargs.params` 或默认空对象作为参数源
+- **明确参数定义**：为所有工具添加 `params` 定义（type/properties/required）
+- **兼容性增强**：支持对象和字符串两种参数格式输入
+
+#### 批量获取支持
+- **表结构批量获取**：`get_table_schema` 支持传入表名数组
+- **DDL批量获取**：`get_table_ddl` 支持传入表名数组
+- **返回格式优化**：单个表返回对象，多个表返回 `{table1: {...}, table2: {...}}`
+
+#### Skill 配置优化
+- **移除未使用函数**：删除 `get_output_format` 和 `get_mysql_limits`
+- **DDL输出格式**：简化为 `-- @@TABLE {表名}` 标记
+- **SKILL.md规则调整**：增加工具调用约束，禁止主动扩展不相关表
+
+#### 工具函数描述优化
+- **get_tables**：明确列出 business_constraints/business_rules
+- **get_table_schema**：说明支持多表批量获取
+- **get_table_ddl**：说明支持多表批量获取
+- **request_tag_confirmation**：说明触发前端确认框的行为
+
+### LLM 服务更新
+
+#### thinking 配置支持
+- **reasoning_content 处理**：解析 `reasoning_content` 字段作为思考过程
+- **thinking 配置**：支持 thinking 参数配置
+
+#### 模型支持
+- **deepseek-v4-flash**：新增模型支持
+
 ## 2026-04-24
 
 ### 代码拆分

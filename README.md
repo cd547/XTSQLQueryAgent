@@ -22,7 +22,7 @@
 |------|------|
 | 多 Provider 支持 | OpenAI、DeepSeek、MiniMax、Ollama (本地) |
 | 流式输出 | SSE 实时显示 LLM 思考过程 |
-| Tool 调用 | 自动获取表结构、DDL、输出格式等 |
+| Tool 调用 | 自动获取表结构、DDL、输出格式等，支持批量获取 |
 | Skill V2 | 结构化表结构说明和字段配置 |
 | Markdown 表格 | 支持 GFM 表格语法渲染 |
 | 滚动条优化 | 统一调细，更窄更精致 |
@@ -196,6 +196,7 @@ npm run dev:frontend
 ### 智能标签关联
 
 当用户纠正表名时，Agent 会自动检测并询问用户是否将术语添加到对应表的标签中：
+- 使用 `request_tag_confirmation` 工具触发确认框
 
 1. 用户说"aa表就是edu_student"
 2. Agent 调用 `request_tag_confirmation` 工具
