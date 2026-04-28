@@ -148,11 +148,7 @@ ${history}
         function: {
           name: t.name,
           description: t.description,
-          parameters: {
-            type: 'object',
-            properties: {},
-            required: []
-          }
+          parameters: t.lc_kwargs.params || { type: 'object', properties: {}, required: [] }
         }
       }))
     };
@@ -261,11 +257,7 @@ export async function* generateSQLWithLangChainStreamGen_BAK(question, history =
     function: {
       name: t.name,
       description: t.description,
-      parameters: {
-        type: 'object',
-        properties: {},
-        required: []
-      }
+      parameters: t.lc_kwargs.params || { type: 'object', properties: {}, required: [] }
     }
   }));
 
@@ -563,11 +555,7 @@ ${history}
     function: {
       name: t.name,
       description: t.description,
-      parameters: {
-        type: 'object',
-        properties: {},
-        required: []
-      }
+      parameters: t.lc_kwargs.params || { type: 'object', properties: {}, required: [] }
     }
   }));
 

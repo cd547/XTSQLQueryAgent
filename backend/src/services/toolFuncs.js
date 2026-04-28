@@ -69,6 +69,11 @@ export const tools = [
   new DynamicTool({
     name: "get_tables",
     description: "从table_index.json中获取所有可用的表列表。每个表包含name(表名)、description(描述)、tags(标签)、related_tables(关联表)、business_constraints(业务约束)、business_rules(业务规则)。用于了解数据库中有哪些表可用。",
+    params: {
+      type: 'object',
+      properties: {},
+      required: []
+    },
     func: () => {
       const tableIndex = loadTableIndex();
       if (!tableIndex || !tableIndex.tables) return '暂无表数据';
@@ -96,7 +101,14 @@ export const tools = [
   }),
   new DynamicTool({
     name: "get_table_schema",
-    description: "获取指定表的部分字段的详细信息，包括字段别名、枚举值、业务约束等。参数: table_name(表名，必须)",
+    description: "获取指定表的部分字段的详细信息，包括字段别名、枚举值、业务约束等。",
+    params: {
+      type: 'object',
+      properties: {
+        table_name: { type: 'string', description: '需要查询的表名' }
+      },
+      required: ['table_name']
+    },
     func: (tableName) => {
       if (!tableName) return '请提供表名参数';
       try {
@@ -112,7 +124,14 @@ export const tools = [
   }),
   new DynamicTool({
     name: "get_table_ddl",
-    description: "获取指定表的DDL建表语句。参数: table_name(表名，必须)",
+    description: "获取指定表的DDL建表语句。",
+    params: {
+      type: 'object',
+      properties: {
+        table_name: { type: 'string', description: '需要查询DDL的表名' }
+      },
+      required: ['table_name']
+    },
     func: (tableName) => {
       if (!tableName) return '请提供表名参数';
       try {
@@ -129,13 +148,27 @@ export const tools = [
   new DynamicTool({
     name: "get_output_format",
     description: "获取SQL输出的格式规范和模板。",
+    params: {
+      type: 'object',
+      properties: {},
+      required: []
+    },
     func: () => {
       return getOutputFormat();
     }
   }),
   new DynamicTool({
     name: "request_tag_confirmation",
-    description: "请求用户确认是否将术语添加到表的标签中。当用户纠正表名或提供新的术语-表关联时使用。参数: term(术语/关键词), table(表名), description(表的描述)。返回带特殊标记的字符串，会触发前端确认框弹出。",
+    description: "请求用户确认是否将术语添加到表的标签中。当用户纠正表名或提供新的术语-表关联时使用。返回带特殊标记的字符串，会触发前端确认框弹出。",
+    params: {
+      type: 'object',
+      properties: {
+        term: { type: 'string', description: '术语/关键词' },
+        table: { type: 'string', description: '关联的表名' },
+        description: { type: 'string', description: '表的描述信息' }
+      },
+      required: ['term', 'table']
+    },
     func: (params) => {
       let term, table, description;
       try {
@@ -161,6 +194,11 @@ export const tools = [
   new DynamicTool({
     name: "get_mysql_limits",
     description: "获取MySQL 5.7的语法限制和注意事项。",
+    params: {
+      type: 'object',
+      properties: {},
+      required: []
+    },
     func: () => {
       return getMysqlLimits();
     }
