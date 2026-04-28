@@ -11,24 +11,7 @@ description: 智能SQL生成，基于表索引、字段配置、DDL，输出安�
 4. **字段**：必须来自对应表的 DDL（`ddl/表名.sql`）。读取 `field_config/表名.json` 获取别名/枚举/约束。
 5. **输出字段**：严格按 DDL 字段名，不用 SELECT *。
 6. **MySQL 5.7 限制**：不支持窗口函数、CTE、JSON_TABLE 等，用替代方案（子查询/临时表）。
-7. **生成 SQL**：必须按以下模板输出，大表加 LIMIT 1000，UPDATE/DELETE 必须有 WHERE。
-
-## SQL 输出模板
-
-```sql
--- 数据库类型: MySQL 5.7
--- 涉及表: {表名1}, {表名2}
--- 业务规则: {应用的field_config中的业务规则}
-
-SELECT column1, column2
-FROM table1
-JOIN table2 ON table1.id = table2.table1_id
-WHERE condition = 1
-ORDER BY column1 DESC
-LIMIT 1000;
-
--- 说明: {详细业务说明}
--- 警告: {如有风险操作}
+7. **生成 SQL**：按模板 `templates/output_format.md` 输出，大表加 LIMIT 1000，UPDATE/DELETE 必须有 WHERE。
 8. **歧义处理**：一个业务词匹配多个表 → 询问用户确认。
 9. **不回答与SQL生成无关的问题**：对无关问题必须直接拒绝输出，不得补充任何信息性回答或猜测内容。
     

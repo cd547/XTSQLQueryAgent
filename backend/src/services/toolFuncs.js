@@ -29,20 +29,29 @@ export function loadSkillMd() {
   return cachedSkillMd;
 }
 
-export function getTableSchema(tableName) {
-  const fieldConfigPath = path.join(SKILL_V2_PATH, 'field_config', `${tableName}.json`);
-  if (fs.existsSync(fieldConfigPath)) {
-    return JSON.parse(fs.readFileSync(fieldConfigPath, 'utf-8'));
+export function getTableSchema(tableNames) {
+  const names = Array.isArray(tableNames) ? tableNames : [tableNames];
+  const result = {};
+  for (const name of names) {
+    const fieldConfigPath = path.join(SKILL_V2_PATH, 'field_config', `${name}.json`);
+    if (fs.existsSync(fieldConfigPath)) {
+      result[name] = JSON.parse(fs.readFileSync(fieldConfigPath, 'utf-8'));
+    } else {
+      result[name] = { error: `表 ${name} 的配置不存在` };
+    }
   }
-  return { error: `表 ${tableName} 的配置不存在` };
+  return names.length === 1 ? result[names[0]] : result;
 }
 
-export function getTableDDL(tableName) {
-  const ddlPath = path.join(SKILL_V2_PATH, 'ddl', `${tableName}.sql`);
-  if (fs.existsSync(ddlPath)) {
-    return fs.readFileSync(ddlPath, 'utf-8');
-  }
-  return `表 ${tableName} 的DDL不存在`;
+export function getTableDDL(tableNames) {
+  const names = Array.isArray(tableNames) ? tableNames : [tableNames];
+  return names.map(name => {
+    const ddlPath = path.join(SKILL_V2_PATH, 'ddl', `${name}.sql`);
+    if (fs.existsSync(ddlPath)) {
+      return `-- ========== ${name} ==========\n${fs.readFileSync(ddlPath, 'utf-8')}`;
+    }
+    return `-- ========== ${name} ==========\n-- 表 ${name} 的DDL不存在`;
+  }).join('\n\n');
 }
 
 export function getOutputFormat() {
@@ -101,48 +110,50 @@ export const tools = [
   }),
   new DynamicTool({
     name: "get_table_schema",
-    description: "获取指定表的部分字段的详细信息，包括字段别名、枚举值、业务约束等。",
+    description: "获取指定表的字段详细信息，包括字段别名、枚举值、业务约束等，支持一次获取多个表。",
     params: {
       type: 'object',
       properties: {
-        table_name: { type: 'string', description: '需要查询的表名' }
+        table_names: { type: 'array', items: { type: 'string' }, description: '需要查询的表名列表' }
       },
-      required: ['table_name']
+      required: ['table_names']
     },
-    func: (tableName) => {
-      if (!tableName) return '请提供表名参数';
+    func: (input) => {
+      let tableNames = [];
       try {
-        if (typeof tableName === 'object') {
-          tableName = tableName.table_name;
-        } else if (typeof tableName === 'string') {
-          const parsed = JSON.parse(tableName);
-          tableName = parsed.table_name;
+        if (typeof input === 'object' && input !== null) {
+          tableNames = input.table_names || [];
+        } else if (typeof input === 'string') {
+          const parsed = JSON.parse(input);
+          tableNames = parsed.table_names || [];
         }
-      } catch (e) { logger.debug('Parse tableName failed', { error: e.message }); }
-      return JSON.stringify(getTableSchema(tableName), null, 2);
+      } catch (e) { logger.debug('Parse tableNames failed', { error: e.message }); }
+      if (!Array.isArray(tableNames) || tableNames.length === 0) return '请提供 table_names 参数（表名数组）';
+      return JSON.stringify(getTableSchema(tableNames), null, 2);
     }
   }),
   new DynamicTool({
     name: "get_table_ddl",
-    description: "获取指定表的DDL建表语句。",
+    description: "获取指定表的DDL建表语句，支持一次获取多个表。",
     params: {
       type: 'object',
       properties: {
-        table_name: { type: 'string', description: '需要查询DDL的表名' }
+        table_names: { type: 'array', items: { type: 'string' }, description: '需要查询DDL的表名列表' }
       },
-      required: ['table_name']
+      required: ['table_names']
     },
-    func: (tableName) => {
-      if (!tableName) return '请提供表名参数';
+    func: (input) => {
+      let tableNames = [];
       try {
-        if (typeof tableName === 'object') {
-          tableName = tableName.table_name;
-        } else if (typeof tableName === 'string') {
-          const parsed = JSON.parse(tableName);
-          tableName = parsed.table_name;
+        if (typeof input === 'object' && input !== null) {
+          tableNames = input.table_names || [];
+        } else if (typeof input === 'string') {
+          const parsed = JSON.parse(input);
+          tableNames = parsed.table_names || [];
         }
-      } catch (e) { logger.debug('Parse tableName failed', { error: e.message }); }
-      return getTableDDL(tableName);
+      } catch (e) { logger.debug('Parse tableNames failed', { error: e.message }); }
+      if (!Array.isArray(tableNames) || tableNames.length === 0) return '请提供 table_names 参数（表名数组）';
+      return getTableDDL(tableNames);
     }
   }),
   new DynamicTool({
