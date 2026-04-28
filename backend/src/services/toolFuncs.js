@@ -77,7 +77,7 @@ export function requestTagConfirmation(term, table, description) {
 export const tools = [
   new DynamicTool({
     name: "get_tables",
-    description: "从table_index.json中获取所有可用的表列表。每个表包含name(表名)、description(描述)、tags(标签)、related_tables(关联表)、business_constraints(业务约束)、business_rules(业务规则)。用于了解数据库中有哪些表可用。",
+    description: "从table_index.json中列出全部表名、描述、标签、关联表及业务约束（business_constraints）、业务规则（business_constraints）。用于按主题找表。",
     params: {
       type: 'object',
       properties: {},
