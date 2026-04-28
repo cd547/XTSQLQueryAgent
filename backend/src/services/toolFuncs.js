@@ -43,12 +43,39 @@ export function getTableSchema(tableNames) {
   return names.length === 1 ? result[names[0]] : result;
 }
 
-export function getTableDDL(tableNames) {
+function simplifyDDL(ddlContent) {
+  const lines = ddlContent.split('\n');
+  const filtered = [];
+  let lastColIdx = -1;
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.toUpperCase().startsWith('CREATE TABLE') || trimmed.startsWith(')')) {
+      filtered.push(line);
+    } else if (trimmed.startsWith('`')) {
+      filtered.push(line);
+      lastColIdx = filtered.length - 1;
+    }
+  }
+
+  if (lastColIdx >= 0) {
+    filtered[lastColIdx] = filtered[lastColIdx].replace(/,\s*$/, '');
+  }
+
+  return filtered.join('\n');
+}
+
+export function getTableDDL(tableNames, options = {}) {
   const names = Array.isArray(tableNames) ? tableNames : [tableNames];
+  const short = options.short == 1;
   return names.map(name => {
     const ddlPath = path.join(SKILL_V2_PATH, 'ddl', `${name}.sql`);
     if (fs.existsSync(ddlPath)) {
-      return `-- @@TABLE ${name}\n${fs.readFileSync(ddlPath, 'utf-8')}`;
+      let ddl = fs.readFileSync(ddlPath, 'utf-8');
+      if (short) {
+        ddl = simplifyDDL(ddl);
+      }
+      return `-- @@TABLE ${name}\n${ddl}`;
     }
     return `-- @@TABLE ${name}\n-- 表 ${name} 的DDL不存在`;
   }).join('\n\n');
@@ -86,7 +113,7 @@ export const tools = [
     func: () => {
       const tableIndex = loadTableIndex();
       if (!tableIndex || !tableIndex.tables) return '暂无表数据';
-      
+
       return tableIndex.tables.map(t => {
         let info = `- ${t.name}: ${t.description || ''}`;
         if (t.tags?.length) info += `\n  标签: ${t.tags.join(', ')}`;
@@ -134,26 +161,30 @@ export const tools = [
   }),
   new DynamicTool({
     name: "get_table_ddl",
-    description: "获取指定表的DDL建表语句，支持一次获取多个表。",
+    description: "获取指定表的DDL建表语句，支持一次获取多个表。传short=1时只返回列定义，不含索引、主键、外键。",
     params: {
       type: 'object',
       properties: {
-        table_names: { type: 'array', items: { type: 'string' }, description: '需要查询DDL的表名列表' }
+        table_names: { type: 'array', items: { type: 'string' }, description: '需要查询DDL的表名列表' },
+        short: { type: 'integer', description: '传1时只返回列定义，不含索引、主键、外键' }
       },
       required: ['table_names']
     },
     func: (input) => {
       let tableNames = [];
+      let short = 0;
       try {
         if (typeof input === 'object' && input !== null) {
           tableNames = input.table_names || [];
+          short = input.short || 0;
         } else if (typeof input === 'string') {
           const parsed = JSON.parse(input);
           tableNames = parsed.table_names || [];
+          short = parsed.short || 0;
         }
       } catch (e) { logger.debug('Parse tableNames failed', { error: e.message }); }
       if (!Array.isArray(tableNames) || tableNames.length === 0) return '请提供 table_names 参数（表名数组）';
-      return getTableDDL(tableNames);
+      return getTableDDL(tableNames, { short });
     }
   }),
   new DynamicTool({
@@ -182,11 +213,11 @@ export const tools = [
           description = parsed.description;
         }
       } catch (e) { logger.debug('Parse params failed', { error: e.message }); }
-      
+
       if (!term || !table) {
         return '请提供 term(术语) 和 table(表名) 参数';
       }
-      
+
       return requestTagConfirmation(term, table, description || '');
     }
   })
