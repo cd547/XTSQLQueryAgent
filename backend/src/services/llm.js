@@ -234,7 +234,7 @@ ${history}
 }
 
 // 备份原有函数
-export async function* generateSQLWithLangChainStreamGen_BAK(question, history = '') {
+export async function* generateSQLWithLangChainStreamGen_BAK(question, history = '', signal) {
   logger.info('generateSQLWithLangChainStreamGen_BAK called (backup)', { question, historyLength: history?.length });
   
   let config;
@@ -297,8 +297,13 @@ ${history}
       }
     };
 
+    if (signal?.aborted) {
+      yield { type: 'error', content: '请求已被用户中断' };
+      return;
+    }
+
     queueLog('generateSQLWithLangChainStreamGen_BAK Round ' + (31 - maxToolCalls) + ' Request:\n' + JSON.stringify(requestParams, null, 2), true);
-    
+
     try {
       const fetchResponse = await fetch(`${baseURL}/chat/completions`, {
         method: 'POST',
@@ -306,7 +311,8 @@ ${history}
           'Content-Type': 'application/json',
           'Authorization': `Bearer ${apiKey}`
         },
-        body: JSON.stringify(requestParams)
+        body: JSON.stringify(requestParams),
+        signal
       });
 
       if (!fetchResponse.ok) {
@@ -481,7 +487,11 @@ while (true) {
       break;
       
     } catch (e) {
-      yield { type: 'error', content: e.message };
+      if (e.name === 'AbortError') {
+        yield { type: 'error', content: '请求已被用户中断' };
+      } else {
+        yield { type: 'error', content: e.message };
+      }
       return;
     }
   }

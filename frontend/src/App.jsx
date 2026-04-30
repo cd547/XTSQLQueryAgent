@@ -9,7 +9,7 @@ import ResizableTitle from './components/ResizableTitle';
 import ChatMessage from './components/ChatMessage';
 import ConfigPanel from './components/ConfigPanel';
 import * as api from './api/index.js';
-import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined, RobotOutlined, MoreOutlined, DeleteOutlined } from '@ant-design/icons';
+import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined, RobotOutlined, MoreOutlined, DeleteOutlined, LoadingOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
@@ -90,6 +90,7 @@ function App() {
   const inputResizerRef = useRef(null);
   const resizerRef = useRef(null);
   const initialLoadRef = useRef(false);
+  const abortControllerRef = useRef(null);
   
   useEffect(() => {
     if (initialLoadRef.current) return;
@@ -400,12 +401,16 @@ function App() {
     
     setLoading(true);
     setIsStreaming(true);
-    
+
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+
     try {
       const response = await fetch('/api/query/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: userMessage, schemaMode: 'stream', sessionId: currentSessionId })
+        body: JSON.stringify({ question: userMessage, schemaMode: 'stream', sessionId: currentSessionId }),
+        signal: abortController.signal
       });
       
       if (!response.ok) {
@@ -478,12 +483,14 @@ function App() {
                   return newMsgs;
                 });
               } else if (data.type === 'error') {
-                message.error(data.content);
+                if (data.content !== '请求已被用户中断') {
+                  message.error(data.content);
+                }
                 setMessages(prev => {
                   const newMsgs = [...prev];
                   const lastIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
                   if (lastIdx !== -1) {
-                    newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: '错误: ' + data.content, isStreaming: false };
+                    newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: data.content === '请求已被用户中断' ? (newMsgs[lastIdx].content || '') + '\n\n*[已中断]*' : '错误: ' + data.content, isStreaming: false };
                   }
                   return newMsgs;
                 });
@@ -508,18 +515,27 @@ function App() {
         }
       }
     } catch (error) {
-      message.error(error.message);
+      if (error.name !== 'AbortError') {
+        message.error(error.message);
+      }
       setMessages(prev => {
         const newMsgs = [...prev];
         const lastIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
         if (lastIdx !== -1) {
-          newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: '错误: ' + error.message, isStreaming: false };
+          newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: error.name === 'AbortError' ? (newMsgs[lastIdx].content || '') + '\n\n*[已中断]*' : '错误: ' + error.message, isStreaming: false };
         }
         return newMsgs;
       });
     } finally {
       setLoading(false);
       setIsStreaming(false);
+      abortControllerRef.current = null;
+    }
+  };
+
+  const handleStop = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
     }
   };
 
@@ -1270,15 +1286,25 @@ children: currentResults.length > 0 ? (
                       {currentModel && <span>{currentModel}</span>}
                       {currentTokens > 0 && <span style={{ color: '#999', fontWeight: 'normal' }}>{currentTokens} tokens</span>}
                     </div>
-                    <Button 
-                    size="small" 
-                    type="primary" 
-                    onClick={handleSend} 
-                    loading={loading} 
-                    disabled={!input.trim()} 
-                    icon={<SendOutlined />}
-                    style={{ fontSize: 11, padding: '4px 8px' }} 
-                  />
+                    {loading ? (
+                      <Button
+                        size="small"
+                        danger
+                        onClick={handleStop}
+                        style={{ fontSize: 11, padding: '4px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                        icon={<Spin size="small" indicator={<LoadingOutlined style={{ fontSize: 11, color: '#ff4d4f' }} spin />} />}
+                      />
+                    ) : (
+                      <Button
+                        size="small"
+                        type="primary"
+                        onClick={handleSend}
+                        disabled={!input.trim()}
+                        icon={<SendOutlined />}
+                        loading={loading}
+                        style={{ fontSize: 11, padding: '4px 8px' }}
+                      />
+                    )}
                   </div>
                 </div>
               </>

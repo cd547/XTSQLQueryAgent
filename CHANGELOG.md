@@ -1,5 +1,24 @@
 # 更新日志
 
+## 2026-04-30
+
+### 发送按钮中断功能优化
+
+#### 问题
+- 原中断按钮显示红色X图标，样式不够美观
+
+#### 解决方案
+- 导入 `LoadingOutlined` 图标
+- 中断按钮改为显示转圈效果 (Spin + LoadingOutlined)
+- 发送按钮加载时显示 loading 状态
+- 保持中断按钮可点击，用户可以随时中断请求
+
+#### 修改文件
+- `frontend/src/App.jsx`:
+  - 导入 `LoadingOutlined` 图标
+  - 中断按钮使用 `<Spin size="small" indicator={<LoadingOutlined ...>} />` 显示转圈效果
+  - 发送按钮添加 `loading` 属性
+
 ## 2026-04-28
 
 ### 工具函数重构

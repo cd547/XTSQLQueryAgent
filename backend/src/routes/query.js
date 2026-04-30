@@ -247,10 +247,21 @@ router.post('/generate', async (req, res) => {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
+
+      let streamCompleted = false;
+      const abortController = new AbortController();
+
+      res.on('close', () => {
+        if (!streamCompleted) {
+          logger.info('Client disconnected, aborting LLM request');
+          abortController.abort();
+        }
+      });
+
       res.flushHeaders();
 
       try {
-        const generator = generateSQLWithLangChainStreamGen_BAK(question, historyText);
+        const generator = generateSQLWithLangChainStreamGen_BAK(question, historyText, abortController.signal);
         let fullContent = '';
         let sql = '';
         let message = '';
@@ -260,6 +271,8 @@ router.post('/generate', async (req, res) => {
         let totalTokens = 0;
 
         for await (const chunk of generator) {
+          if (abortController.signal.aborted) break;
+
           if (chunk.type === 'chunk') {
             fullContent += chunk.content;
             res.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk.content })}\n\n`);
@@ -376,13 +389,19 @@ logger.info('Stream done, sending final result', { sql: sql?.substring(0, 50), m
           }
         }
 
+        streamCompleted = true;
         res.write(`data: ${JSON.stringify(doneData)}\n\n`);
       } catch (error) {
+        streamCompleted = true;
         logger.error('Stream query failed', { error: error.message, stack: error.stack });
-        res.write(`data: ${JSON.stringify({ type: 'error', content: error.message })}\n\n`);
+        if (!res.writableEnded) {
+          res.write(`data: ${JSON.stringify({ type: 'error', content: error.message })}\n\n`);
+        }
       }
 
-      res.end();
+      if (!res.writableEnded) {
+        res.end();
+      }
       return;
     } 
   } catch (error) {
