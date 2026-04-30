@@ -264,16 +264,10 @@ export async function* generateSQLWithLangChainStreamGen_BAK(question, history =
   const toolsMap = new Map(tools.map(t => [t.name, t]));
   //const tableIndex = loadTableIndex();
 
-  const systemMessage = `你是一个SQL查询专家。必须先读取并严格遵守 SKILL.md 的规范，随后根据用户问题生成SQL。
+  const systemMessage = `你是一个SQL查询专家。严格遵守以下规则，随后根据用户问题生成SQL。
 
 ## SKILL.md 内容（只读，严格执行）
 ${skillMd}
-
-
-## 返回格式（必须严格遵守）
-使用 markdown 格式返回，包含以下部分：
-- **SQL**: 最终生成的SQL语句
-- **说明**: 对SQL的简要解释
 
 ## 历史上下文
 ${history}

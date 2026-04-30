@@ -33,7 +33,13 @@ CREATE TABLE `edu_study` (
   KEY `edu_study2` (`admin_user_id`) USING BTREE,
   KEY `edu_study5` (`edu_course_exam_subject_name_id`) USING BTREE,
   KEY `edu_study6` (`edu_campus_school_class_id`) USING BTREE,
-  KEY `edu_study_ibfk_6` (`update_admin_user_id`),
   KEY `IDX_CLASS_TIME_START` (`class_time_start`),
-  KEY `IDX_CLASS_TIME_END` (`class_time_end`)
-) ENGINE=InnoDB AUTO_INCREMENT=423444 DEFAULT CHARSET=utf8mb4 COMMENT='排课表'
+  KEY `IDX_CLASS_TIME_END` (`class_time_end`),
+  KEY `edu_study_ibfk_6` (`update_admin_user_id`),
+  CONSTRAINT `edu_study_ibfk_1` FOREIGN KEY (`edu_course_exam_subject_name_id`) REFERENCES `edu_course_exam_subject_name` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `edu_study_ibfk_2` FOREIGN KEY (`edu_class_type_id`) REFERENCES `edu_class_type` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `edu_study_ibfk_3` FOREIGN KEY (`edu_admin_user_id`) REFERENCES `admin_user` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `edu_study_ibfk_4` FOREIGN KEY (`admin_user_id`) REFERENCES `admin_user` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `edu_study_ibfk_5` FOREIGN KEY (`edu_campus_school_class_id`) REFERENCES `edu_campus_school_class` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `edu_study_ibfk_6` FOREIGN KEY (`update_admin_user_id`) REFERENCES `admin_user` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB AUTO_INCREMENT=423445 DEFAULT CHARSET=utf8mb4 COMMENT='排课表'

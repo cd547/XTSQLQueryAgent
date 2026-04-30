@@ -46,20 +46,25 @@ export function getTableSchema(tableNames) {
 function simplifyDDL(ddlContent) {
   const lines = ddlContent.split('\n');
   const filtered = [];
-  let lastColIdx = -1;
+
+  const skipPatterns = [
+    /^\s*CREATE TABLE/i,
+    /^\s*\)\s*ENGINE/i,
+    /^\s*PRIMARY KEY/i,
+    /^\s*(UNIQUE\s+)?KEY\s/i,
+    /^\s*CONSTRAINT/i,
+  ];
 
   for (const line of lines) {
     const trimmed = line.trim();
-    if (trimmed.toUpperCase().startsWith('CREATE TABLE') || trimmed.startsWith(')')) {
-      filtered.push(line);
-    } else if (trimmed.startsWith('`')) {
-      filtered.push(line);
-      lastColIdx = filtered.length - 1;
-    }
+    if (!trimmed) continue;
+    if (skipPatterns.some(p => p.test(trimmed))) continue;
+
+    filtered.push(trimmed);
   }
 
-  if (lastColIdx >= 0) {
-    filtered[lastColIdx] = filtered[lastColIdx].replace(/,\s*$/, '');
+  if (filtered.length > 0) {
+    filtered[filtered.length - 1] = filtered[filtered.length - 1].replace(/,\s*$/, '');
   }
 
   return filtered.join('\n');
@@ -137,7 +142,7 @@ export const tools = [
   }),
   new DynamicTool({
     name: "get_table_schema",
-    description: "获取指定表的字段详细信息，包括字段别名、枚举值、业务约束等，支持一次获取多个表。",
+    description: "从field_config/表名.json中获取指定表的字段详细信息，包括字段别名、枚举值、业务约束等，支持一次获取多个表。",
     params: {
       type: 'object',
       properties: {

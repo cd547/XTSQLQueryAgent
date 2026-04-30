@@ -278,16 +278,6 @@
       "business_rules": []
     },
     {
-      "name": "edu_study",
-      "description": "排课表",
-      "tags": [
-        "课表"
-      ],
-      "related_tables": [],
-      "business_constraints": [],
-      "business_rules": []
-    },
-    {
       "name": "edu_study_student",
       "description": "排课学生关联表",
       "tags": [],
@@ -522,6 +512,27 @@
         "my_user",
         "admin_user",
         "admin_pay_order"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_study",
+      "description": "排课表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_study",
+      "description": "排课表",
+      "tags": [],
+      "related_tables": [
+        "edu_course_exam_subject_name",
+        "edu_class_type",
+        "admin_user",
+        "edu_campus_school_class"
       ],
       "business_constraints": [],
       "business_rules": []
