@@ -12,7 +12,8 @@
     "build:backend": "cd backend && npm run build"
   },
   "devDependencies": {
-    "concurrently": "^8.2.0"
+    "concurrently": "^8.2.0",
+    "electron": "^42.0.0"
   },
   "dependencies": {
     "react-markdown": "^10.1.0",
