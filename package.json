@@ -7,6 +7,7 @@
     "wait-and-frontend": "node wait-for-backend.js && npm run dev:frontend",
     "dev:frontend": "cd frontend && npm run dev",
     "dev:backend": "cd backend && npm run dev",
+    "electron:dev": "concurrently \"npm run dev:backend\" \"electron .\"",
     "build": "npm run build:frontend && npm run build:backend",
     "build:frontend": "cd frontend && npm run build",
     "build:backend": "cd backend && npm run build"
