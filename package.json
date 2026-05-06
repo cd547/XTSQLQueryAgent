@@ -13,6 +13,18 @@
     "build:frontend": "cd frontend && npm run build",
     "build:backend": "cd backend && npm run build"
   },
+  "build": {
+    "appId": "com.xt.sqlqueryagent",
+    "productName": "XTSQLQueryAgent",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "**/*",
+      "!node_modules/*",
+      "node_modules/better-sqlite3/**/*"
+    ]
+  },
   "devDependencies": {
     "concurrently": "^8.2.0",
     "electron": "^42.0.0",

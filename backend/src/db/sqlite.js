@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import { logger } from '../logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dbPath = path.join(__dirname, '../../../data/app.db');
+const dbPath = process.env.DB_PATH || path.join(__dirname, '../../../data/app.db');
 
 let db;
 
