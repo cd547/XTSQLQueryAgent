@@ -541,8 +541,8 @@
       "name": "keqiao_study",
       "description": "排课（日程）",
       "tags": [
-        "科桥排课",
-        "克勒排课"
+        "克勒排课",
+        "科桥排课"
       ],
       "related_tables": [
         "keqiao_surface",

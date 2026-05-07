@@ -8,7 +8,8 @@
     "wait-and-frontend": "node wait-for-backend.js && npm run dev:frontend",
     "dev:frontend": "cd frontend && npm run dev",
     "dev:backend": "cd backend && npm run dev",
-    "electron:dev": "concurrently \"npm run dev:backend\" \"npm run dev:frontend\" \"electron .\"",
+    "electron:dev": "concurrently \"npm run dev:frontend\" \"electron .\"",
+    "electron:build": "npm run build:frontend && electron-builder",
     "build": "npm run build:frontend && npm run build:backend",
     "build:frontend": "cd frontend && npm run build",
     "build:backend": "cd backend && npm run build"
@@ -20,9 +21,15 @@
       "output": "dist"
     },
     "files": [
-      "**/*",
-      "!node_modules/*",
-      "node_modules/better-sqlite3/**/*"
+      "electron/**/*",
+      "frontend/dist/**/*",
+      "backend/src/**/*",
+      "backend/node_modules/**/*",
+      "skills/**/*"
+    ],
+    "asarUnpack": [
+      "backend/**/*",
+      "skills/**/*"
     ]
   },
   "devDependencies": {

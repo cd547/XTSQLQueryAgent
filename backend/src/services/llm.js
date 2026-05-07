@@ -7,7 +7,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const LOGS_PATH = path.join(__dirname, '../../../logs');
+const LOGS_PATH = process.env.LOG_PATH || './logs';
 
 function writeLlmLog(content) {
   const now = new Date();

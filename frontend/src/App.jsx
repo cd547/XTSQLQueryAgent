@@ -14,7 +14,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
 import './utils/monacoEnv';
-import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles, explainQuery, updateSession, summarizeSession } from './api';
+import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles, explainQuery, updateSession, summarizeSession, addTagToTable } from './api';
 
 const { TextArea } = Input;
 const { Sider, Content } = Layout;
@@ -75,7 +75,7 @@ function App() {
   const [explainAnalysisLoading, setExplainAnalysisLoading] = useState(false);
   const [confirmTagAdd, setConfirmTagAdd] = useState({
     visible: false,
-    term: '',
+    term: [],
     table: '',
     description: ''
   });
@@ -406,12 +406,7 @@ function App() {
     abortControllerRef.current = abortController;
 
     try {
-      const response = await fetch('/api/query/generate', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ question: userMessage, schemaMode: 'stream', sessionId: currentSessionId }),
-        signal: abortController.signal
-      });
+      const response = await api.queryGenerateStream({ question: userMessage, schemaMode: 'stream', sessionId: currentSessionId }, abortController.signal);
       
       if (!response.ok) {
         throw new Error('请求失败');
@@ -451,9 +446,10 @@ function App() {
                   if (paramMatch) {
                     try {
                       const params = JSON.parse(paramMatch[1]);
+                      const term = Array.isArray(params.term) ? params.term : [params.term || ''];
                       setConfirmTagAdd({
                         visible: true,
-                        term: params.term || '',
+                        term: term.filter(t => t),
                         table: params.table || '',
                         description: params.description || ''
                       });
@@ -542,19 +538,9 @@ function App() {
   const handleConfirmTagAdd = async () => {
     const { table, term } = confirmTagAdd;
     try {
-      const res = await fetch('/api/skills/add-tag', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          tableName: table,
-          tag: term
-        })
-      });
-      if (res.ok) {
-        message.success(`已将 "${term}" 添加到 ${table} 的标签`);
-      } else {
-        message.error('添加标签失败');
-      }
+      await addTagToTable(table, term);
+      const termStr = Array.isArray(term) ? term.join(', ') : term;
+      message.success(`已将 "${termStr}" 添加到 ${table} 的标签`);
     } catch (e) {
       message.error('添加标签失败: ' + e.message);
     }

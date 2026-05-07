@@ -2,16 +2,33 @@ import Database from 'better-sqlite3';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { logger } from '../logger.js';
+import { mkdirSync } from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = process.env.DB_PATH || path.join(__dirname, '../../../data/app.db');
+
+// 确保数据库目录存在
+const dbDir = path.dirname(dbPath);
+try {
+  mkdirSync(dbDir, { recursive: true });
+} catch (e) {
+  // 目录已存在，忽略
+}
 
 let db;
 
 export function getDb() {
   if (!db) {
-    db = new Database(dbPath);
-    db.pragma('journal_mode = WAL');
+    db = new Database(dbPath, { 
+      fileMustExist: false,
+      timeout: 5000
+    });
+    try {
+      db.pragma('journal_mode = WAL');
+    } catch (e) {
+      console.warn('Failed to set WAL mode, falling back to DELETE mode:', e.message);
+      db.pragma('journal_mode = DELETE');
+    }
   }
   return db;
 }
@@ -127,7 +144,6 @@ export function initDatabase() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_session_role ON messages(session_id, role)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_sort_order ON sessions(sort_order)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_table_schemas_table_name ON table_schemas(table_name)`);
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_skill_logs_created_at ON skill_logs(created_at)`);
 
   console.log('SQLite initialized');
 }
@@ -148,6 +164,8 @@ export function initSkillLogTable() {
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
+  
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_skill_logs_created_at ON skill_logs(created_at)`);
   
   console.log('Skill logs table initialized');
 }

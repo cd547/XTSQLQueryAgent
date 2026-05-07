@@ -201,7 +201,7 @@ import ConfirmDialog from './ConfirmDialog';
 ```javascript
 const [confirmTagAdd, setConfirmTagAdd] = useState({
   visible: false,
-  term: '',
+  term: [],
   table: '',
   description: ''
 });
@@ -215,9 +215,12 @@ const [confirmTagAdd, setConfirmTagAdd] = useState({
 } else if (data.type === 'done') {
   // 检查是否有 confirm_tag_add
   if (data.confirm_tag_add) {
+    const term = Array.isArray(data.confirm_tag_add.term) 
+      ? data.confirm_tag_add.term 
+      : [data.confirm_tag_add.term || ''];
     setConfirmTagAdd({
       visible: true,
-      term: data.confirm_tag_add.term,
+      term: term.filter(t => t),
       table: data.confirm_tag_add.table,
       description: data.confirm_tag_add.description || ''
     });
@@ -333,17 +336,24 @@ if (action === 'add_tag') {
   if (!table.tags) {
     table.tags = [];
   }
-  if (!table.tags.includes(tag)) {
-    table.tags.push(tag);
-  }
+  
+  // 支持单个或多个标签
+  const tags = Array.isArray(tag) ? tag : [tag];
+  const addedTags = [];
+  tags.forEach(t => {
+    if (t && !table.tags.includes(t)) {
+      table.tags.push(t);
+      addedTags.push(t);
+    }
+  });
   
   // 备份并保存
   const backupPath = path.join(skillBackupPath, `table_index_${Date.now()}.json`);
   fs.copyFileSync(tableIndexPath, backupPath);
   fs.writeFileSync(tableIndexPath, JSON.stringify(tableIndex, null, 2), 'utf-8');
   
-  logger.info('Tag added', { tableName, tag });
-  return res.json({ success: true, message: `已将 "${tag}" 添加到 ${tableName} 的标签` });
+  logger.info('Tag added', { tableName, tags: addedTags });
+  return res.json({ success: true, message: `已将 "${addedTags.join(', ')}" 添加到 ${tableName} 的标签` });
 }
 ```
 
@@ -373,12 +383,24 @@ cd frontend && npm run dev
 
 - [ ] **Step 2: 测试场景**
 
+**单个术语场景：**
+
 1. 在聊天中输入: "帮我查下课程销量"
 2. Agent 无法匹配，回复无法找到相关表
 3. 用户输入: "是 edu_course 表"
 4. Agent 识别关联，发送 confirm_tag_add 类型
 5. 前端弹出确认框: "是否将'课程'添加到 edu_course 的标签？"
 6. 点击"是" → 标签添加成功
+7. 点击"否" → 确认框关闭，无变化
+
+**多个术语场景：**
+
+1. 在聊天中输入: "帮我查下学生和学员的信息"
+2. Agent 无法匹配，回复无法找到相关表
+3. 用户输入: "这些词都指 edu_student 表"
+4. Agent 识别关联，发送 confirm_tag_add 类型
+5. 前端弹出确认框: "是否将["学生", "学员"]添加到 edu_student 的标签？"
+6. 点击"是" → 两个标签都添加成功
 7. 点击"否" → 确认框关闭，无变化
 
 - [ ] **Step 3: 验证 table_index.json 更新**

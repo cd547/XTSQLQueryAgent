@@ -1,7 +1,10 @@
 import axios from 'axios';
 
+const isElectron = window.location.protocol === 'file:';
+const baseURL = isElectron ? 'http://localhost:5002/api' : '/api';
+
 const api = axios.create({
-  baseURL: '/api'
+  baseURL: baseURL
 });
 
 export function testConnection(config) {
@@ -28,6 +31,15 @@ export function queryGenerate(data) {
   return api.post('/query/generate', data).then(r => r.data);
 }
 
+export function queryGenerateStream(data, signal) {
+  return fetch(baseURL + '/query/generate', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(data),
+    signal: signal
+  });
+}
+
 export function queryExecute(data) {
   return api.post('/query/execute', data).then(r => r.data);
 }
@@ -37,7 +49,7 @@ export function explainQuery(data) {
 }
 
 export function explainAnalyze(sql, explainResults) {
-  return fetch('/api/query/explain-analyze', {
+  return fetch(baseURL + '/query/explain-analyze', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sql, explainResults })
@@ -98,6 +110,10 @@ export function fetchTableDDL(tableName) {
 
 export function createTableFiles(tableName, ddl, description) {
   return api.post('/skills/create-table-files', { tableName, ddl, description }).then(r => r.data);
+}
+
+export function addTagToTable(tableName, tag) {
+  return api.post('/skills/add-tag', { tableName, tag }).then(r => r.data);
 }
 
 export function getAgentConfig() {

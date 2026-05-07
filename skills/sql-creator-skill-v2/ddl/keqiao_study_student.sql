@@ -1,0 +1,22 @@
+CREATE TABLE `keqiao_study_student` (
+  `id` bigint(11) NOT NULL AUTO_INCREMENT,
+  `keqiao_study_id` bigint(11) NOT NULL COMMENT '排课（日程）ID',
+  `keqiao_class_id` bigint(11) DEFAULT NULL COMMENT '班级id',
+  `edu_student_id` bigint(11) NOT NULL COMMENT '学生ID',
+  `keqiao_study_leave_id` bigint(11) DEFAULT NULL COMMENT '请假ID',
+  `clockin_time` bigint(11) DEFAULT NULL COMMENT '考勤时间(时间戳)',
+  `status` int(11) DEFAULT NULL COMMENT '考勤状态1考勤 2 迟到 3 早退 4缺勤 5大考分流',
+  `admin_user_id` int(11) DEFAULT NULL COMMENT '操作人ID',
+  `remarks` varchar(1024) DEFAULT NULL COMMENT '备注',
+  PRIMARY KEY (`id`),
+  KEY `keqiao_study_student_wj_1` (`keqiao_study_id`) USING BTREE,
+  KEY `keqiao_study_student_wj_2` (`edu_student_id`) USING BTREE,
+  KEY `keqiao_study_student_wj_3` (`keqiao_study_leave_id`) USING BTREE,
+  KEY `keqiao_study_student_wj_4` (`admin_user_id`) USING BTREE,
+  KEY `keqiao_study_student_ibfk_5_idx` (`keqiao_class_id`),
+  CONSTRAINT `keqiao_study_student_ibfk_1` FOREIGN KEY (`keqiao_study_id`) REFERENCES `keqiao_study` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `keqiao_study_student_ibfk_2` FOREIGN KEY (`edu_student_id`) REFERENCES `edu_student` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `keqiao_study_student_ibfk_3` FOREIGN KEY (`keqiao_study_leave_id`) REFERENCES `keqiao_study_leave` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `keqiao_study_student_ibfk_4` FOREIGN KEY (`admin_user_id`) REFERENCES `admin_user` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `keqiao_study_student_ibfk_5` FOREIGN KEY (`keqiao_class_id`) REFERENCES `keqiao_class` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB AUTO_INCREMENT=484497 DEFAULT CHARSET=utf8mb4 COMMENT='学生考勤表'

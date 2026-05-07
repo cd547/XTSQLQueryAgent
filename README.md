@@ -198,11 +198,21 @@ npm run dev:frontend
 
 当用户纠正表名时，Agent 会自动检测并询问用户是否将术语添加到对应表的标签中：
 - 使用 `request_tag_confirmation` 工具触发确认框
+- 支持单个或多个术语同时添加
+
+**单个术语场景：**
 
 1. 用户说"aa表就是edu_student"
-2. Agent 调用 `request_tag_confirmation` 工具
+2. Agent 调用 `request_tag_confirmation(term=["aa"], table="edu_student", description="学生")`
 3. 前端显示确认框："是否将'aa'添加到 edu_student 的标签？"
 4. 用户确认后，调用 `/api/skills/add-tag` 更新 table_index.json
+
+**多个术语场景：**
+
+1. 用户说"学生和学员都指edu_student表"
+2. Agent 调用 `request_tag_confirmation(term=["学生", "学员"], table="edu_student", description="学生")`
+3. 前端显示确认框："是否将["学生", "学员"]添加到 edu_student 的标签？"
+4. 用户确认后，两个标签都会添加到表中
 
 这样下次查询时，Agent 可以通过新术语直接匹配到对应表。
 

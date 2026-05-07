@@ -11,9 +11,9 @@ const router = Router();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const projectRoot = path.resolve(__dirname, '../../../');
-const skillsPath = path.join(projectRoot, 'skills');
-const skillBackPath = path.join(projectRoot, 'skills', 'skill_back');
+const projectRoot = process.env.PROJECT_ROOT || path.resolve(__dirname, '../../../');
+const skillsPath = process.env.SKILL_PATH || path.join(projectRoot, 'skills');
+const skillBackPath = path.join(skillsPath, 'skill_back');
 
 function getFileLanguage(filename) {
   const ext = path.extname(filename).toLowerCase();
@@ -134,16 +134,22 @@ router.post('/add-tag', (req, res) => {
     if (!table.tags) {
       table.tags = [];
     }
-    if (!table.tags.includes(tag)) {
-      table.tags.push(tag);
-    }
+    
+    const tags = Array.isArray(tag) ? tag : [tag];
+    const addedTags = [];
+    tags.forEach(t => {
+      if (t && !table.tags.includes(t)) {
+        table.tags.push(t);
+        addedTags.push(t);
+      }
+    });
     
     const backupPath = path.join(skillBackPath, `table_index_${Date.now()}.json`);
     fs.copyFileSync(tableIndexPath, backupPath);
     fs.writeFileSync(tableIndexPath, JSON.stringify(tableIndex, null, 2), 'utf-8');
     
-    logger.info('Tag added', { tableName, tag });
-    return res.json({ success: true, message: `已将 "${tag}" 添加到 ${tableName} 的标签` });
+    logger.info('Tag added', { tableName, tags: addedTags });
+    return res.json({ success: true, message: `已将 "${addedTags.join(', ')}" 添加到 ${tableName} 的标签` });
   } catch (e) {
     logger.error('Add tag failed', { error: e.message, tableName, tag });
     return res.status(500).json({ success: false, message: e.message });

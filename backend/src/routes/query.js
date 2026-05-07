@@ -21,7 +21,7 @@ function ensureSession() {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = Router();
 
-const SKILL_V2_PATH = path.join(__dirname, '../../../skills/sql-creator-skill-v2');
+const SKILL_V2_PATH = path.join(process.env.SKILL_PATH || './skills', 'sql-creator-skill-v2');
 
 let cachedSkill = {
   tableIndex: null,

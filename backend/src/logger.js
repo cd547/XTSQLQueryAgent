@@ -3,6 +3,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const LOG_PATH = process.env.LOG_PATH || './logs';
 
 export const logger = winston.createLogger({
   level: 'info',
@@ -18,11 +19,11 @@ export const logger = winston.createLogger({
       )
     }),
     new winston.transports.File({
-      filename: path.join(__dirname, '../../logs/error.log'),
+      filename: path.join(LOG_PATH, 'error.log'),
       level: 'error'
     }),
     new winston.transports.File({
-      filename: path.join(__dirname, '../../logs/app.log')
+      filename: path.join(LOG_PATH, 'app.log')
     })
   ]
 });

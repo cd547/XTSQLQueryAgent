@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import { logger } from '../logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SKILL_V2_PATH = path.join(__dirname, '../../../skills/sql-creator-skill-v2');
+const SKILL_V2_PATH = path.join(process.env.SKILL_PATH || './skills', 'sql-creator-skill-v2');
 
 let cachedSkillMd = null;
 
@@ -103,6 +103,9 @@ export function getMysqlLimits() {
 }
 
 export function requestTagConfirmation(term, table, description) {
+  if (!Array.isArray(term)) {
+    term = [term];
+  }
   return `<!--confirm_tag_add:${JSON.stringify({ term, table, description })}-->`;
 }
 
@@ -198,7 +201,7 @@ export const tools = [
     params: {
       type: 'object',
       properties: {
-        term: { type: 'string', description: '术语/关键词' },
+        term: { type: 'array', items: { type: 'string' }, description: '术语/关键词数组' },
         table: { type: 'string', description: '关联的表名' },
         description: { type: 'string', description: '表的描述信息' }
       },
@@ -220,7 +223,7 @@ export const tools = [
       } catch (e) { logger.debug('Parse params failed', { error: e.message }); }
 
       if (!term || !table) {
-        return '请提供 term(术语) 和 table(表名) 参数';
+        return '请提供 term(术语数组) 和 table(表名) 参数';
       }
 
       return requestTagConfirmation(term, table, description || '');
