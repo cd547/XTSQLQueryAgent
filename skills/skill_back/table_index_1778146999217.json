@@ -602,28 +602,6 @@
       "related_tables": [],
       "business_constraints": [],
       "business_rules": []
-    },
-    {
-      "name": "keqiao_class_teacher",
-      "description": "班级老师",
-      "tags": [],
-      "related_tables": [
-        "keqiao_class",
-        "admin_user"
-      ],
-      "business_constraints": [],
-      "business_rules": []
-    },
-    {
-      "name": "edu_student_personnel",
-      "description": "学生相关工作人员表",
-      "tags": [],
-      "related_tables": [
-        "admin_user",
-        "edu_student"
-      ],
-      "business_constraints": [],
-      "business_rules": []
     }
   ]
 }

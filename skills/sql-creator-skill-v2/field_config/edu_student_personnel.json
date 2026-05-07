@@ -1,0 +1,16 @@
+{
+  "table_name": "edu_student_personnel",
+  "field_aliases": {},
+  "field_enums": {
+     "type": {
+      "1": {"label": "助教", "description": "留学顾问 assistant"},
+      "2": {"label": "班主任", "description": "班主任（原客服）customer"},
+      "3": {"label": "老师", "description": "学术老师 TEACHER"},
+      "4": {"label": "顾问", "description": "规划顾问 ADVISER"}
+    }
+  },
+  "virtual_associations": [],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}
