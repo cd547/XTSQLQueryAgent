@@ -13,10 +13,12 @@
 | SQL 预览 | LLM 生成 SQL 后先预览，用户确认后再执行 |
 | 结果导出 | 支持导出为 Excel (.xlsx)、CSV、HTML 格式 |
 | 多会话管理 | 支持创建、切换、重命名、删除会话 |
-| Token 统计 | 统计每次 LLM 调用的 token 消耗 |
+| Token 统计 | 统计每次 LLM 调用的 token 消耗（使用 DeepSeek 官方 BPE Tokenizer） |
 | 智能标签关联 | 用户纠正表名时，自动建议将术语添加到表标签（支持批量添加） |
 | 请求中断 | 发送中可点击按钮中断请求 |
 | 会话总结 | AI 自动总结聊天内容，生成会话标签 |
+| 消息历史查看 | 点击查看当前会话的完整消息历史，显示 token 上下文长度 |
+| 消息持久化 | 会话消息自动保存到 SQLite 数据库，支持会话中断后恢复 |
 
 ### AI 能力
 
@@ -60,37 +62,46 @@
 ```
 XTSQLQueryAgent/
 ├── backend/                 # Express 后端
-│   └── src/
-│       ├── routes/         # API 路由
-│       │   ├── query.js    # SQL 查询接口
-│       │   ├── session.js  # 会话管理
-│       │   ├── config.js  # 配置管理
-│       │   └── skill.js   # Skill 管理
-│       ├── services/       # 业务逻辑
-│       │   ├── llm.js     # LLM 调用
-│       │   └── config.js  # 配置读取
-│       └── db/            # 数据库
-│           └── sqlite.js  # SQLite 初始化
+│   ├── src/
+│   │   ├── routes/         # API 路由
+│   │   │   ├── query.js    # SQL 查询接口
+│   │   │   ├── session.js  # 会话管理
+│   │   │   ├── config.js   # 配置管理
+│   │   │   └── skill.js    # Skill 管理
+│   │   ├── services/       # 业务逻辑
+│   │   │   ├── llm.js      # LLM 调用
+│   │   │   ├── config.js   # 配置读取
+│   │   │   ├── toolFuncs.js # 工具函数
+│   │   │   └── tokenizer.js # Token 计算（DeepSeek BPE）
+│   │   └── db/            # 数据库
+│   │       └── sqlite.js   # SQLite 初始化（含消息历史表）
+│   └── deepseek_v3_tokenizer/  # DeepSeek 官方 Tokenizer 数据
+│       ├── tokenizer.json
+│       ├── tokenizer_config.json
+│       └── deepseek_tokenizer.py
 ├── frontend/               # React 前端
 │   └── src/
-│   ├── App.jsx        # 主应用 + ConfigPanel (~1600行)
+│       ├── App.jsx        # 主应用 + ConfigPanel (~1600行)
 │       ├── App.css
 │       ├── main.jsx
 │       ├── api/           # API 调用
-│       ├── components/   # 组件
-│       │   ├── ConfigPanel.jsx  # 配置面板 (~108行)
-│       │   ├── ChatMessage.jsx   # 聊天消息 (~180行)
+│       ├── components/    # 组件
+│       │   ├── ConfigPanel.jsx    # 配置面板 (~108行)
+│       │   ├── ChatMessage.jsx    # 聊天消息 (~180行)
 │       │   ├── ResizableTitle.jsx # 可调整列宽的标题 (~14行)
-│       │   └── ConfirmDialog.jsx # 确认对话框
+│       │   └── ConfirmDialog.jsx  # 确认对话框
 │       ├── utils/
-│       │   └── monacoEnv.js   # Monaco Editor 配置 (~25行)
-│       └── public/            # 静态资源（打包后保留）
-│           └── monaco/vs/    # Monaco Editor 语言文件 (121个)
+│       │   └── monacoEnv.js       # Monaco Editor 配置 (~25行)
+│       └── public/                # 静态资源（打包后保留）
+│           └── monaco/vs/         # Monaco Editor 语言文件 (121个)
 ├── skills/                # Skill 配置
 │   └── sql-creator-skill-v2/
 │       ├── SKILL.md       # 技能说明
 │       ├── table_index.json
 │       └── field_config/  # 字段配置
+├── data/                  # SQLite 数据库存储目录
+│   └── app.db             # 会话和消息历史数据
+├── logs/                  # 日志目录
 ├── docs/                  # 开发文档
 │   └── superpowers/
 ├── CHANGELOG.md           # 更新日志
@@ -127,6 +138,8 @@ XTSQLQueryAgent/
 | POST | /api/query/generate | 生成 SQL (流式输出) |
 | POST | /api/query/execute | 执行 SQL |
 | POST | /api/query/explain | 执行 EXPLAIN 分析 |
+| GET | /api/query/messages/:sessionId | 获取指定会话的消息历史（含 token 数） |
+| DELETE | /api/query/messages/:sessionId | 删除指定会话的消息历史 |
 
 ### Skill
 
@@ -230,6 +243,23 @@ npm run dev:frontend
 - 生成 100 字左右的总结
 - 生成 20 字以内的会话标签
 - 自动更新会话名称
+
+### 消息历史查看
+
+在聊天对话框右侧，点击「查看消息」按钮：
+- 弹出模态框显示当前会话的完整消息历史
+- 使用 Monaco Editor 以 JSON 格式展示
+- 顶部显示消息上下文长度（token 数）
+- Token 计算采用 DeepSeek 官方 BPE Tokenizer
+- 消息自动保存到 SQLite 数据库，支持会话中断后恢复
+
+### Token 计算
+
+项目使用 DeepSeek 官方的 BPE（Byte Pair Encoding）算法计算 token：
+- 加载 `backend/deepseek_v3_tokenizer/tokenizer.json` 中的词汇表和合并规则
+- 支持中文和多字节字符的正确 token 化
+- 计算结果异步存储在数据库的 `message_tokens` 字段中
+- 前端读取时自动展示
 
 ## 更新日志
 

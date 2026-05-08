@@ -5,7 +5,8 @@ import { fileURLToPath } from 'url';
 import { logger } from '../logger.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const SKILL_V2_PATH = path.join(process.env.SKILL_PATH || './skills', 'sql-creator-skill-v2');
+const projectRoot = process.env.PROJECT_ROOT || path.resolve(__dirname, '../../../');
+const SKILL_V2_PATH = path.join(process.env.SKILL_PATH || path.join(projectRoot, 'skills'), 'sql-creator-skill-v2');
 
 let cachedSkillMd = null;
 
@@ -29,13 +30,35 @@ export function loadSkillMd() {
   return cachedSkillMd;
 }
 
+function removeEmptyProperties(obj) {
+  if (obj === null || obj === undefined) return undefined;
+  if (typeof obj !== 'object') return obj;
+  
+  if (Array.isArray(obj)) {
+    if (obj.length === 0) return undefined;
+    const filtered = obj.map(item => removeEmptyProperties(item)).filter(item => item !== undefined);
+    return filtered.length === 0 ? undefined : filtered;
+  }
+  
+  const result = {};
+  for (const key of Object.keys(obj)) {
+    const value = removeEmptyProperties(obj[key]);
+    if (value !== undefined) {
+      result[key] = value;
+    }
+  }
+  return Object.keys(result).length === 0 ? undefined : result;
+}
+
 export function getTableSchema(tableNames) {
   const names = Array.isArray(tableNames) ? tableNames : [tableNames];
   const result = {};
   for (const name of names) {
     const fieldConfigPath = path.join(SKILL_V2_PATH, 'field_config', `${name}.json`);
     if (fs.existsSync(fieldConfigPath)) {
-      result[name] = JSON.parse(fs.readFileSync(fieldConfigPath, 'utf-8'));
+      const config = JSON.parse(fs.readFileSync(fieldConfigPath, 'utf-8'));
+      const simplified = removeEmptyProperties(config);
+      result[name] = simplified || {};
     } else {
       result[name] = { error: `表 ${name} 的配置不存在` };
     }

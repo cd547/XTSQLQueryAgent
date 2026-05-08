@@ -7,7 +7,7 @@ import mysql from 'mysql2/promise';
 import { getDb } from '../db/sqlite.js';
 import { getConfig, getLlmConfig } from '../services/config.js';
 import { logger } from '../logger.js';
-import { generateSQLWithLangChain, generateSQLWithLangChainStreamGen_BAK, loadSkillMd } from '../services/llm.js';
+import { generateSQLWithLangChain, generateSQLWithLangChainStreamGen_BAK, loadSkillMd, getLastMessages, loadMessagesFromDb } from '../services/llm.js';
 
 function ensureSession() {
   const db = getDb();
@@ -21,7 +21,8 @@ function ensureSession() {
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const router = Router();
 
-const SKILL_V2_PATH = path.join(process.env.SKILL_PATH || './skills', 'sql-creator-skill-v2');
+const projectRoot = process.env.PROJECT_ROOT || path.resolve(__dirname, '../../../');
+const SKILL_V2_PATH = path.join(process.env.SKILL_PATH || path.join(projectRoot, 'skills'), 'sql-creator-skill-v2');
 
 let cachedSkill = {
   tableIndex: null,
@@ -195,6 +196,76 @@ router.get('/version', async (req, res) => {
   });
 });
 
+router.get('/messages', async (req, res) => {
+  const messages = getLastMessages();
+  if (messages) {
+    res.json({ 
+      success: true, 
+      messages, 
+      count: messages.length 
+    });
+  } else {
+    res.json({ 
+      success: false, 
+      message: '暂无消息数据，请先执行一次 SQL 生成请求' 
+    });
+  }
+});
+
+router.get('/messages/:sessionId', async (req, res) => {
+  const { sessionId } = req.params;
+  try {
+    const result = loadMessagesFromDb(sessionId);
+    if (result) {
+      res.json({ 
+        success: true, 
+        messages: result.messages, 
+        count: result.messages.length,
+        messageTokens: result.messageTokens,
+        sessionId 
+      });
+    } else {
+      res.json({ 
+        success: false, 
+        message: `会话 ${sessionId} 暂无消息历史`,
+        sessionId 
+      });
+    }
+  } catch (e) {
+    logger.error('Failed to load messages from database', { error: e.message });
+    res.json({ 
+      success: false, 
+      message: '加载消息历史失败: ' + e.message 
+    });
+  }
+});
+
+router.delete('/messages/:sessionId', async (req, res) => {
+  const { sessionId } = req.params;
+  try {
+    const db = getDb();
+    const result = db.prepare('DELETE FROM llm_messages WHERE session_id = ?').run(sessionId);
+    if (result.changes > 0) {
+      res.json({ 
+        success: true, 
+        message: `已清除会话 ${sessionId} 的消息历史`,
+        deletedRows: result.changes 
+      });
+    } else {
+      res.json({ 
+        success: false, 
+        message: `会话 ${sessionId} 没有消息历史可清除` 
+      });
+    }
+  } catch (e) {
+    logger.error('Failed to delete messages from database', { error: e.message });
+    res.json({ 
+      success: false, 
+      message: '清除消息历史失败: ' + e.message 
+    });
+  }
+});
+
 router.post('/generate', async (req, res) => {
   let { question, sessionId, schemaMode } = req.body;
 
@@ -261,7 +332,7 @@ router.post('/generate', async (req, res) => {
       res.flushHeaders();
 
       try {
-        const generator = generateSQLWithLangChainStreamGen_BAK(question, historyText, abortController.signal);
+        const generator = generateSQLWithLangChainStreamGen_BAK(question, historyText, abortController.signal, sessionId);
         let fullContent = '';
         let sql = '';
         let message = '';

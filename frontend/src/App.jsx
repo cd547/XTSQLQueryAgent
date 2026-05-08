@@ -14,7 +14,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
 import './utils/monacoEnv';
-import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles, explainQuery, updateSession, summarizeSession, addTagToTable } from './api';
+import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages } from './api';
 
 const { TextArea } = Input;
 const { Sider, Content } = Layout;
@@ -84,6 +84,9 @@ function App() {
   const [explainPanelOpen, setExplainPanelOpen] = useState(false);
   const [editingSessionId, setEditingSessionId] = useState(null);
   const [editingSessionName, setEditingSessionName] = useState('');
+  const [showMessagesModal, setShowMessagesModal] = useState(false);
+  const [sessionMessagesContent, setSessionMessagesContent] = useState('');
+  const [sessionMessagesTokens, setSessionMessagesTokens] = useState(0);
   const contentRef = useRef('');
   const messageCountRef = useRef(0);
   const messagesEndRef = useRef(null);
@@ -290,6 +293,22 @@ function App() {
       setCurrentTokens(data.total_tokens || 0);
     } catch (e) {
       setCurrentTokens(0);
+    }
+  };
+  
+  const handleViewMessages = async () => {
+    if (!currentSessionId) return;
+    try {
+      const data = await getQueryMessages(currentSessionId);
+      if (data.success) {
+        setSessionMessagesContent(JSON.stringify(data.messages, null, 2));
+        setSessionMessagesTokens(data.messageTokens || 0);
+        setShowMessagesModal(true);
+      } else {
+        message.info(data.message || '暂无消息数据');
+      }
+    } catch (e) {
+      message.error('获取消息失败: ' + e.message);
     }
   };
   
@@ -1219,6 +1238,39 @@ children: currentResults.length > 0 ? (
                   onCancel={handleCancelTagAdd}
                 />
               )}
+              
+              <Modal
+                title="会话消息详情"
+                open={showMessagesModal}
+                onCancel={() => setShowMessagesModal(false)}
+                footer={null}
+                width={800}
+                styles={{ body: { padding: 0 } }}
+              >
+                <div style={{ padding: '12px 16px', background: '#f5f5f5', borderBottom: '1px solid #e8e8e8', fontSize: 12 }}>
+                  <span style={{ color: '#666' }}>消息上下文长度：</span>
+                  <span style={{ color: '#1890ff', fontWeight: 500, marginLeft: 4 }}>{sessionMessagesTokens}</span>
+                  <span style={{ color: '#666', marginLeft: 2 }}>tokens</span>
+                </div>
+                <div style={{ height: 480, borderTop: '1px solid #e8e8e8' }}>
+                  <Editor
+                    height={480}
+                    defaultLanguage="json"
+                    value={sessionMessagesContent}
+                    theme="vs-dark"
+                    options={{
+                      minimap: { enabled: false },
+                      fontSize: 11,
+                      lineNumbers: 'on',
+                      scrollBeyondLastLine: false,
+                      automaticLayout: true,
+                      wordWrap: 'on',
+                      folding: true,
+                      readOnly: true
+                    }}
+                  />
+                </div>
+              </Modal>
             </div>
             
             {activeTabKey === 'chat' && (
@@ -1268,9 +1320,18 @@ children: currentResults.length > 0 ? (
                     />
                   </div>
                   <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 24px 8px' }}>
-                    <div style={{ fontSize: 11, fontWeight: 500, color: '#1890ff', display: 'flex', gap: 8 }}>
+                    <div style={{ fontSize: 11, fontWeight: 500, color: '#1890ff', display: 'flex', gap: 8, alignItems: 'center' }}>
                       {currentModel && <span>{currentModel}</span>}
                       {currentTokens > 0 && <span style={{ color: '#999', fontWeight: 'normal' }}>{currentTokens} tokens</span>}
+                      <Button
+                        size="small"
+                        type="text"
+                        onClick={handleViewMessages}
+                        style={{ fontSize: 10, padding: '2px 6px', color: '#999' }}
+                        icon={<FileTextOutlined style={{ fontSize: 10 }} />}
+                      >
+                        查看消息
+                      </Button>
                     </div>
                     {loading ? (
                       <Button

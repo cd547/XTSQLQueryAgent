@@ -1,14 +1,14 @@
 ---
 name: SQL生成器V2
-description: 基于表索引、字段配置、DDL 生成 MySQL 5.7 SQL
+description: 智能SQL生成，基于表索引、字段配置、DDL，输出安全SQL。
 ---
 ## 核心规则（必须遵守）
-1. **仅回答 SQL 生成相关问题**：对无关问题必须拒绝输出，不得补充任何信息性回答或猜测内容。
+1. **不回答与SQL生成无关的问题**：对无关问题必须拒绝输出，不得补充任何信息性回答或猜测内容。
 2. **查询类型**：SELECT/INSERT/UPDATE/DELETE，根据用户需求判断。
 3. **找表**：从 `table_index.json` 用 tags/description 匹配。找不到或不确定 → 询问用户，禁止猜测。
-4. **关联表**：先用 matched 表的 `related_tables`，再用 `field_config/*.json` 中的 `virtual_associations`。禁止猜测。
-5. **字段**：必须来自对应表的 DDL（`ddl/表名.sql`）。读取 `field_config/表名.json` 获取别名/枚举/约束。禁止猜测。
-6. **输出字段**：严格按 DDL 字段名。
+4. **关联表**：先用 matched 表的 `related_tables`，再用 `field_config/*.json` 中的 `virtual_associations`。
+5. **字段**：必须来自对应表的 DDL（`ddl/表名.sql`）。读取 `field_config/表名.json` 获取别名/枚举/约束。
+6. **输出字段**：严格按 DDL 字段名，不用 SELECT *。
 7. **MySQL 5.7 限制**：禁止窗口函数、CTE、JSON_TABLE 等。
 8. **歧义处理**：一个业务词匹配多个表 → 询问用户。
 9. **【铁律】工具调用与信息重用**：
@@ -35,7 +35,7 @@ description: 基于表索引、字段配置、DDL 生成 MySQL 5.7 SQL
 - del/deleted：0=未删除，1=已删除，查询时需过滤。
 - 时间字段：若字段名含时间含义且类型为 BIGINT(11/13)，则数据为时间戳（秒/毫秒）。
 - 金额字段：金额字段单位均为分。
-- 查询语句必须包含 LIMIT，默认 1000。
+- 查询语句必须要有limit限制，默认1000
 
 ## 输出格式（固定）
 ```markdown

@@ -1,5 +1,76 @@
 # 更新日志
 
+## 2026-05-08
+
+### 消息历史查看功能 (新增)
+
+#### 功能
+- 在聊天对话框右侧添加「查看消息」按钮
+- 点击弹出模态框，使用 Monaco Editor 展示完整消息历史（JSON格式）
+- 模态框顶部显示消息上下文长度（token数）
+- 支持会话中断后恢复
+
+#### 后端改动
+- `backend/src/db/sqlite.js`: 新增 `llm_messages` 表存储消息历史
+  - 字段：`session_id`, `messages`, `message_tokens`, `updated_at`
+- `backend/src/routes/query.js`: 新增接口
+  - `GET /api/query/messages/:sessionId` - 获取消息历史
+  - `DELETE /api/query/messages/:sessionId` - 删除消息历史
+- `backend/src/services/llm.js`: 新增函数
+  - `saveMessagesToDb()` - 保存消息到数据库
+  - `loadMessagesFromDb()` - 从数据库加载消息
+
+#### 前端改动
+- `frontend/src/App.jsx`:
+  - 新增「查看消息」按钮和模态框组件
+  - 集成 Monaco Editor 展示消息内容
+  - 显示 token 上下文长度
+
+### DeepSeek Tokenizer 集成 (优化)
+
+#### 功能
+- 使用 DeepSeek 官方 BPE (Byte Pair Encoding) 算法计算 token
+- 加载 `backend/deepseek_v3_tokenizer/tokenizer.json` 词汇表和合并规则
+- 支持中文和多字节字符的正确 token 化
+
+#### 文件变更
+- `backend/src/services/tokenizer.js`: 重构实现
+  - 加载官方 tokenizer 数据
+  - 实现 BPE 编码算法
+  - 添加最大迭代次数限制防止无限循环
+  - 添加异常捕获和回退机制
+
+### 消息持久化 (优化)
+
+#### 功能
+- 会话消息自动保存到 SQLite 数据库
+- token 数异步计算并存储
+- 读取时自动加载历史消息和 token 数
+- 支持会话中断后继续
+
+#### 数据库改动
+- `llm_messages` 表新增 `message_tokens` 字段
+
+### getTableSchema 方法优化
+
+#### 功能
+- 自动过滤空属性（空字符串、null、空对象、空数组）
+- 输出更简洁的表结构信息
+
+#### 文件变更
+- `backend/src/services/toolFuncs.js`: 新增 `removeEmptyProperties()` 函数
+
+### 便携版本优化
+
+#### 功能
+- 统一开发/生产环境数据库路径：`d:\Ai_Program_Files\XTSQLQueryAgent\data\app.db`
+- 统一 `skills` 和 `logs` 目录路径
+- Electron 客户端支持便携模式
+
+#### 文件变更
+- `electron/main.js`: 优化路径解析逻辑
+- `backend/src/db/sqlite.js`: 使用统一的项目根目录路径
+
 ## 2026-04-30
 
 ### 发送按钮中断功能优化

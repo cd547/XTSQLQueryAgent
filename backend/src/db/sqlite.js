@@ -145,6 +145,26 @@ export function initDatabase() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_sort_order ON sessions(sort_order)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_table_schemas_table_name ON table_schemas(table_name)`);
 
+  // 创建 LLM 消息历史表（用于多轮对话恢复）
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS llm_messages (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      session_id INTEGER,
+      messages TEXT,
+      updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+      FOREIGN KEY (session_id) REFERENCES sessions(id)
+    )
+  `);
+  
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_llm_messages_session_id ON llm_messages(session_id)`);
+
+  // 添加 message_tokens 字段（用于存储消息上下文的 token 数量）
+  try {
+    db.exec(`ALTER TABLE llm_messages ADD COLUMN message_tokens INTEGER DEFAULT 0`);
+  } catch (e) {
+    console.debug('message_tokens column already exists');
+  }
+
   console.log('SQLite initialized');
 }
 

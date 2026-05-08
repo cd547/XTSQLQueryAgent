@@ -80,14 +80,29 @@ async function startBackend() {
   if (app.isPackaged) {
     const resourcesPath = path.dirname(app.getAppPath());
     const unpackedPath = path.join(resourcesPath, 'app.asar.unpacked');
-    backendPath = path.join(unpackedPath, 'backend', 'src', 'index.js');
-    backendCwd = path.join(unpackedPath, 'backend');
+    const packagedBackendPath = path.join(unpackedPath, 'backend', 'src', 'index.js');
+    const projectBackendPath = path.join(projectRoot, 'backend', 'src', 'index.js');
+    
+    // 优先使用项目根目录下的后端（便携版设计）
+    if (fs.existsSync(projectBackendPath)) {
+      backendPath = projectBackendPath;
+      backendCwd = path.join(projectRoot, 'backend');
+      console.log('Using backend from project root (portable mode)');
+    } else if (fs.existsSync(packagedBackendPath)) {
+      // 备用：使用打包时的后端
+      backendPath = packagedBackendPath;
+      backendCwd = path.join(unpackedPath, 'backend');
+      console.log('Using backend from packaged files');
+    } else {
+      console.error('Backend file not found in both locations:', projectBackendPath, packagedBackendPath);
+      return false;
+    }
+    
     nodePath = getSystemNodePath();
     
     console.log(`=== Production Mode ===`);
     console.log(`App path: ${app.getAppPath()}`);
-    console.log(`Resources path: ${resourcesPath}`);
-    console.log(`Unpacked path: ${unpackedPath}`);
+    console.log(`Project root: ${projectRoot}`);
     console.log(`Backend path: ${backendPath}`);
     console.log(`Backend cwd: ${backendCwd}`);
     console.log(`Node path: ${nodePath}`);
@@ -102,10 +117,6 @@ async function startBackend() {
     console.log(`Node path: ${nodePath}`);
   }
   
-  if (!fs.existsSync(backendPath)) {
-    console.error('Backend file does NOT exist:', backendPath);
-    return false;
-  }
   console.log('Backend file exists');
   
   return new Promise((resolve) => {

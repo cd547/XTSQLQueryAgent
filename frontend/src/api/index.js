@@ -68,6 +68,10 @@ export function getSessionMessages(sessionId) {
   return api.get(`/sessions/${sessionId}/messages`).then(r => r.data);
 }
 
+export function getQueryMessages(sessionId) {
+  return api.get(`/query/messages/${sessionId}`).then(r => r.data);
+}
+
 export function saveSessionMessage(sessionId, data) {
   return api.post(`/sessions/${sessionId}/messages`, data).then(r => r.data);
 }

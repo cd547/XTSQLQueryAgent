@@ -2,6 +2,8 @@ import { getLlmConfig, getAgentConfig } from './config.js';
 import { logger } from '../logger.js';
 import { ChatOpenAI } from '@langchain/openai';
 import { loadTableIndex, loadSkillMd, tools } from './toolFuncs.js';
+import { getDb } from '../db/sqlite.js';
+import { countMessagesTokens } from './tokenizer.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
@@ -26,6 +28,12 @@ function flushLogs() {
   const flushing = LOG_BUFFER.splice(0);
   const content = flushing.join('\n');
   writeLlmLog(content);
+}
+
+let lastMessages = null;
+
+export function getLastMessages() {
+  return lastMessages;
 }
 
 function queueLog(content, immediate = false) {
@@ -233,9 +241,48 @@ ${history}
   return { sql, message };
 }
 
+function saveMessagesToDb(sessionId, messages) {
+  try {
+    const db = getDb();
+    const messagesJson = JSON.stringify(messages);
+    
+    // 异步计算 token 数
+    const messageTokens = countMessagesTokens(messages);
+    
+    const existing = db.prepare('SELECT id FROM llm_messages WHERE session_id = ?').get(sessionId);
+    if (existing) {
+      db.prepare('UPDATE llm_messages SET messages = ?, message_tokens = ?, updated_at = CURRENT_TIMESTAMP WHERE session_id = ?')
+        .run(messagesJson, messageTokens, sessionId);
+    } else {
+      db.prepare('INSERT INTO llm_messages (session_id, messages, message_tokens) VALUES (?, ?, ?)')
+        .run(sessionId, messagesJson, messageTokens);
+    }
+    logger.debug('Saved messages to database', { sessionId, messageCount: messages.length, messageTokens });
+  } catch (e) {
+    logger.error('Failed to save messages to database', { error: e.message });
+  }
+}
+
+export function loadMessagesFromDb(sessionId) {
+  try {
+    const db = getDb();
+    const record = db.prepare('SELECT messages, message_tokens FROM llm_messages WHERE session_id = ?').get(sessionId);
+    if (record && record.messages) {
+      return {
+        messages: JSON.parse(record.messages),
+        messageTokens: record.message_tokens || 0
+      };
+    }
+    return null;
+  } catch (e) {
+    logger.error('Failed to load messages from database', { error: e.message });
+    return null;
+  }
+}
+
 // 备份原有函数
-export async function* generateSQLWithLangChainStreamGen_BAK(question, history = '', signal) {
-  logger.info('generateSQLWithLangChainStreamGen_BAK called (backup)', { question, historyLength: history?.length });
+export async function* generateSQLWithLangChainStreamGen_BAK(question, history = '', signal, sessionId = null) {
+  logger.info('generateSQLWithLangChainStreamGen_BAK called (backup)', { question, historyLength: history?.length, sessionId });
   
   let config;
   try {
@@ -264,9 +311,9 @@ export async function* generateSQLWithLangChainStreamGen_BAK(question, history =
   const toolsMap = new Map(tools.map(t => [t.name, t]));
   //const tableIndex = loadTableIndex();
 
-  const systemMessage = `你是一个SQL查询专家。严格遵守以下规则，随后根据用户问题生成SQL。
+  const systemMessage = `你是 SQL 生成 Agent。严格遵守以下规则，随后根据用户问题生成SQL。
 
-## SKILL.md 内容（只读，严格执行）
+## SKILL.md 内容（只读）
 ${skillMd}
 
 ## 历史上下文
@@ -274,10 +321,35 @@ ${history}
 
 ## 用户问题`;
 
-  const messages = [
-    { role: 'system', content: systemMessage },
-    { role: 'user', content: question }
-  ];
+  let messages;
+  
+  // 如果有 sessionId，尝试从数据库加载历史消息
+  if (sessionId) {
+    const savedResult = loadMessagesFromDb(sessionId);
+    const savedMessages = savedResult?.messages;
+    if (savedMessages && savedMessages.length > 0) {
+      logger.info('Loaded messages from database', { sessionId, messageCount: savedMessages.length });
+      // 更新 system 消息（可能有更新）并添加新用户消息
+      messages = savedMessages;
+      // 替换系统消息（保持最新）
+      const systemIndex = messages.findIndex(m => m.role === 'system');
+      if (systemIndex >= 0) {
+        messages[systemIndex] = { role: 'system', content: systemMessage };
+      }
+      // 添加新的用户消息
+      messages.push({ role: 'user', content: question });
+    } else {
+      messages = [
+        { role: 'system', content: systemMessage },
+        { role: 'user', content: question }
+      ];
+    }
+  } else {
+    messages = [
+      { role: 'system', content: systemMessage },
+      { role: 'user', content: question }
+    ];
+  }
 
   const agentConfig = getAgentConfig();
   let maxToolCalls = parseInt(agentConfig.agent_max_tool_calls || '30', 10);
@@ -443,6 +515,12 @@ while (true) {
         }));
       }
       messages.push(assistantMsg);
+      lastMessages = JSON.parse(JSON.stringify(messages));
+      
+      // 保存到数据库（如果有 sessionId）
+      if (sessionId) {
+        saveMessagesToDb(sessionId, messages);
+      }
 
       if (validToolCalls.length > 0) {
         for (const toolCall of validToolCalls) {

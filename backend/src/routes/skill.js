@@ -118,38 +118,63 @@ router.get('/read', (req, res) => {
 router.post('/add-tag', (req, res) => {
   const { tableName, tag } = req.body;
   
-  if (!tableName || !tag) {
-    return res.status(400).json({ success: false, message: 'Missing tableName or tag' });
+  if (!tableName) {
+    return res.status(400).json({ success: false, message: 'Missing tableName' });
+  }
+  
+  if (!tag) {
+    return res.status(400).json({ success: false, message: 'Missing tag' });
   }
   
   try {
     const tableIndexPath = path.join(SKILL_V2_PATH, 'table_index.json');
+    
+    if (!fs.existsSync(tableIndexPath)) {
+      return res.status(500).json({ success: false, message: `table_index.json 文件不存在: ${tableIndexPath}` });
+    }
+    
     const tableIndex = JSON.parse(fs.readFileSync(tableIndexPath, 'utf-8'));
+    
+    if (!tableIndex.tables || !Array.isArray(tableIndex.tables)) {
+      return res.status(500).json({ success: false, message: 'table_index.json 格式错误，缺少 tables 数组' });
+    }
     
     const table = tableIndex.tables.find(t => t.name === tableName);
     if (!table) {
-      return res.json({ success: false, error: `表 ${tableName} 不存在` });
+      return res.status(404).json({ success: false, message: `表 ${tableName} 不存在` });
     }
     
     if (!table.tags) {
       table.tags = [];
+      logger.info('Tags array created for table', { tableName });
     }
     
     const tags = Array.isArray(tag) ? tag : [tag];
+    
+    const validTags = tags.filter(t => typeof t === 'string' && t.trim());
+    if (validTags.length === 0) {
+      return res.status(400).json({ success: false, message: '没有有效的标签可添加' });
+    }
+    
     const addedTags = [];
-    tags.forEach(t => {
-      if (t && !table.tags.includes(t)) {
-        table.tags.push(t);
-        addedTags.push(t);
+    validTags.forEach(t => {
+      const trimmedTag = t.trim();
+      if (!table.tags.includes(trimmedTag)) {
+        table.tags.push(trimmedTag);
+        addedTags.push(trimmedTag);
       }
     });
+    
+    if (addedTags.length === 0) {
+      return res.json({ success: true, message: '所有标签已存在，无需添加', addedTags: [] });
+    }
     
     const backupPath = path.join(skillBackPath, `table_index_${Date.now()}.json`);
     fs.copyFileSync(tableIndexPath, backupPath);
     fs.writeFileSync(tableIndexPath, JSON.stringify(tableIndex, null, 2), 'utf-8');
     
     logger.info('Tag added', { tableName, tags: addedTags });
-    return res.json({ success: true, message: `已将 "${addedTags.join(', ')}" 添加到 ${tableName} 的标签` });
+    return res.json({ success: true, message: `已将 "${addedTags.join(', ')}" 添加到 ${tableName} 的标签`, addedTags });
   } catch (e) {
     logger.error('Add tag failed', { error: e.message, tableName, tag });
     return res.status(500).json({ success: false, message: e.message });
