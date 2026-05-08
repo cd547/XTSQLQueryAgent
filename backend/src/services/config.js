@@ -43,6 +43,21 @@ export function getAgentConfig() {
 
 export function updateAgentConfig(key, value) {
   const db = getDb();
-  db.prepare('UPDATE configs SET value = ?, updated_at = CURRENT_TIMESTAMP WHERE key = ?').run(value, key);
+  db.prepare(`INSERT OR REPLACE INTO configs (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)`).run(key, value);
   return getAgentConfig();
+}
+
+export function getTokenWarningLevel() {
+  try {
+    const db = getDb();
+    const row = db.prepare('SELECT value FROM configs WHERE key = ?').get('agent_token_warning_level');
+    if (!row) {
+      // 默认值为30000
+      return 30000;
+    }
+    return parseInt(row.value) || 30000;
+  } catch (e) {
+    logger.error('Failed to get token warning level', { error: e.message });
+    return 30000;
+  }
 }

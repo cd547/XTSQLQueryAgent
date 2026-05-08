@@ -87,6 +87,7 @@ function App() {
   const [showMessagesModal, setShowMessagesModal] = useState(false);
   const [sessionMessagesContent, setSessionMessagesContent] = useState('');
   const [sessionMessagesTokens, setSessionMessagesTokens] = useState(0);
+  const [tokenWarningLevel, setTokenWarningLevel] = useState(30000);
   const contentRef = useRef('');
   const messageCountRef = useRef(0);
   const messagesEndRef = useRef(null);
@@ -100,6 +101,7 @@ function App() {
     initialLoadRef.current = true;
     loadSessions();
     loadCurrentModel();
+    loadAgentConfig();
   }, []);
 
   const loadCurrentModel = async () => {
@@ -113,6 +115,17 @@ function App() {
     }
   };
   loadCurrentModel.loading = false;
+
+  const loadAgentConfig = async () => {
+    try {
+      const data = await api.getAgentConfig();
+      if (data) {
+        setTokenWarningLevel(parseInt(data.agent_token_warning_level) || 30000);
+      }
+    } catch (e) {
+      console.debug('获取Agent配置失败:', e.message);
+    }
+  };
 
   useEffect(() => {
     if (activeTabKey !== 'chat' && tabs[activeTabKey]?.sql !== undefined) {
@@ -295,6 +308,24 @@ function App() {
       setCurrentTokens(data.total_tokens || 0);
     } catch (e) {
       setCurrentTokens(0);
+    }
+    // 先重置查看消息按钮颜色为默认色
+    setSessionMessagesTokens(0);
+    // 获取最新的token警告阈值配置
+    try {
+      const config = await api.getAgentConfig();
+      setTokenWarningLevel(parseInt(config.agent_token_warning_level) || 30000);
+    } catch (e) {
+      console.debug('获取Agent配置失败:', e.message);
+    }
+    // 然后查询消息接口，更新token数用于判断按钮颜色
+    try {
+      const msgData = await getQueryMessages(session.id);
+      if (msgData.success) {
+        setSessionMessagesTokens(msgData.messageTokens || 0);
+      }
+    } catch (e) {
+      console.debug('获取消息token失败:', e.message);
     }
   };
   
@@ -1335,8 +1366,8 @@ children: currentResults.length > 0 ? (
                         size="small"
                         type="text"
                         onClick={handleViewMessages}
-                        style={{ fontSize: 10, padding: '2px 6px', color: '#999' }}
-                        icon={<FileTextOutlined style={{ fontSize: 10 }} />}
+                        style={{ fontSize: 10, padding: '2px 6px', color: sessionMessagesTokens > tokenWarningLevel ? '#ff4d4f' : '#999' }}
+                        icon={<FileTextOutlined style={{ fontSize: 10, color: sessionMessagesTokens > tokenWarningLevel ? '#ff4d4f' : '#999' }} />}
                       >
                         查看消息
                       </Button>

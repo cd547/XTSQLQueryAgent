@@ -87,7 +87,11 @@ router.put('/:id', (req, res) => {
 router.delete('/:id', (req, res) => {
   try {
     const db = getDb();
+    // 先删除 llm_messages 表中相关记录（有外键约束）
+    db.prepare('DELETE FROM llm_messages WHERE session_id = ?').run(req.params.id);
+    // 再删除 messages 表中相关记录
     db.prepare('DELETE FROM messages WHERE session_id = ?').run(req.params.id);
+    // 最后删除会话记录
     db.prepare('DELETE FROM sessions WHERE id = ?').run(req.params.id);
     res.json({ success: true });
   } catch (error) {

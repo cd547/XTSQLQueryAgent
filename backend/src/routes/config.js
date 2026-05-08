@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getDb } from '../db/sqlite.js';
 import { logger } from '../logger.js';
-import { getAgentConfig, updateAgentConfig } from '../services/config.js';
+import { getAgentConfig, updateAgentConfig, getTokenWarningLevel } from '../services/config.js';
 
 const router = Router();
 
@@ -80,6 +80,9 @@ router.get('/llm', async (req, res) => {
 router.get('/agent', async (req, res) => {
   try {
     const config = getAgentConfig();
+    // 添加 token 警告上限到 agent 配置中
+    const tokenWarningLevel = getTokenWarningLevel();
+    config['agent_token_warning_level'] = String(tokenWarningLevel);
     res.json(config);
   } catch (e) {
     res.json({});

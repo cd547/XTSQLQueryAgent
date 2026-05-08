@@ -5,7 +5,7 @@ import * as api from '../api';
 function ConfigPanel() {
   const [dbConfig, setDbConfig] = useState({ host: 'localhost', port: 3306, user: 'root', password: '', database: '' });
   const [llmConfig, setLlmConfig] = useState({ provider: 'deepseek', apiKey: '', model: 'deepseek-chat' });
-  const [agentConfig, setAgentConfig] = useState({ max_tool_calls: '30', timeout_ms: '60000' });
+  const [agentConfig, setAgentConfig] = useState({ max_tool_calls: '30', timeout_ms: '60000', token_warning_level: '30000' });
   const [testing, setTesting] = useState(false);
   const [testingLlm, setTestingLlm] = useState(false);
   const [savingAgent, setSavingAgent] = useState(false);
@@ -14,8 +14,18 @@ function ConfigPanel() {
     api.getAgentConfig().then(data => {
       setAgentConfig({
         max_tool_calls: data.agent_max_tool_calls || '30',
-        timeout_ms: data.agent_timeout_ms || '60000'
+        timeout_ms: data.agent_timeout_ms || '60000',
+        token_warning_level: data.agent_token_warning_level || '30000'
       });
+    });
+    api.getLlMConfig().then(data => {
+      if (data.provider) {
+        setLlmConfig({
+          provider: data.provider,
+          apiKey: data.apiKey || '',
+          model: data.model || ''
+        });
+      }
     });
   }, []);
   
@@ -51,6 +61,7 @@ function ConfigPanel() {
     try {
       await api.updateAgentConfig('max_tool_calls', agentConfig.max_tool_calls);
       await api.updateAgentConfig('timeout_ms', agentConfig.timeout_ms);
+      await api.updateAgentConfig('token_warning_level', agentConfig.token_warning_level);
       message.success('Agent配置已保存');
     } catch (e) { message.error('保存失败'); }
     finally { setSavingAgent(false); }
@@ -103,6 +114,10 @@ function ConfigPanel() {
         <Space>
           <span style={{ width: 100 }}>超时时间(ms)</span>
           <InputNumber value={parseInt(agentConfig.timeout_ms)} onChange={v => setAgentConfig({...agentConfig, timeout_ms: String(v || 60000)})} min={1000} max={300000} style={{ fontSize: 12 }} />
+        </Space>
+        <Space>
+          <span style={{ width: 100 }}>token警告上限</span>
+          <InputNumber value={parseInt(agentConfig.token_warning_level)} onChange={v => setAgentConfig({...agentConfig, token_warning_level: String(v || 30000)})} min={1000} max={100000} style={{ fontSize: 12 }} />
         </Space>
         <Button onClick={saveAgent} loading={savingAgent} style={{ fontSize: 12 }}>保存Agent配置</Button>
       </div>
