@@ -264,13 +264,15 @@ function App() {
   const handleNewSession = async () => {
     try {
       const data = await createSession('新对话');
+      const sessionName = data.name || '新对话';
       const newSession = { 
         id: data.id, 
-        name: data.name || '新对话', 
+        name: sessionName, 
         created_at: new Date().toISOString() 
       };
       setSessions(prev => [newSession, ...prev]);
       setCurrentSessionId(data.id);
+      setCurrentSessionName(`${sessionName}#${data.id}`);
       setCurrentTokens(0);
       setMessages([]);
       setResults([]);
