@@ -20,17 +20,13 @@
     "directories": {
       "output": "dist"
     },
+    "icon": "icons/app",
     "files": [
+      "package.json",
       "electron/**/*",
-      "frontend/dist/**/*",
-      "backend/src/**/*",
-      "backend/node_modules/**/*",
-      "skills/**/*"
+      "frontend/dist/**/*"
     ],
-    "asarUnpack": [
-      "backend/**/*",
-      "skills/**/*"
-    ]
+    "asar": true
   },
   "devDependencies": {
     "concurrently": "^8.2.0",

@@ -916,7 +916,13 @@ const explainColumns = explainResults.length > 0
                         }}
                         trigger={['click']}
                       >
-                        <MoreOutlined style={{ color: '#999', cursor: 'pointer', fontSize: 14 }} />
+                        <span 
+                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, borderRadius: 4 }}
+                          onMouseEnter={(e) => { e.currentTarget.style.color = '#1890ff'; e.currentTarget.style.background = '#e6f7ff'; }}
+                          onMouseLeave={(e) => { e.currentTarget.style.color = '#999'; e.currentTarget.style.background = 'transparent'; }}
+                        >
+                          <MoreOutlined style={{ color: '#999', cursor: 'pointer', fontSize: 14 }} />
+                        </span>
                       </Dropdown>
                     ]}
                   >
@@ -1279,7 +1285,7 @@ children: currentResults.length > 0 ? (
               <>
                 <div
                   ref={inputResizerRef}
-                  style={{ minHeight: inputHeight, borderTop: '1px solid #e8e8e8', background: '#fff', position: 'relative', display: 'flex', flexDirection: 'column' }}
+                  style={{ minHeight: inputHeight, background: '#fff', position: 'relative', display: 'flex', flexDirection: 'column', boxShadow: '0 -8px 16px rgba(0, 0, 0, 0.1), 0 -4px 8px rgba(0, 0, 0, 0.08)' }}
                 >
                   <div
                     style={{
