@@ -507,7 +507,7 @@
     {
       "name": "order_list",
       "description": "订单列表",
-      "tags": ["网站支付订单","C端支付"],
+      "tags": [],
       "related_tables": [
         "my_user",
         "admin_user",
@@ -519,7 +519,15 @@
     {
       "name": "edu_study",
       "description": "排课表",
-      "tags": ["学通排课"],
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_study",
+      "description": "排课表",
+      "tags": [],
       "related_tables": [
         "edu_course_exam_subject_name",
         "edu_class_type",
@@ -550,7 +558,7 @@
     {
       "name": "keqiao_study_student",
       "description": "学生考勤表",
-      "tags": ["科桥排课学生关系","克勒排课学生关系"],
+      "tags": [],
       "related_tables": [
         "keqiao_study",
         "edu_student",
