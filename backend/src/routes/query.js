@@ -591,9 +591,14 @@ router.post('/execute', async (req, res) => {
     const connection = await mysql.createConnection(config);
 
     // 去除SQL末尾的分号，避免拼接LIMIT出错
-    const cleanSql = sql.replace(/;$/, '').trim();
-    const execSql = cleanSql.includes('LIMIT') ? cleanSql : cleanSql + ' LIMIT 1000';
-    const [rows] = await connection.query(execSql);
+    // 使用之前已清理注释的SQL（转为小写保持原始大小写）
+    const execSql = sql
+      .replace(/--[^\n]*/g, '')
+      .replace(/\/\*[\s\S]*?\*\//g, '')
+      .replace(/;$/, '')
+      .trim();
+    const finalSql = execSql.includes('LIMIT') ? execSql : execSql + ' LIMIT 1000';
+    const [rows] = await connection.query(finalSql);
     await connection.end();
 
     if (sessionId) {
@@ -624,12 +629,18 @@ router.post('/explain', async (req, res) => {
   }
   
   // 提取有效 SQL（去除注释，只保留 SQL 语句）
-  const lines = sql.split('\n');
-  const validLines = lines.filter(line => {
-    const trimmed = line.trim();
-    return trimmed && !trimmed.startsWith('--') && !trimmed.startsWith('/*');
-  });
-  const cleanSql = validLines.join(' ').trim();
+  // 先去除所有注释，再处理行
+  let cleanSql = sql
+    .replace(/\/\*[\s\S]*?\*\//g, '')  // 去除 /* */ 注释
+    .replace(/--[^\n]*/g, '');           // 去除 -- 注释
+  
+  // 按行分割，过滤空行
+  const lines = cleanSql.split('\n');
+  const validLines = lines.filter(line => line.trim());
+  cleanSql = validLines.join(' ').trim();
+  
+  // 将多个空格合并为单个空格
+  cleanSql = cleanSql.replace(/\s+/g, ' ').trim();
   
   if (!cleanSql.toUpperCase().startsWith('SELECT') && !cleanSql.toUpperCase().startsWith('EXPLAIN') && !cleanSql.toUpperCase().startsWith('WITH')) {
     const forbidden = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE'];
@@ -656,6 +667,7 @@ const connection = await mysql.createConnection(config);
       : isSelectOrWith
         ? `EXPLAIN ${cleanSql}`  // 使用标准表格格式
         : `EXPLAIN ${cleanSql}`;
+    logger.info('EXPLAIN executing', { cleanSql, explainSql });
     const [rows] = await connection.query(explainSql);
     await connection.end();
     
