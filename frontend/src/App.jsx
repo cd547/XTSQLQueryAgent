@@ -234,6 +234,22 @@ function App() {
         setCurrentSessionId(firstSession.id);
         setCurrentTokens(firstSession.total_tokens || 0);
         setCurrentSessionName(firstSession.name ? `${firstSession.name}#${firstSession.id}` : '聊天');
+        // 加载消息token数据用于进度条显示
+        try {
+          const msgData = await getQueryMessages(firstSession.id);
+          if (msgData.success) {
+            setSessionMessagesTokens(msgData.messageTokens || 0);
+          }
+        } catch (e) {
+          console.debug('获取消息token失败:', e.message);
+        }
+        // 加载Agent配置获取token警告阈值
+        try {
+          const config = await api.getAgentConfig();
+          setTokenWarningLevel(parseInt(config.agent_token_warning_level) || 30000);
+        } catch (e) {
+          console.debug('获取Agent配置失败:', e.message);
+        }
       }
     } catch (e) {
       console.error('加载会话失败:', e);
@@ -1362,15 +1378,27 @@ children: currentResults.length > 0 ? (
                     <div style={{ fontSize: 11, fontWeight: 500, color: '#1890ff', display: 'flex', gap: 8, alignItems: 'center' }}>
                       {currentModel && <span>{currentModel}</span>}
                       {currentTokens > 0 && <span style={{ color: '#999', fontWeight: 'normal' }}>{currentTokens} tokens</span>}
-                      <Button
-                        size="small"
-                        type="text"
+                      <div
                         onClick={handleViewMessages}
-                        style={{ fontSize: 10, padding: '2px 6px', color: sessionMessagesTokens > tokenWarningLevel ? '#ff4d4f' : '#999' }}
-                        icon={<FileTextOutlined style={{ fontSize: 10, color: sessionMessagesTokens > tokenWarningLevel ? '#ff4d4f' : '#999' }} />}
+                        style={{ 
+                          width: '60px', 
+                          height: '8px',
+                          cursor: 'pointer',
+                          backgroundColor: '#e8e8e8',
+                          borderRadius: '4px',
+                          overflow: 'hidden'
+                        }}
                       >
-                        查看消息
-                      </Button>
+                        <div 
+                          style={{ 
+                            height: '100%', 
+                            width: `${Math.min((sessionMessagesTokens / tokenWarningLevel) * 100, 100)}%`,
+                            backgroundColor: sessionMessagesTokens > tokenWarningLevel ? '#ff4d4f' : '#52c41a',
+                            borderRadius: '4px',
+                            transition: 'width 0.3s ease'
+                          }} 
+                        />
+                      </div>
                     </div>
                     {loading ? (
                       <Button

@@ -24,7 +24,7 @@
 
 | 功能 | 说明 |
 |------|------|
-| 多 Provider 支持 | OpenAI、DeepSeek、MiniMax、Ollama (本地) |
+| 多 Provider 支持 | 当前仅支持 DeepSeek API |
 | 流式输出 | SSE 实时显示 LLM 思考过程 |
 | Tool 调用 | 自动获取表结构、DDL、输出格式等，支持批量获取 |
 | Skill V2 | 结构化表结构说明和字段配置 |
@@ -37,6 +37,18 @@
 | SQL EXPLAIN | 执行计划分析，优化查询性能 |
 | Skill 查看器 | 浏览和编辑本地 skill 配置（支持锁定/解锁、自动备份） |
 | 表结构同步 | 从数据库同步表结构到本地存储 |
+| Agent 配置 | 可配置最大工具调用次数、超时时间、Token 警告上限 |
+| 选中 SQL 执行 | SQL 预览支持选中部分内容执行 |
+
+### UI 特性
+
+| 特性 | 说明 |
+|------|------|
+| 流式输出 | SSE 实时显示 LLM 思考过程和工具调用日志 |
+| Markdown 渲染 | 支持 GFM 表格语法渲染 |
+| 暗色主题 | SQL 编辑器使用 vs-dark 主题 |
+| 滚动条优化 | 统一调细为 6px 宽度 |
+| 请求中断 | 发送中可点击按钮中断请求（显示转圈效果） |
 
 ### 部署方式
 
@@ -44,7 +56,7 @@
 |------|------|
 | 网页版 | 使用 `npm run dev` 启动开发服务器 |
 | Electron 客户端 | 使用 `npm run electron:dev` 启动开发模式，`npm run electron:build` 打包 |
-| 便携版本 | Electron 打包后支持便携模式，数据存储在应用目录下 |
+| 便携版本 | Electron 打包后支持便携模式，数据存储在应用目录下，统一开发/生产环境路径 |
 
 ## 技术栈
 
@@ -52,7 +64,6 @@
 |------|------|
 | 前端 | React 18 + Ant Design + Monaco Editor + react-markdown |
 | 后端 | Express (端口 5002) |
-| LLM 框架 | LangChain.js |
 | 数据库驱动 | mysql2/promise (MySQL) |
 | 本地存储 | better-sqlite3 (SQLite) |
 | 构建工具 | Vite |
@@ -212,7 +223,10 @@ npm run dev:frontend
 - **field_config/** - 字段配置
 - **ddl/** - 建表语句
 
-支持锁定/解锁编辑，保存时自动备份。
+**功能特性：**
+- 锁定/解锁编辑
+- 保存时自动备份
+- **实时生效**：修改 SKILL.md 后无需重启，下次对话自动使用最新内容
 
 ### 智能标签关联
 
@@ -246,12 +260,13 @@ npm run dev:frontend
 
 ### 消息历史查看
 
-在聊天对话框右侧，点击「查看消息」按钮：
+在聊天对话框右侧，点击进度条按钮：
 - 弹出模态框显示当前会话的完整消息历史
 - 使用 Monaco Editor 以 JSON 格式展示
 - 顶部显示消息上下文长度（token 数）
 - Token 计算采用 DeepSeek 官方 BPE Tokenizer
 - 消息自动保存到 SQLite 数据库，支持会话中断后恢复
+- **进度条指示**：显示已使用 token 与警告上限的比例（绿色正常，红色警告）
 
 ### Token 计算
 

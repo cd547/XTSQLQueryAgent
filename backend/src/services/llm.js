@@ -171,7 +171,18 @@ ${history}
         body: JSON.stringify(requestParams)
       });
       
-      const json = await fetchResponse.json();
+      let json;
+      try {
+        json = await fetchResponse.json();
+      } catch (parseError) {
+        // 如果响应不是有效的JSON，读取原始内容并记录错误
+        const text = await fetchResponse.text();
+        logger.error('LLM response is not valid JSON', { 
+          error: parseError.message, 
+          responseText: text.slice(0, 500) 
+        });
+        throw new Error(`LLM服务返回格式错误: ${parseError.message}`);
+      }
       
       const assistantMessage = json.choices?.[0]?.message;
       responseText = assistantMessage?.content || '';

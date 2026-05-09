@@ -15,7 +15,6 @@
 |------|----------|
 | 前端 | React 18 + JavaScript + Ant Design + react-markdown |
 | 后端 | Express + JavaScript (端口5002) |
-| LLM框架 | LangChain.js ^0.3 (@langchain/openai, @langchain/deepseek) |
 | SQL验证 | 内联实现（字符串检查） |
 | 数据库驱动 | mysql2/promise（仅MySQL） |
 | SQLite | better-sqlite3（单用户本地存储） |
@@ -214,9 +213,9 @@ CREATE TABLE table_schemas (
 ### 4.6 自然语言查询
 
 - 用户输入自然语言查询请求
-- 后端使用LangChain.js：
+- 后端：
   1. 构建Prompt（包含Schema + 用户问题）
-  2. 调用LLM生成SQL
+  2. 调用LLM生成SQL（当前仅支持DeepSeek API）
   3. **不直接执行，返回SQL预览**
   4. 用户确认后执行
 - 结果展示在对话界面
@@ -416,8 +415,7 @@ Response: {
 ```
 
 **schemaMode 说明**：
-- `langchain`（默认）：使用LangChain动态Tool调用，LLM按需获取表结构
-- `stream`：SSE流式输出，包含LLM思考过程和工具调用日志
+- `stream`（默认）：SSE流式输出，包含LLM思考过程和工具调用日志（当前仅支持DeepSeek API）
 - `skill`：使用Skill V2静态匹配表结构（从sql-creator-skill-v2/）
 - `manual`：从SQLite table_schemas表读取
 - `auto`：实时连接数据库获取
@@ -535,7 +533,7 @@ Response: 文件流
 
 **变更内容**：
 - Skill数据源从单一 `db_schema_skill.json` 迁移到 `sql-creator-skill-v2/` 目录
-- 新增动态Skill调用模式（LangChain LCEL + Function Calling）
+- 支持工具调用模式，LLM按需获取表结构
 
 **文件结构**：
 ```
@@ -557,13 +555,12 @@ skills/sql-creator-skill-v2/
 ### 10.2 Schema模式说明
 | 模式 | 说明 | 实现状态 |
 |------|------|----------|
-| langchain | LangChain动态Skill调用（推荐） | ✅ 已实现，使用LangChain Tools |
-| stream | SSE流式输出+Agent日志 | ✅ 已实现 |
+| stream | SSE流式输出+Agent日志（默认，当前仅支持DeepSeek API） | ✅ 已实现 |
 | skill | 静态注入匹配表结构（Skill V2） | ✅ 已实现，使用sql-creator-skill-v2/ |
 | manual | SQLite存储的表结构 | ⚠️ 部分实现（后端空路由） |
 | auto | 实时连接数据库获取 | ✅ 已实现 |
 
-**默认模式**：langchain
+**默认模式**：stream
 
 **注意**：
 - `skill` 模式实际使用 `skills/sql-creator-skill-v2/` 目录，包含：
@@ -573,15 +570,15 @@ skills/sql-creator-skill-v2/
   - `ddl/` - 建表语句
   - `docs/` - 文档
   - `templates/` - 模板
-- `langchain` 模式使用LangChain的Tools实现动态获取表结构
+- `stream` 模式支持工具调用，LLM按需获取表结构
 
-### 10.3 LangChain集成
+### 10.3 工具调用集成
 
 **实现文件**：
 - `backend/src/services/llm.js` - LLM调用逻辑
-- `backend/src/services/toolFuncs.js` - 工具函数和Tools定义
+- `backend/src/services/toolFuncs.js` - 工具函数定义
 
-**定义的Tools**（在 toolFuncs.js 中）：
+**定义的工具**（在 toolFuncs.js 中）：
 - `get_tables`: 获取所有可用表列表（从table_index.json）
 - `get_table_schema(table_name)`: 获取指定表详细信息（从field_config/*.json）
 - `get_table_ddl(table_name)`: 获取指定表DDL建表语句（从ddl/*.sql）
@@ -589,16 +586,11 @@ skills/sql-creator-skill-v2/
 - `get_mysql_limits`: 获取MySQL 5.7限制信息（从docs/mysql57_limits.md）
 
 **LLM Provider 支持**：
-- OpenAI (`ChatOpenAI`)
-- DeepSeek (`ChatDeepSeek` 或 `ChatOpenAI` with baseURL)
-- MiniMax (`ChatOpenAI` with custom baseURL)
-- Ollama (本地)
+- 当前仅支持 DeepSeek API
 
 **实现的函数**（多个版本）：
-- `generateSQLWithLangChain`: 基础版本
-- `generateSQLWithLangChainStreamGen_BAK`: 备份版本
-- `generateSQLWithLangChainStreamGen`: 流式版本
-- `generateSQLWithLangChainStreamGenV2`: 使用LangChain流式方法
+- `generateSQLWithLangChain`: 基础版本（非流式）
+- `generateSQLWithLangChainStreamGen_BAK`: 流式版本（当前使用）
 
 **后端端口**：5002（不是文档中提到的3001）
 

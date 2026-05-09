@@ -7,10 +7,10 @@
 **Architecture:**
 - 前端：React + Ant Design + Vite (端口5173)
 - 后端：Express + better-sqlite3（本地存储，端口5002）
-- LLM：LangChain.js集成多provider
+- LLM：DeepSeek API（当前仅支持）
 - 数据库：mysql2/promise（目标库）+ SQLite（本地配置/会话存储）
 
-**Tech Stack:** React 18, Express, LangChain.js ^0.3, mysql2/promise, better-sqlite3, xlsx, winston, @langchain/openai
+**Tech Stack:** React 18, Express, mysql2/promise, better-sqlite3, xlsx, winston
 
 **注意**: 实际后端端口为5002，文档中3001为早期设计值
 
@@ -1622,7 +1622,7 @@ git commit -M5: add unit tests"
 
 ## 已完成的更新 (2026-04-03)
 
-### Task 6: LangChain动态Skill调用 ✅
+### Task 6: LLM工具调用实现 ✅
 
 **完成时间**: 2026-04-03
 
@@ -1632,9 +1632,9 @@ git commit -M5: add unit tests"
 - Modify: `frontend/src/components/QueryPanel.jsx`
 
 **实现内容**:
-- [x] 创建 LangChain LLM 服务，定义 get_tables 和 get_table_schema Tools
-- [x] 修改 query.js 支持 langchain 模式
-- [x] 前端添加 LangChain (推荐) 选项，默认启用
+- [x] 创建 LLM 服务，定义 get_tables 和 get_table_schema 工具函数
+- [x] 修改 query.js 支持 stream 模式（当前仅支持 DeepSeek API）
+- [x] 前端添加流式输出选项，默认启用
 
 ### Task 7: 编码问题修复 ✅
 
@@ -1729,8 +1729,8 @@ git commit -M5: add unit tests"
 | /api/table-schema | CRUD接口 | 空路由 | ⚠️ 未实现 |
 | SQL验证服务 | 独立sqlValidator.js | 内联实现 | ✅ 已更新 |
 | Skill路径 | db_schema_skill.json | sql-creator-skill-v2/ | ✅ 已更新 |
-| LLM实现 | 简单wrapper | 多版本LangChain实现 | ✅ 已更新 |
-| 查询模式 | 3种 | 5种(langchain/stream/skill/manual/auto) | ✅ 已更新 |
+| LLM实现 | 简单wrapper | DeepSeek API调用（当前仅支持） | ✅ 已更新 |
+| 查询模式 | 3种 | 4种(stream/skill/manual/auto) | ✅ 已更新 |
 | 会话管理 | 基础CRUD | 自动创建会话 | ✅ 已更新 |
 
 ### Skill V2 目录结构

@@ -8,8 +8,6 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = process.env.PROJECT_ROOT || path.resolve(__dirname, '../../../');
 const SKILL_V2_PATH = path.join(process.env.SKILL_PATH || path.join(projectRoot, 'skills'), 'sql-creator-skill-v2');
 
-let cachedSkillMd = null;
-
 export function loadTableIndex() {
   const tableIndexPath = path.join(SKILL_V2_PATH, 'table_index.json');
   if (fs.existsSync(tableIndexPath)) {
@@ -19,15 +17,12 @@ export function loadTableIndex() {
 }
 
 export function loadSkillMd() {
-  if (cachedSkillMd) return cachedSkillMd;
-
   const skillMdPath = path.join(SKILL_V2_PATH, 'SKILL.md');
   if (!fs.existsSync(skillMdPath)) {
     throw new Error('SKILL.md 未找到，请确保目录存在 skills/sql-creator-skill-v2/SKILL.md');
   }
 
-  cachedSkillMd = fs.readFileSync(skillMdPath, 'utf-8');
-  return cachedSkillMd;
+  return fs.readFileSync(skillMdPath, 'utf-8');
 }
 
 function removeEmptyProperties(obj) {

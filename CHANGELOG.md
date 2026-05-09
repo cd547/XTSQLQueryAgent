@@ -1,5 +1,35 @@
 # 更新日志
 
+## 2026-05-09
+
+### 消息历史查看按钮优化
+
+#### 功能
+- 将"查看消息"按钮改为进度条形式展示 token 使用状态
+- 进度条长度 60px，高度 8px
+- 正常状态显示绿色，超过警告阈值显示红色
+- 点击进度条仍可打开消息查看弹窗
+
+#### 修改文件
+- `frontend/src/App.jsx`: 替换按钮为进度条组件
+
+### SKILL.md 实时生效修复
+
+#### 问题
+- 在 Skill 查看器中修改 SKILL.md 文件后，下次对话没有立即使用新内容
+- 日志中显示的仍是旧内容
+
+#### 解决方案
+- 移除了 `loadSkillMd()` 函数中的缓存机制
+- 每次调用时重新从磁盘读取文件内容
+
+#### 修改文件
+- `backend/src/services/toolFuncs.js`: 移除 `cachedSkillMd` 缓存变量
+
+#### 效果
+- 修改 SKILL.md 后无需重启程序
+- 下次对话自动使用最新内容
+
 ## 2026-05-08
 
 ### 消息历史查看功能 (新增)
@@ -237,21 +267,12 @@
 - QueryPanel.jsx 新增 `queryTime` state
 - 标题格式：`查询结果 ({rowCount} 条 耗时: {queryTime}ms)`
 
-### Ollama 本地模型支持 (新增)
+### LLM Provider 配置 (前端预留)
 
 #### 功能
-- 配置面板新增 Ollama (本地) Provider 选项
-- 支持连接本地部署的大语言模型
-- API Key 填写 Ollama 地址（默认 http://localhost:11434）
-- 模型填写本地模型名（如 llama3.2, qwen2.5 等）
-
-#### 后端改动 (backend/src/services/llm.js)
-- `getProviderConfig()` 添加 ollama 配置: baseURL=http://localhost:11434, model=llama3.2
-- `generateSQLWithLangChainStreamGenV2()` switch 添加 case 'ollama'
-
-#### 前端改动
-- ConfigPanel.jsx 下拉选项已支持：`<Select.Option value="ollama">Ollama (本地)</Select.Option>`
-- API Key 改为可填写本地地址
+- 配置面板支持选择不同的 Provider（OpenAI、DeepSeek、MiniMax、Ollama）
+- 当前仅实现 DeepSeek API 支持
+- 其他 Provider 支持预留，待后续扩展
 
 ### SQL EXPLAIN 功能 (新增)
 
