@@ -9,12 +9,24 @@ let backendProcess;
 
 function checkPort(port, host) {
   return new Promise((resolve) => {
-    const tester = net.createServer()
-      .once('error', () => resolve(true))
-      .once('listening', () => {
-        tester.once('close', () => resolve(false)).close();
-      })
-      .listen(port, host);
+    // 创建一个连接来测试端口是否被占用
+    const socket = new net.Socket();
+    socket.on('connect', () => {
+      // 连接成功，说明端口被占用
+      socket.destroy();
+      resolve(true);
+    });
+    socket.on('error', () => {
+      // 连接失败，说明端口未被占用
+      socket.destroy();
+      resolve(false);
+    });
+    socket.setTimeout(1000);
+    socket.on('timeout', () => {
+      socket.destroy();
+      resolve(false);
+    });
+    socket.connect(port, host);
   });
 }
 
@@ -39,11 +51,85 @@ function getSystemNodePath() {
   }
 }
 
+async function killProcessOnPort(port) {
+  return new Promise((resolve) => {
+    if (process.platform === 'win32') {
+      // Windows: 使用 cmd /c 执行命令
+      const { exec } = require('child_process');
+      const command = `netstat -ano | findstr ":${port}"`;
+      console.log(`Executing command: ${command}`);
+      
+      exec(`cmd /c "${command}"`, (error, stdout, stderr) => {
+        if (error) {
+          console.error('Failed to find process:', error.message);
+          console.error('stderr:', stderr);
+          resolve(false);
+          return;
+        }
+        
+        console.log('netstat output:', stdout);
+        const lines = stdout.trim().split('\n');
+        let killed = false;
+        let pendingKills = 0;
+        
+        for (const line of lines) {
+          const parts = line.trim().split(/\s+/);
+          const pid = parts[parts.length - 1];
+          
+          if (pid && !isNaN(pid) && parseInt(pid) > 0) {
+            pendingKills++;
+            const killCommand = `taskkill /F /PID ${pid}`;
+            console.log(`Killing process ${pid} with command: ${killCommand}`);
+            
+            exec(`cmd /c "${killCommand}"`, (killError, killStdout, killStderr) => {
+              pendingKills--;
+              if (!killError) {
+                console.log(`Successfully killed process ${pid}`);
+                console.log('taskkill output:', killStdout);
+                killed = true;
+              } else {
+                console.error(`Failed to kill process ${pid}:`, killError.message);
+                console.error('taskkill stderr:', killStderr);
+              }
+              
+              if (pendingKills === 0) {
+                setTimeout(() => resolve(killed), 500);
+              }
+            });
+          }
+        }
+        
+        if (pendingKills === 0) {
+          setTimeout(() => resolve(killed), 500);
+        }
+      });
+    } else {
+      // Linux/macOS: 使用 lsof 和 kill
+      const { exec } = require('child_process');
+      exec(`lsof -ti:${port} | xargs -r kill -9`, (error) => {
+        if (!error) {
+          console.log(`Killed process on port ${port}`);
+          resolve(true);
+        } else {
+          console.error('Failed to kill process:', error.message);
+          resolve(false);
+        }
+      });
+    }
+  });
+}
+
 async function startBackend() {
-  const isPortUsed = await checkPort(5002, '127.0.0.1');
+  const isPortUsed = await checkPort(5002, '0.0.0.0');
   if (isPortUsed) {
-    console.log('Backend already running on port 5002');
-    return true;
+    console.log('Port 5002 is already in use, trying to release...');
+    const killed = await killProcessOnPort(5002);
+    if (killed) {
+      console.log('Port released successfully, waiting for cleanup...');
+      await new Promise(resolve => setTimeout(resolve, 1000));
+    } else {
+      console.log('Failed to release port, continuing anyway...');
+    }
   }
   
   let projectRoot;
