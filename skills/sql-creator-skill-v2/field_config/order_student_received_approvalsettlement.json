@@ -1,0 +1,9 @@
+{
+  "table_name": "order_student_received_approvalsettlement",
+  "field_aliases": {},
+  "field_enums": {},
+  "virtual_associations": [],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": ["当发起审批流后，会在当前表中创建3条记录，即三个审批节点，他们回款id一样，del=0,level分别是1,2,3，默认审批状态（status）都是1,审批人都是空，直到审批人去改变。如果某个节点被驳回，这三个记录都标记为del=1"]
+}

@@ -322,13 +322,10 @@ export async function* generateSQLWithLangChainStreamGen_BAK(question, history =
   const toolsMap = new Map(tools.map(t => [t.name, t]));
   //const tableIndex = loadTableIndex();
 
-  const systemMessage = `你是 SQL 生成 Agent。严格遵守以下规则，随后根据用户问题生成SQL。
+  const systemMessage = `你是XTSQLQueryAgent。严格遵守以下规则，随后根据用户问题生成SQL。
 
 ## SKILL.md 内容（只读）
 ${skillMd}
-
-## 历史上下文
-${history}
 
 ## 用户问题`;
 

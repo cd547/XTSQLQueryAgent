@@ -1,0 +1,21 @@
+CREATE TABLE `order_student_received_approvalsettlement` (
+  `id` bigint(11) NOT NULL AUTO_INCREMENT,
+  `order_student_received_id` bigint(11) NOT NULL COMMENT '回款ID',
+  `admin_user_id` int(11) NOT NULL COMMENT '回款计划-佣金结算审批发起人ID',
+  `status` int(5) NOT NULL COMMENT '状态：1审批中、2已驳回、3已通过',
+  `level` int(5) NOT NULL COMMENT '当前审批等级 1 一级审批 2 二级审批  3三级审批',
+  `level_admin_user_id` int(11) DEFAULT NULL COMMENT '审批人ID',
+  `level_approval_time` bigint(11) DEFAULT NULL COMMENT '审批时间戳',
+  `level_remarks` varchar(500) DEFAULT NULL COMMENT '审批 通过/驳回备注',
+  `remarks` varchar(500) DEFAULT NULL COMMENT '备注',
+  `created_time` bigint(11) NOT NULL COMMENT '创建时间（时间戳）',
+  `update_time` bigint(11) DEFAULT NULL COMMENT '最后更新时间（时间戳）',
+  `del` int(11) NOT NULL DEFAULT '0' COMMENT '0-正常；1-删除',
+  PRIMARY KEY (`id`),
+  KEY `order_student_received_approvalsettlement_wj_1_idx` (`order_student_received_id`),
+  KEY `order_student_received_approvalsettlement_wj_2_idx` (`admin_user_id`),
+  KEY `order_student_received_approvalsettlement_wj_3_idx` (`level_admin_user_id`),
+  CONSTRAINT `order_student_received_approvalsettlement_wj_1` FOREIGN KEY (`order_student_received_id`) REFERENCES `order_student_received` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `order_student_received_approvalsettlement_wj_2` FOREIGN KEY (`admin_user_id`) REFERENCES `admin_user` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `order_student_received_approvalsettlement_wj_3` FOREIGN KEY (`level_admin_user_id`) REFERENCES `admin_user` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB AUTO_INCREMENT=190 DEFAULT CHARSET=utf8mb4 COMMENT='回款计划-佣金结算审批表'

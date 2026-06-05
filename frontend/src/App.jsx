@@ -88,6 +88,7 @@ function App() {
   const [sessionMessagesContent, setSessionMessagesContent] = useState('');
   const [sessionMessagesTokens, setSessionMessagesTokens] = useState(0);
   const [tokenWarningLevel, setTokenWarningLevel] = useState(30000);
+  const [chatScrollTop, setChatScrollTop] = useState(0);
   const contentRef = useRef('');
   const messageCountRef = useRef(0);
   const messagesEndRef = useRef(null);
@@ -95,6 +96,20 @@ function App() {
   const resizerRef = useRef(null);
   const initialLoadRef = useRef(false);
   const abortControllerRef = useRef(null);
+  const chatContentRef = useRef(null);
+  
+  const handleTabChange = (key) => {
+    if (activeTabKey === 'chat' && chatContentRef.current) {
+      setChatScrollTop(chatContentRef.current.scrollTop);
+    }
+    setActiveTabKey(key);
+  };
+  
+  useEffect(() => {
+    if (activeTabKey === 'chat' && chatContentRef.current) {
+      chatContentRef.current.scrollTop = chatScrollTop;
+    }
+  }, [activeTabKey, chatScrollTop]);
   
   useEffect(() => {
     if (initialLoadRef.current) return;
@@ -1019,7 +1034,7 @@ const explainColumns = explainResults.length > 0
                 return (
 <Tabs
         activeKey={activeTabKey}
-        onChange={setActiveTabKey}
+        onChange={handleTabChange}
         type="editable-card"
         size="small"
         style={{ flex: 1 }}
@@ -1045,7 +1060,7 @@ const explainColumns = explainResults.length > 0
               })()}
             </div>
             
-            <div style={{ flex: 1, overflow: 'auto', padding: '20px 24px', background: '#fff' }}>
+            <div ref={chatContentRef} style={{ flex: 1, overflow: 'auto', padding: '20px 24px', background: '#fff' }}>
               {activeTabKey === 'chat' ? (
                 messages.length === 0 ? (
                   <Empty description="开始新对话吧" style={{ marginTop: 100 }}>
