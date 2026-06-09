@@ -231,10 +231,21 @@
 ### B11. 启动 splash 60s 后强制 quit，但卡在初始化无响应
 
 - **严重度**：🟡 L
-- **文件**：[`electron/main.js:430-440`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/electron/main.js#L430-L440)
+- **状态**：✅ **此前已解决**（commit `110cd12` "feat: 新增 admin_category 相关配置与优化启动流程"）— 2026-06-09 阶段性分析中再次确认
+- **文件**：[`electron/main.js:430-440`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/electron/main.js#L430-L440) + [`electron/splash.html`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/electron/splash.html)
 - **问题**：`setTimeout(() => { app.quit(); }, 60000)` 后端错误时 60 秒后强制退出；如果后端在 15s 启动超时前没产生任何 stderr（如 spawn 后立即被系统拦截），用户看到的是 splash 卡死 + 60s 后黑屏。
 
 - **建议**：在 splash 上加 "**复制日志**""**退出**" 按钮，让用户能立即获取错误信息或主动退出；监听 `backendProcess.on('exit')` 在异常时立即提示。
+
+- **验证（本次分析中）**：
+  - [`electron/splash.html:117-120`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/electron/splash.html#L117-L120) — 已有"复制日志" / "退出" 按钮
+  - [`electron/splash.html:144-159`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/electron/splash.html#L144-L159) — `copyBtn` / `exitBtn` 事件处理器已实现（`navigator.clipboard.writeText` / `window.close()`）
+  - [`electron/main.js:288-296`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/electron/main.js#L288-L296) — `backendProcess.on('close')` 监听非零退出
+  - [`electron/main.js:298-309`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/electron/main.js#L298-L309) — `backendProcess.on('error')` 监听 spawn 错误（含 ENOENT / EACCES 详细诊断）
+  - [`electron/main.js:329-337`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/electron/main.js#L329-L337) — 15s 启动超时检测
+  - [`electron/main.js:276-281`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/electron/main.js#L276-L281) — `finish` 幂等，多次调用不会重复 resolve
+
+  60s 倒计时本身保留是合理 UX（用户有充裕时间阅读/复制错误信息），点击"退出"按钮后 `window.close()` 触发 `window-all-closed` → `app.quit()`，跳过 60s 等待。**无新增代码改动**。
 
 ### B12. ChatMessage 状态在切会话时不重置
 
@@ -251,10 +262,11 @@
 ### P1. 多个 resizer 拖动时无 rAF / throttle
 
 - **严重度**：🔴 H
-- **文件**：[`App.jsx:1189-1208, 1241-1257, 1379-1395, 1495-1510, 1542-1556, 1592-1606`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L1189-L1208)
-- **问题**：6 个 resizer 拖动时每像素 `setState`，鼠标移动 1 像素就触发 React 重渲染整个 App 树。
+- **状态**：✅ 2026-06-09
+- **文件**：[`App.jsx:1138-1156, 1184-1202, 1323-1341, 1444-1462, 1491-1509, 1543-1561`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L1138-L1156)
+- **问题**：6 个 resizer（sqlPreview / resultTable / input / skillDrawer / skillTree / skillEditor）拖动时每像素 `setState`，鼠标移动 1 像素就触发 React 重渲染整个 App 树。
 
-- **建议**：在 `mousemove` 回调中用 `requestAnimationFrame` 合并多次更新；或者在 `handleUp` 提交时再更新状态（拖动过程中只更新 ref）。
+- **解决方式**：在每个 `handleMove` 内加入 rAF 节流——同帧内多次 mousemove 只触发一次 setState。`handleUp` 增加 `cancelAnimationFrame` 兜底。每处改动 +6 行，最小 diff 不动状态结构。`npm run build` 通过（26.15s）。
 
 ### P2. `columns` / `explainColumns` 每次渲染重新构造
 
@@ -384,6 +396,7 @@
 | 9 | **P4** loadSkillMd/loadTableIndex 缓存 | 性能 | 后端 IO 优化 | ⏳ |
 | 10 | **U3** token 进度条加数字 | 界面 | 用户一目了然 | ⏳ |
 | 11 | **B10** 动态 `<style>` useEffect | Bug | 性能浪费 | ✅ 2026-06-09（CSS 提到 App.css，删除 useEffect） |
+| 12 | **B11** splash 60s 卡死 | Bug | 用户体验问题 | ✅ 此前已修（commit `110cd12`，本次复核） |
 
 ---
 
@@ -408,5 +421,7 @@
 | 2026-06-09 | ✅ **B6**：流式 chunk 不触发滚动。处理方式：streaming chunk handler 末尾追加 rAF 节流的 `scrollIntoView`，并新增 `streamingScrollRafRef` 句柄。`npm run build` 验证通过。 |
 | 2026-06-09 | ✅ **B7**：`<ChatMessage key={idx}>` 在流式 splice log 时触发不必要的 re-render。处理方式：双命名空间稳定 id 方案——`db-N`（后端 row id） + `c-N`（前端计数器 `clientMsgIdRef`），`key={msg.id}`。`npm run build` 通过。**附带发现**：DB messages 表无 `collapsed` 列，log 展开/收起状态不持久化，用户表示影响不大暂不修。 |
 | 2026-06-09 | ✅ **B10**：App.jsx 中 79 行的 `useEffect(() => { createElement('style') ... })` 块。处理方式：把全部 CSS 提取到 `App.css`（已 import），分类表头固定 / 配置面板字体 / 隐藏滚动条三段；删除原 useEffect。`npm run build` 通过。 |
+| 2026-06-09 | ✅ **B11**（此前已修）：复核 [`electron/splash.html`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/electron/splash.html) 与 [`main.js:276-337`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/electron/main.js#L276-L337)，"复制日志" / "退出" 按钮、backend `close` / `error` 监听、15s 启动超时、`finish` 幂等均已就位（commit `110cd12` 引入）。**无新代码改动**。 |
+| 2026-06-09 | ✅ **P1**：[`App.jsx`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx) 6 处 resizer 拖动无 rAF 节流。处理方式：每个 `handleMove` 内 `cancelAnimationFrame` + 重新 `requestAnimationFrame`，`handleUp` 兜底 `cancelAnimationFrame`；状态结构不动。`npm run build` 通过（26.15s）。 |
 
 下一步行动：用户决定修复范围后，按项修改，每个修改做最小化 diff，不动现有业务逻辑。

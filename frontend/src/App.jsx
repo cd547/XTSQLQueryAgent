@@ -1135,14 +1135,19 @@ items={[
                                   e.preventDefault();
                                   const startY = e.clientY;
                                   const startHeight = sqlPreviewHeight;
+                                  let raf = 0;
                                   const handleMove = (moveEvent) => {
                                     const delta = moveEvent.clientY - startY;
                                     const newHeight = Math.max(100, Math.min(500, startHeight + delta));
-                                    setSqlPreviewHeight(newHeight);
+                                    if (raf) cancelAnimationFrame(raf);
+                                    raf = requestAnimationFrame(() => {
+                                      setSqlPreviewHeight(newHeight);
+                                    });
                                   };
                                   const handleUp = () => {
                                     document.removeEventListener('mousemove', handleMove);
                                     document.removeEventListener('mouseup', handleUp);
+                                    if (raf) cancelAnimationFrame(raf);
                                   };
                                   document.addEventListener('mousemove', handleMove);
                                   document.addEventListener('mouseup', handleUp);
@@ -1181,14 +1186,19 @@ children: currentResults.length > 0 ? (
                                 e.preventDefault();
                                 const startY = e.clientY;
                                 const startHeight = resultTableHeight;
+                                let raf = 0;
                                 const handleMove = (moveEvent) => {
                                   const delta = startY - moveEvent.clientY;
                                   const newHeight = Math.max(100, Math.min(600, startHeight + delta));
-                                  setResultTableHeight(newHeight);
+                                  if (raf) cancelAnimationFrame(raf);
+                                  raf = requestAnimationFrame(() => {
+                                    setResultTableHeight(newHeight);
+                                  });
                                 };
                                 const handleUp = () => {
                                   document.removeEventListener('mousemove', handleMove);
                                   document.removeEventListener('mouseup', handleUp);
+                                  if (raf) cancelAnimationFrame(raf);
                                 };
                                 document.addEventListener('mousemove', handleMove);
                                 document.addEventListener('mouseup', handleUp);
@@ -1437,14 +1447,19 @@ children: currentResults.length > 0 ? (
               e.preventDefault();
               const startX = e.clientX;
               const startWidth = skillDrawerWidth;
+              let raf = 0;
               const handleMove = (moveEvent) => {
                 const delta = startX - moveEvent.clientX;
                 const newWidth = Math.max(300, Math.min(800, startWidth + delta));
-                setSkillDrawerWidth(newWidth);
+                if (raf) cancelAnimationFrame(raf);
+                raf = requestAnimationFrame(() => {
+                  setSkillDrawerWidth(newWidth);
+                });
               };
               const handleUp = () => {
                 document.removeEventListener('mousemove', handleMove);
                 document.removeEventListener('mouseup', handleUp);
+                if (raf) cancelAnimationFrame(raf);
               };
               document.addEventListener('mousemove', handleMove);
               document.addEventListener('mouseup', handleUp);
@@ -1533,14 +1548,19 @@ children: currentResults.length > 0 ? (
                   e.preventDefault();
                   const startY = e.clientY;
                   const startHeight = skillEditorHeight;
+                  let raf = 0;
                   const handleMove = (moveEvent) => {
                     const delta = moveEvent.clientY - startY;
                     const newHeight = Math.max(100, Math.min(500, startHeight - delta));
-                    setSkillEditorHeight(newHeight);
+                    if (raf) cancelAnimationFrame(raf);
+                    raf = requestAnimationFrame(() => {
+                      setSkillEditorHeight(newHeight);
+                    });
                   };
                   const handleUp = () => {
                     document.removeEventListener('mousemove', handleMove);
                     document.removeEventListener('mouseup', handleUp);
+                    if (raf) cancelAnimationFrame(raf);
                   };
                   document.addEventListener('mousemove', handleMove);
                   document.addEventListener('mouseup', handleUp);
