@@ -7,7 +7,7 @@ import mysql from 'mysql2/promise';
 import { getDb } from '../db/sqlite.js';
 import { getConfig, getLlmConfig } from '../services/config.js';
 import { logger } from '../logger.js';
-import { generateSQLWithLangChain, generateSQLWithLangChainStreamGen_BAK, loadSkillMd, getLastMessages, loadMessagesFromDb } from '../services/llm.js';
+import { generateSQLWithLangChainStreamGen_BAK, loadSkillMd, getLastMessages, loadMessagesFromDb } from '../services/llm.js';
 
 function ensureSession() {
   const db = getDb();
@@ -303,17 +303,7 @@ router.post('/generate', async (req, res) => {
       historyText = messages.map(m => `用户: ${m.content}\n助手: ${m.sql || ''}`).join('\n');
     }
 
-    if (schemaMode === 'langchain') {
-      logger.info('Query: langchain mode', { question, sessionId });
-      try {
-        const result = await generateSQLWithLangChain(question, historyText);
-        logger.info('Query result', { sql: result.sql, message: result.message });
-        return res.json({ ...result, sessionId });
-      } catch (error) {
-        logger.error('LangChain query failed', { error: error.message, stack: error.stack });
-        return res.json({ error: error.message, sql: '', sessionId });
-      }
-    } else if (schemaMode === 'stream') {
+    if (schemaMode === 'stream') {
       logger.info('Query: stream mode', { question, sessionId });
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
