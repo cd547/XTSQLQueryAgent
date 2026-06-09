@@ -287,10 +287,13 @@
 ### P4. 后端 `loadTableIndex` / `loadSkillMd` 每次都同步读盘
 
 - **严重度**：🟠 M
+- **状态**：🚫 2026-06-09（用户决定不修，要保证实时性）
 - **文件**：[`backend/src/services/toolFuncs.js:11-25`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/toolFuncs.js#L11-L25)
 - **问题**：每次 LLM 工具调用（get_tables / get_table_schema / get_table_ddl）都 `fs.readFileSync`，IO 频繁。
 
 - **建议**：加内存缓存 + 文件 mtime 失效机制（参照 query.js 中 `loadSkillV2` 的 md5 缓存模式）。
+
+- **决定**：用户明确表示**保持现状，不加缓存**。理由：业务要求 schema/table 变更后 LLM 工具调用必须立即看到最新结构，缓存 + mtime 失效一旦配置不当（如监听失败 / 失效延迟）会导致 LLM 拿到陈旧 schema，进而生成错误 SQL。IO 性能损耗相对错误 SQL 的代价可以接受。**无代码改动**。
 
 ### P5. 流式循环中 `JSON.stringify(messages, null, 2)` 序列化整个历史
 
@@ -391,9 +394,9 @@
 | 4 | **B4** SKILL_V2_PATH 未定义 | Bug | `add-tag` 直接报 500 | ✅ 2026-06-09（上移常量到顶部） |
 | 5 | **B5** 重复 ALTER | Bug | 沉默错误 | ✅ 2026-06-09（删除第二个 ALTER） |
 | 6 | **B6 / B7** 流式滚动 + key=idx | Bug | 用户体验问题 | ✅ 2026-06-09（B6 rAF 滚动，B7 双命名空间稳定 id） |
-| 7 | **P1** resizer 无防抖 | 性能 | 拖动卡顿 | ⏳ |
+| 7 | **P1** resizer 无防抖 | 性能 | 拖动卡顿 | ✅ 2026-06-09（rAF 节流 6 处） |
 | 8 | **P3** ChatMessage 加 React.memo | 性能 | 流式响应性能 | ⏳ |
-| 9 | **P4** loadSkillMd/loadTableIndex 缓存 | 性能 | 后端 IO 优化 | ⏳ |
+| 9 | **P4** loadSkillMd/loadTableIndex 缓存 | 性能 | 后端 IO 优化 | 🚫 2026-06-09（用户决定不修，要保证实时性） |
 | 10 | **U3** token 进度条加数字 | 界面 | 用户一目了然 | ⏳ |
 | 11 | **B10** 动态 `<style>` useEffect | Bug | 性能浪费 | ✅ 2026-06-09（CSS 提到 App.css，删除 useEffect） |
 | 12 | **B11** splash 60s 卡死 | Bug | 用户体验问题 | ✅ 此前已修（commit `110cd12`，本次复核） |
