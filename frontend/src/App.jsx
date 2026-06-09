@@ -468,6 +468,17 @@ function App() {
     setColumnWidths({});
     setExplainResults([]);
   };
+
+  const handleCopyAndExecute = async (sql) => {
+    const newKey = `sql-${Date.now()}`;
+    setTabs(prev => ({ ...prev, [newKey]: { title: 'SQL查询', sql, results: [], rowCount: 0 } }));
+    setActiveTabKey(newKey);
+    setSqlInput(sql || '');
+    setResults([]);
+    setColumnWidths({});
+    setExplainResults([]);
+    await handleExecute(sql, newKey);
+  };
   
   const handleSend = async () => {
     if (!input.trim() || loading) return;
@@ -649,7 +660,7 @@ function App() {
     return sqlInput;
   };
 
-  const handleExecute = async (sql) => {
+  const handleExecute = async (sql, targetTabKey) => {
     setLoading(true);
     setSqlKey(['sql', 'result']);
     setResultKey(['sql', 'result']);
@@ -667,10 +678,11 @@ function App() {
         setRowCount(res.rowCount || 0);
         setQueryTime(elapsed);
         setIsExplainResult(false);
+        const resultTabKey = targetTabKey || activeTabKey;
         setTabs(prev => ({
           ...prev,
-          [activeTabKey]: {
-            ...prev[activeTabKey],
+          [resultTabKey]: {
+            ...(prev[resultTabKey] || { title: 'SQL查询', sql: resultTabKey }),
             results: newResults,
             rowCount: res.rowCount || 0,
             queryTime: elapsed
@@ -1087,6 +1099,7 @@ const explainColumns = explainResults.length > 0
                       logType={msg.logType}
                       sql={msg.sql}
                       onOpenSqlTab={handleOpenSqlTab}
+                      onCopyAndExecute={handleCopyAndExecute}
                     />
                   ))
                 )

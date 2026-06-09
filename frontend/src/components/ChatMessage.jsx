@@ -4,7 +4,7 @@ import { CaretRightOutlined, DownOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-function ChatMessage({ role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, onOpenSqlTab }) {
+function ChatMessage({ role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, onOpenSqlTab, onCopyAndExecute }) {
   const isUser = role === 'user';
   const isLog = role === 'log' || role === 'LLM' || role === 'tool' || role === 'tool_return';
   
@@ -132,9 +132,18 @@ function ChatMessage({ role, content, isStreaming, timestamp, collapsed, onToggl
                 <Button 
                   type="primary" 
                   size="small"
+                  style={{ marginRight: 8 }}
                   onClick={() => onOpenSqlTab && onOpenSqlTab(sql)}
                 >
                   复制到SQL查询
+                </Button>
+                <Button 
+                  type="primary" 
+                  size="small"
+                  ghost
+                  onClick={() => onCopyAndExecute && onCopyAndExecute(sql)}
+                >
+                  复制并执行SQL
                 </Button>
               </div>
             )}
