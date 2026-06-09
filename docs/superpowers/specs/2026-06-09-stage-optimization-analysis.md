@@ -56,7 +56,8 @@
 ### B2. Monaco Editor `setInterval` 永远不清除
 
 - **严重度**：🔴 H
-- **文件**：[`frontend/src/App.jsx:1140-1150`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L1140-L1150)
+- **状态**：✅ **已解决**（2026-06-09）
+- **文件**：[`frontend/src/App.jsx:1140-1150`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L1140-L1150)（原行号）
 - **问题**：
 
   ```js
@@ -74,9 +75,30 @@
 
 - **建议**：保存 interval id，在 `onMount` 的 `editor.onDidDispose` 回调中 clear；或者改用 `MutationObserver` 监听 DOM 变化移除 hover 节点。
 
+- **解决方式**：采用"保存 id + onDidDispose 清理"方案。代码变化（[`frontend/src/App.jsx:1144-1162`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L1144-L1162)）：
+
+  ```js
+  const hideHoverWidgets = () => {
+    const widgets = document.querySelectorAll('.monaco-hover, .monaco-editor-hover, .workbench-hover, .monaco-tooltip');
+    widgets.forEach(w => {
+      if (w.style.display !== 'none') w.style.display = 'none';
+    });
+  };
+
+  const hoverClearInterval = setInterval(hideHoverWidgets, 100);
+  // 编辑器销毁时清理定时器，避免内存泄漏
+  const disposeDisposable = editor.onDidDispose(() => {
+    clearInterval(hoverClearInterval);
+    disposeDisposable?.dispose();
+  });
+  ```
+
+  验证：`npm run build` 一次通过，无语法错误。Monaco 在组件卸载/编辑器销毁时会自动触发 `onDidDispose`，定时器随之清除，不再泄漏。
+
 ### B3. `killProcessOnPort` 可能误杀非 LISTENING 进程
 
-- **严重度**：🔴 H
+- **严重度**：🟠 M（用户澄清后降级，见下）
+- **状态**：🚫 **不改**（2026-06-09）— 设计原意如此
 - **文件**：[`electron/main.js:122-160`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/electron/main.js#L122-L160)
 - **问题**：
 
@@ -88,10 +110,23 @@
 
 - **建议**：仅筛选 `LISTENING` 状态行，例如用 `netstat -ano | findstr "LISTENING" | findstr ":5002"`；或更优地使用 `Get-NetTCPConnection -LocalPort 5002 -State Listen`（PowerShell）。
 
+- **用户澄清（2026-06-09）**：
+
+  > "B3 这里我当时要求每次启动时要删除相关的后台进程，之前有时候后台没有手动关闭造成 electron 后台起不起来。"
+
+  行为是**有意为之**：每次启动 Electron 主动清理 5002 端口的占用（即使该进程不是 LISTENING 状态）。当前实现虽然粗放但符合产品需求。考虑到：
+
+  1. 5002 是 Electron 与本机后端之间的私有端口，理论不会暴露给外部服务
+  2. 用户的核心痛点是"上次后端没关掉 → 这次启不动"，严格筛选 LISTENING 可能漏掉某些占用场景
+  3. 误杀外部进程的概率在单机本机端口上极低
+
+  决定**保持现状不修改**。后续若遇到误杀问题再优化为 PowerShell `Get-NetTCPConnection -State Listen` 方案。
+
 ### B4. `skill.js` 中 `SKILL_V2_PATH` 在 `add-tag` 中未定义
 
 - **严重度**：🟠 M
-- **文件**：[`backend/src/routes/skill.js:115-118`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/skill.js#L115-L118)
+- **状态**：✅ **已解决**（2026-06-09）
+- **文件**：[`backend/src/routes/skill.js:115-118`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/skill.js#L115-L118)（原行号）
 - **问题**：
 
   ```js
@@ -103,13 +138,18 @@
 
 - **建议**：把 `const SKILL_V2_PATH = path.join(skillsPath, 'sql-creator-skill-v2');` 移到文件顶部。
 
+- **解决方式**：将常量定义上移到 `skillsPath` / `skillBackPath` 同一区域（[`backend/src/routes/skill.js:17`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/skill.js#L17)），删除原 line 285 的旧定义。`add-tag` 等所有路由处理器现已能正确访问 `SKILL_V2_PATH`。验证：模块 `import` 测试 `module ok, router exported: function`；grep 确认 5 个引用点全部可见且仅一处定义。
+
 ### B5. SQLite `initDatabase` 中 `total_tokens` 列重复 ALTER
 
 - **严重度**：🟠 M
-- **文件**：[`backend/src/db/sqlite.js:53-60`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/db/sqlite.js#L53-L60)
+- **状态**：✅ **已解决**（2026-06-09）
+- **文件**：[`backend/src/db/sqlite.js:53-60`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/db/sqlite.js#L53-L60)（原行号）
 - **问题**：同一个 `ALTER TABLE sessions ADD COLUMN total_tokens INTEGER DEFAULT 0` 出现两次，第二次的 try 块为空，代码冗余且未来出现 schema 错误不易发现。
 
 - **建议**：删除重复块。
+
+- **解决方式**：保留第一个（带 `logger.debug`）的 ALTER 块，删除第二个重复块（[`backend/src/db/sqlite.js:55-61`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/db/sqlite.js#L55-L61)）。`grep` 确认 `sessions.total_tokens` 的 ALTER 现仅 1 处（line 56），`messages.total_tokens` 1 处（line 93），共 2 处。模块 `import` 测试通过：`module ok: getDb, initDatabase, initSkillLogTable`。
 
 ### B6. 流式响应时不自动滚动到底部
 
@@ -319,10 +359,10 @@
 | 排序 | 项 | 类别 | 理由 | 状态 |
 |-----|----|------|------|------|
 | 1 | **B1** `toolsMap` 未定义 | Bug | `langchain` 模式直接崩 | ✅ 2026-06-09（废弃整函数） |
-| 2 | **B2** setInterval 不清理 | Bug | 真实内存泄漏 + CPU 浪费 | ⏳ |
-| 3 | **B3** killProcessOnPort 误杀 | Bug | 风险高 | ⏳ |
-| 4 | **B4** SKILL_V2_PATH 未定义 | Bug | `add-tag` 直接报 500 | ⏳ |
-| 5 | **B5** 重复 ALTER | Bug | 沉默错误 | ⏳ |
+| 2 | **B2** setInterval 不清理 | Bug | 真实内存泄漏 + CPU 浪费 | ✅ 2026-06-09（onDidDispose 清理） |
+| 3 | **B3** killProcessOnPort 误杀 | Bug | 用户澄清是设计原意 | 🚫 2026-06-09（设计如此，保持） |
+| 4 | **B4** SKILL_V2_PATH 未定义 | Bug | `add-tag` 直接报 500 | ✅ 2026-06-09（上移常量到顶部） |
+| 5 | **B5** 重复 ALTER | Bug | 沉默错误 | ✅ 2026-06-09（删除第二个 ALTER） |
 | 6 | **B6 / B7** 流式滚动 + key=idx | Bug | 用户体验问题 | ⏳ |
 | 7 | **P1** resizer 无防抖 | 性能 | 拖动卡顿 | ⏳ |
 | 8 | **P3** ChatMessage 加 React.memo | 性能 | 流式响应性能 | ⏳ |
@@ -345,5 +385,9 @@
 | 日期 | 进展 |
 |------|------|
 | 2026-06-09 | ✅ **B1**：`generateSQLWithLangChain` 中 `toolsMap` 未定义。处理方式：废弃并删除 `generateSQLWithLangChain`、`generateSQLWithLangChainStreamGen`、`generateSQLWithLangChainStreamGenV2` 三个未使用函数；移除 `query.js` 的 import 与 `langchain` 死代码分支。 |
+| 2026-06-09 | ✅ **B2**：Monaco `setInterval` 永远不清理。处理方式：保存 interval id，在 `editor.onDidDispose` 中 `clearInterval` 并 dispose disposable。`npm run build` 验证通过。 |
+| 2026-06-09 | 🚫 **B3**：`killProcessOnPort` 误杀非 LISTENING 进程。用户澄清该行为是设计原意（启动时清理 5002 残留进程，防止上轮后端没关导致本轮启不动），决定保持现状不修改。 |
+| 2026-06-09 | ✅ **B4**：`skill.js` 中 `SKILL_V2_PATH` 在 `add-tag` 等前置路由中未定义。处理方式：将常量上移到文件顶部（line 17），删除原 line 285 的旧定义。模块 import 测试通过。 |
+| 2026-06-09 | ✅ **B5**：`sqlite.js` 中 `ALTER TABLE sessions ADD COLUMN total_tokens` 重复。处理方式：删除第二个重复块（含空 catch），保留带 `logger.debug` 的第一个。grep 确认 sessions/messages 各 1 处。 |
 
 下一步行动：用户决定修复范围后，按项修改，每个修改做最小化 diff，不动现有业务逻辑。

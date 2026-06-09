@@ -1145,14 +1145,21 @@ items={[
                                     document.head.appendChild(style);
                                   }
                                   
-                                  setInterval(() => {
+                                  const hideHoverWidgets = () => {
                                     const widgets = document.querySelectorAll('.monaco-hover, .monaco-editor-hover, .workbench-hover, .monaco-tooltip');
                                     widgets.forEach(w => {
                                       if (w.style.display !== 'none') {
                                         w.style.display = 'none';
                                       }
                                     });
-                                  }, 100);
+                                  };
+
+                                  const hoverClearInterval = setInterval(hideHoverWidgets, 100);
+                                  // 编辑器销毁时清理定时器，避免内存泄漏
+                                  const disposeDisposable = editor.onDidDispose(() => {
+                                    clearInterval(hoverClearInterval);
+                                    disposeDisposable?.dispose();
+                                  });
                                 }}
                                 height={sqlPreviewHeight}
                                 defaultLanguage="sql"

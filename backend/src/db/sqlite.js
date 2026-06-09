@@ -58,13 +58,6 @@ export function initDatabase() {
     logger.debug('Column total_tokens already exists');
   }
 
-  // 如果 total_tokens 列不存在，添加它
-  try {
-    db.exec(`ALTER TABLE sessions ADD COLUMN total_tokens INTEGER DEFAULT 0`);
-  } catch (e) {
-    // 列已存在，忽略
-  }
-
   // 添加 summary 字段
   try {
     db.exec(`ALTER TABLE sessions ADD COLUMN summary TEXT`);

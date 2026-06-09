@@ -14,6 +14,7 @@ const __dirname = path.dirname(__filename);
 const projectRoot = process.env.PROJECT_ROOT || path.resolve(__dirname, '../../../');
 const skillsPath = process.env.SKILL_PATH || path.join(projectRoot, 'skills');
 const skillBackPath = path.join(skillsPath, 'skill_back');
+const SKILL_V2_PATH = path.join(skillsPath, 'sql-creator-skill-v2');
 
 function getFileLanguage(filename) {
   const ext = path.extname(filename).toLowerCase();
@@ -267,8 +268,6 @@ router.post('/save', (req, res) => {
     res.status(500).json({ success: false, message: e.message });
   }
 });
-
-const SKILL_V2_PATH = path.join(skillsPath, 'sql-creator-skill-v2');
 
 // 缓存机制
 let tableIndexCache = null;
