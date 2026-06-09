@@ -173,10 +173,22 @@
 ### B7. `<ChatMessage key={idx}>` 在流式中 splice log 时重渲染
 
 - **严重度**：🟠 M
-- **文件**：[`frontend/src/App.jsx:1245`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L1245)
+- **状态**：✅ **已解决**（2026-06-09）
+- **文件**：[`frontend/src/App.jsx:1099`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L1099)（现位置，原 line 1245 → 1099 因 B6 插入 rAF 句柄导致行号下移）
 - **问题**：消息列表用 `key={idx}`，流式过程中调用 `newMsgs.splice(lastAssistantIdx, 0, logMsg)` 插入 log 消息，**所有后续组件的 key 错位**，React 卸载并重建这些组件 → 性能损耗 + 用户看到的展开状态丢失。
 
 - **建议**：每条消息生成稳定 id（可用时间戳 + 角色），用 `key={msg.id}` 替代 `key={idx}`。
+
+- **解决方式**：双命名空间稳定 id 方案。
+  1. 客户端计数器：[`App.jsx:104`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L104) `const clientMsgIdRef = useRef(0)`
+  2. DB 加载的消息：[`App.jsx:291`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L291) `id: \`db-${m.id}\`` 用后端 row id
+  3. 新创建的 user/assistant：[`App.jsx:497-498`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L497-L498) `id: \`c-${++clientMsgIdRef.current}\``
+  4. 流式插入的 log：[`App.jsx:579`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L579) 同样 `c-N`
+  5. 渲染：[`App.jsx:1099`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L1099) `key={msg.id}`
+
+  后续所有 `setMessages` 更新路径（流式 chunk line 528、done line 600、error line 622）都用 spread `{ ...msg, ... }`，id 字段自动保留。`npm run build` 通过（24.79s）。
+
+- **关于显示一致性**：id 只作 React 内部 key，**不参与渲染**。ChatMessage 渲染由 `role/content/logType/collapsed/timestamp` 决定。**附带发现**：DB messages 表无 `collapsed` 列，log 展开/收起状态不持久化（重启 app 后全部回到默认折叠）——用户已知晓，暂不修。
 
 ### B8. `/api/tables` 路由是空 router
 
@@ -363,7 +375,7 @@
 | 3 | **B3** killProcessOnPort 误杀 | Bug | 用户澄清是设计原意 | 🚫 2026-06-09（设计如此，保持） |
 | 4 | **B4** SKILL_V2_PATH 未定义 | Bug | `add-tag` 直接报 500 | ✅ 2026-06-09（上移常量到顶部） |
 | 5 | **B5** 重复 ALTER | Bug | 沉默错误 | ✅ 2026-06-09（删除第二个 ALTER） |
-| 6 | **B6 / B7** 流式滚动 + key=idx | Bug | 用户体验问题 | 🟡 B6 已解决 ✅，B7 未处理 |
+| 6 | **B6 / B7** 流式滚动 + key=idx | Bug | 用户体验问题 | ✅ 2026-06-09（B6 rAF 滚动，B7 双命名空间稳定 id） |
 | 7 | **P1** resizer 无防抖 | 性能 | 拖动卡顿 | ⏳ |
 | 8 | **P3** ChatMessage 加 React.memo | 性能 | 流式响应性能 | ⏳ |
 | 9 | **P4** loadSkillMd/loadTableIndex 缓存 | 性能 | 后端 IO 优化 | ⏳ |
@@ -389,5 +401,7 @@
 | 2026-06-09 | 🚫 **B3**：`killProcessOnPort` 误杀非 LISTENING 进程。用户澄清该行为是设计原意（启动时清理 5002 残留进程，防止上轮后端没关导致本轮启不动），决定保持现状不修改。 |
 | 2026-06-09 | ✅ **B4**：`skill.js` 中 `SKILL_V2_PATH` 在 `add-tag` 等前置路由中未定义。处理方式：将常量上移到文件顶部（line 17），删除原 line 285 的旧定义。模块 import 测试通过。 |
 | 2026-06-09 | ✅ **B5**：`sqlite.js` 中 `ALTER TABLE sessions ADD COLUMN total_tokens` 重复。处理方式：删除第二个重复块（含空 catch），保留带 `logger.debug` 的第一个。grep 确认 sessions/messages 各 1 处。 |
+| 2026-06-09 | ✅ **B6**：流式 chunk 不触发滚动。处理方式：streaming chunk handler 末尾追加 rAF 节流的 `scrollIntoView`，并新增 `streamingScrollRafRef` 句柄。`npm run build` 验证通过。 |
+| 2026-06-09 | ✅ **B7**：`<ChatMessage key={idx}>` 在流式 splice log 时触发不必要的 re-render。处理方式：双命名空间稳定 id 方案——`db-N`（后端 row id） + `c-N`（前端计数器 `clientMsgIdRef`），`key={msg.id}`。`npm run build` 通过。**附带发现**：DB messages 表无 `collapsed` 列，log 展开/收起状态不持久化，用户表示影响不大暂不修。 |
 
 下一步行动：用户决定修复范围后，按项修改，每个修改做最小化 diff，不动现有业务逻辑。

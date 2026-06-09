@@ -99,6 +99,9 @@ function App() {
   const chatContentRef = useRef(null);
   // 流式响应期间用于 rAF 节流的滚动句柄（避免每 chunk 触发 scrollIntoView）
   const streamingScrollRafRef = useRef(0);
+  // 客户端消息 id 计数器：保证新创建的每条消息都有稳定唯一 key
+  // DB 加载的消息用 `db-<row_id>` 命名空间，与客户端 `c-N` 互不冲突
+  const clientMsgIdRef = useRef(0);
   
   const handleTabChange = (key) => {
     if (activeTabKey === 'chat' && chatContentRef.current) {
@@ -285,6 +288,7 @@ function App() {
         setMessages(data.messages
           .filter(m => m.role !== 'usage')
           .map(m => ({
+            id: `db-${m.id}`,
             role: m.role,
             content: m.content || m.sql || '',
             sql: m.sql || '',
@@ -489,9 +493,9 @@ function App() {
     setInput('');
     
     const now = new Date().toISOString();
-    const newMessages = [...messages, 
-      { role: 'user', content: userMessage, timestamp: now }, 
-      { role: 'assistant', content: '', isStreaming: true, timestamp: now }
+    const newMessages = [...messages,
+      { id: `c-${++clientMsgIdRef.current}`, role: 'user', content: userMessage, timestamp: now },
+      { id: `c-${++clientMsgIdRef.current}`, role: 'assistant', content: '', isStreaming: true, timestamp: now }
     ];
     setMessages(newMessages);
     
@@ -571,9 +575,10 @@ function App() {
                   const newMsgs = [...prev];
                   const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
                   if (lastAssistantIdx !== -1) {
-                    const logMsg = { 
-                      role: 'log', 
-                      content: logContent, 
+                    const logMsg = {
+                      id: `c-${++clientMsgIdRef.current}`,
+                      role: 'log',
+                      content: logContent,
                       timestamp: new Date().toISOString(),
                       collapsed: true,
                       logType: logType
@@ -1090,8 +1095,8 @@ const explainColumns = explainResults.length > 0
                   </Empty>
                 ) : (
                   messages.map((msg, idx) => (
-                    <ChatMessage 
-                      key={idx}
+                    <ChatMessage
+                      key={msg.id}
                       role={msg.role}
                       content={msg.content}
                       isStreaming={msg.isStreaming}
