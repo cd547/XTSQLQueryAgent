@@ -391,10 +391,6 @@ function createWindow() {
     
   console.log('Loading URL:', startUrl);
   mainWindow.loadURL(startUrl);
-  
-  if (app.isPackaged) {
-    mainWindow.webContents.openDevTools();
-  }
 
   mainWindow.on('closed', () => (mainWindow = null));
 }
