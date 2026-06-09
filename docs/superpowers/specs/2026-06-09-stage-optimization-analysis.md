@@ -220,10 +220,13 @@
 ### B10. useEffect 重复 appendChild `<style>`
 
 - **严重度**：🟡 L
-- **文件**：[`frontend/src/App.jsx:153-228`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L153-L228)
+- **状态**：✅ **已解决**（2026-06-09）
+- **文件**：[`frontend/src/App.jsx:153-228`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L153-L228)（原行号，删除前）
 - **问题**：useEffect 每次组件重渲染时都创建一个新的 `<style>` 标签并 `appendChild` 到 head，再在 cleanup 中 remove。**style 内容完全是固定的**（CSS 类选择器 + 自定义滚动条），浪费性能，可能在低性能机器上看到视觉抖动。
 
 - **建议**：将 style 内容移到 `App.css`，用普通 className 引用。
+
+- **解决方式**：把 useEffect 内的 79 行 CSS 全部提取到 [`frontend/src/App.css`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.css)（已在文件顶部 `import './App.css'`），分类三段：表头固定、配置面板字体、隐藏滚动条。删除 App.jsx 中 79 行的 useEffect。`npm run build` 通过（29.04s）。`App.jsx` 搜索 `createElement('style')` 仅剩 1 处（line 1065，是 B2 修复中 Monaco hover 的另一个独立 useEffect，与 B10 无关）。
 
 ### B11. 启动 splash 60s 后强制 quit，但卡在初始化无响应
 
@@ -380,6 +383,7 @@
 | 8 | **P3** ChatMessage 加 React.memo | 性能 | 流式响应性能 | ⏳ |
 | 9 | **P4** loadSkillMd/loadTableIndex 缓存 | 性能 | 后端 IO 优化 | ⏳ |
 | 10 | **U3** token 进度条加数字 | 界面 | 用户一目了然 | ⏳ |
+| 11 | **B10** 动态 `<style>` useEffect | Bug | 性能浪费 | ✅ 2026-06-09（CSS 提到 App.css，删除 useEffect） |
 
 ---
 
@@ -403,5 +407,6 @@
 | 2026-06-09 | ✅ **B5**：`sqlite.js` 中 `ALTER TABLE sessions ADD COLUMN total_tokens` 重复。处理方式：删除第二个重复块（含空 catch），保留带 `logger.debug` 的第一个。grep 确认 sessions/messages 各 1 处。 |
 | 2026-06-09 | ✅ **B6**：流式 chunk 不触发滚动。处理方式：streaming chunk handler 末尾追加 rAF 节流的 `scrollIntoView`，并新增 `streamingScrollRafRef` 句柄。`npm run build` 验证通过。 |
 | 2026-06-09 | ✅ **B7**：`<ChatMessage key={idx}>` 在流式 splice log 时触发不必要的 re-render。处理方式：双命名空间稳定 id 方案——`db-N`（后端 row id） + `c-N`（前端计数器 `clientMsgIdRef`），`key={msg.id}`。`npm run build` 通过。**附带发现**：DB messages 表无 `collapsed` 列，log 展开/收起状态不持久化，用户表示影响不大暂不修。 |
+| 2026-06-09 | ✅ **B10**：App.jsx 中 79 行的 `useEffect(() => { createElement('style') ... })` 块。处理方式：把全部 CSS 提取到 `App.css`（已 import），分类表头固定 / 配置面板字体 / 隐藏滚动条三段；删除原 useEffect。`npm run build` 通过。 |
 
 下一步行动：用户决定修复范围后，按项修改，每个修改做最小化 diff，不动现有业务逻辑。
