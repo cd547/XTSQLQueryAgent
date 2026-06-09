@@ -348,9 +348,7 @@
     {
       "name": "edu_course_exam_subject_name_price",
       "description": "科目名称标准单价",
-      "tags": [
-        "价格体系"
-      ],
+      "tags": ["价格体系"],
       "related_tables": [
         "admin_user"
       ]
@@ -397,8 +395,7 @@
       "name": "order_list",
       "description": "订单列表",
       "tags": [
-        "C端支付",
-        "查询网站支付订单"
+        "C端支付"
       ],
       "related_tables": [
         "my_user",
@@ -522,14 +519,6 @@
         "order_student_received_settlement",
         "admin_user"
       ],
-      "business_constraints": [],
-      "business_rules": []
-    },
-    {
-      "name": "admin_category",
-      "description": "公司名称",
-      "tags": [],
-      "related_tables": [],
       "business_constraints": [],
       "business_rules": []
     }

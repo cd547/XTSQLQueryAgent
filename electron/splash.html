@@ -1,0 +1,176 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline';">
+<title>启动中...</title>
+<style>
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: linear-gradient(135deg, #1e293b 0%, #334155 100%);
+    color: #f1f5f9;
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    height: 100vh;
+    overflow: hidden;
+    user-select: none;
+  }
+  .title { font-size: 22px; font-weight: 600; margin-bottom: 6px; letter-spacing: 0.5px; }
+  .subtitle { font-size: 12px; opacity: 0.55; margin-bottom: 40px; }
+  .spinner {
+    width: 44px;
+    height: 44px;
+    border: 3px solid rgba(255, 255, 255, 0.15);
+    border-top-color: #60a5fa;
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+    margin-bottom: 24px;
+  }
+  .spinner.hidden { display: none; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  .status {
+    font-size: 13px;
+    opacity: 0.85;
+    min-height: 18px;
+    text-align: center;
+    padding: 0 16px;
+  }
+  .error-icon {
+    width: 52px;
+    height: 52px;
+    border-radius: 50%;
+    background: #dc2626;
+    color: white;
+    font-size: 30px;
+    font-weight: bold;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    margin-bottom: 16px;
+  }
+  .error-icon.show { display: flex; }
+  .error-panel {
+    display: none;
+    width: calc(100% - 32px);
+    max-width: 360px;
+    margin-top: 14px;
+    text-align: left;
+  }
+  .error-panel.show { display: block; }
+  .error-reason {
+    font-size: 12.5px;
+    color: #fca5a5;
+    line-height: 1.55;
+    white-space: pre-wrap;
+    word-break: break-word;
+    margin-bottom: 10px;
+  }
+  .error-stderr {
+    background: rgba(0, 0, 0, 0.32);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 4px;
+    padding: 8px 10px;
+    font-size: 11px;
+    font-family: 'Consolas', 'Monaco', monospace;
+    color: #fda4af;
+    max-height: 110px;
+    overflow-y: auto;
+    white-space: pre-wrap;
+    word-break: break-all;
+    margin: 0 0 12px 0;
+  }
+  .error-stderr:empty { display: none; }
+  .error-stderr::-webkit-scrollbar { width: 6px; }
+  .error-stderr::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
+  .error-actions {
+    display: flex;
+    gap: 8px;
+    justify-content: center;
+  }
+  button {
+    padding: 6px 16px;
+    background: rgba(255, 255, 255, 0.12);
+    color: white;
+    border: 1px solid rgba(255, 255, 255, 0.22);
+    border-radius: 4px;
+    cursor: pointer;
+    font-size: 12px;
+    font-family: inherit;
+  }
+  button:hover { background: rgba(255, 255, 255, 0.22); }
+  button.copied { background: #16a34a; border-color: #16a34a; }
+</style>
+</head>
+<body>
+  <div class="title">XT SQL Query Agent</div>
+  <div class="subtitle">智能数据查询助手</div>
+  <div class="spinner" id="spinner"></div>
+  <div class="error-icon" id="errorIcon">!</div>
+  <div class="status" id="status">正在启动...</div>
+  <div class="error-panel" id="errorPanel">
+    <div class="error-reason" id="errorReason"></div>
+    <pre class="error-stderr" id="errorStderr"></pre>
+    <div class="error-actions">
+      <button id="copyBtn">复制日志</button>
+      <button id="exitBtn">退出</button>
+    </div>
+  </div>
+  <script>
+    const statusEl = document.getElementById('status');
+    const spinnerEl = document.getElementById('spinner');
+    const errorEl = document.getElementById('errorIcon');
+    const panelEl = document.getElementById('errorPanel');
+    const reasonEl = document.getElementById('errorReason');
+    const stderrEl = document.getElementById('errorStderr');
+    const copyBtn = document.getElementById('copyBtn');
+    const exitBtn = document.getElementById('exitBtn');
+
+    let lastErrorText = '';
+
+    // 由主进程通过 executeJavaScript 调用
+    window.splashUpdate = function(text, isError, detail) {
+      if (isError) {
+        spinnerEl.classList.add('hidden');
+        errorEl.classList.add('show');
+        statusEl.textContent = '后端启动失败';
+        reasonEl.textContent = (detail && detail.reason) || text || '未知错误';
+        stderrEl.textContent = (detail && detail.stderr) || '';
+        lastErrorText =
+          '原因:\n' + reasonEl.textContent +
+          (stderrEl.textContent ? '\n\n后端输出:\n' + stderrEl.textContent : '') +
+          (detail && detail.nodePath ? '\n\nNode 路径: ' + detail.nodePath : '') +
+          (detail && detail.backendPath ? '\n后端入口: ' + detail.backendPath : '');
+        panelEl.classList.add('show');
+      } else {
+        spinnerEl.classList.remove('hidden');
+        errorEl.classList.remove('show');
+        panelEl.classList.remove('show');
+        statusEl.textContent = text;
+      }
+    };
+
+    copyBtn.addEventListener('click', async () => {
+      try {
+        await navigator.clipboard.writeText(lastErrorText);
+        copyBtn.textContent = '已复制';
+        copyBtn.classList.add('copied');
+        setTimeout(() => {
+          copyBtn.textContent = '复制日志';
+          copyBtn.classList.remove('copied');
+        }, 1500);
+      } catch (e) {
+        copyBtn.textContent = '复制失败';
+        setTimeout(() => { copyBtn.textContent = '复制日志'; }, 1500);
+      }
+    });
+
+    exitBtn.addEventListener('click', () => {
+      window.close();
+    });
+  </script>
+</body>
+</html>

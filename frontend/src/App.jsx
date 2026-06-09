@@ -1545,7 +1545,6 @@ children: currentResults.length > 0 ? (
                     <Tree
                       treeData={skillTree}
                       showIcon={true}
-                      defaultExpandAll
                       onSelect={(selectedKeys, { node }) => {
                         if (!node.isFolder) {
                           handleSkillFileSelect(node.key);

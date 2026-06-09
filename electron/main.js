@@ -5,6 +5,7 @@ const net = require('net');
 const fs = require('fs');
 
 let mainWindow;
+let splashWindow;
 let backendProcess;
 
 function checkPort(port, host) {
@@ -30,21 +31,60 @@ function checkPort(port, host) {
   });
 }
 
+// 找出 nvm-windows 中实际安装的最高 24.x.x 版本
+function findNvmNode24Dir(nvmHome) {
+  try {
+    const entries = fs.readdirSync(nvmHome, { withFileTypes: true });
+    const v24 = entries
+      .filter(e => e.isDirectory() && /^v24\.\d+\.\d+/.test(e.name))
+      .map(e => e.name)
+      .sort((a, b) => {
+        const pa = a.slice(1).split('.').map(Number);
+        const pb = b.slice(1).split('.').map(Number);
+        for (let i = 0; i < 3; i++) {
+          if ((pb[i] || 0) !== (pa[i] || 0)) return (pb[i] || 0) - (pa[i] || 0);
+        }
+        return 0;
+      });
+    return v24[0] || null;
+  } catch (e) {
+    return null;
+  }
+}
+
 function getSystemNodePath() {
   if (process.platform === 'win32') {
+    // 1) 优先：nvm-windows 里的 24.x.x（保证后端用 Node 24，不受全局 default 12 影响）
+    const nvmHome = process.env['NVM_HOME'] || path.join(process.env['LOCALAPPDATA'] || '', 'nvm');
+    const v24Dir = findNvmNode24Dir(nvmHome);
+    if (v24Dir) {
+      const p = path.join(nvmHome, v24Dir, 'node.exe');
+      if (fs.existsSync(p)) {
+        console.log('Found node (nvm 24) at:', p);
+        return p;
+      }
+    }
+    // 2) nvm 当前 default 的 symlink
+    if (process.env['NVM_SYMLINK']) {
+      const p = path.join(process.env['NVM_SYMLINK'], 'node.exe');
+      if (fs.existsSync(p)) {
+        console.log('Found node (nvm default) at:', p);
+        return p;
+      }
+    }
+    // 3) 兜底：原作者的固定路径（保留兼容）
     const possiblePaths = [
       process.env['ProgramFiles'] + '\\nodejs\\node.exe',
       process.env['ProgramFiles(x86)'] + '\\nodejs\\node.exe',
       process.env['USERPROFILE'] + '\\AppData\\Roaming\\npm\\node.exe',
-      'node.exe'
     ];
     for (const nodePath of possiblePaths) {
-      if (fs.existsSync(nodePath)) {
+      if (nodePath && fs.existsSync(nodePath)) {
         console.log('Found node at:', nodePath);
         return nodePath;
       }
     }
-    console.log('Using system PATH to find node');
+    console.log('Using system PATH to find node (no nvm 24 found)');
     return 'node.exe';
   } else {
     return '/usr/bin/node';
@@ -206,60 +246,133 @@ async function startBackend() {
   console.log('Backend file exists');
   
   return new Promise((resolve) => {
-    const env = { 
-      ...process.env, 
-      DB_PATH: dbPath 
+    const env = {
+      ...process.env,
+      DB_PATH: dbPath
     };
-    
+
     console.log('Starting backend with spawn...');
     console.log('Environment variables:', JSON.stringify({ DB_PATH: env.DB_PATH }));
-    
+
     env.PROJECT_ROOT = projectRoot;
     env.SKILL_PATH = path.join(projectRoot, 'skills');
     env.LOG_PATH = path.join(projectRoot, 'logs');
-    
-    backendProcess = spawn(nodePath, [backendPath], {
-      cwd: backendCwd,
-      env: env,
-      stdio: ['pipe', 'pipe', 'pipe'],
-      windowsHide: true
-    });
-    
-    backendProcess.on('close', (code) => {
+
+    let backendProcess;
+    try {
+      backendProcess = spawn(nodePath, [backendPath], {
+        cwd: backendCwd,
+        env: env,
+        stdio: ['pipe', 'pipe', 'pipe'],
+        windowsHide: true
+      });
+    } catch (e) {
+      resolve({ ok: false, reason: `spawn 抛出异常: ${e.message}`, stderr: '', nodePath });
+      return;
+    }
+
+    let resolved = false;
+    const stderrChunks = [];
+    const finish = (result) => {
+      if (resolved) return;
+      resolved = true;
+      resolve(result);
+    };
+
+    const tailStderr = () => {
+      const s = stderrChunks.join('').trim();
+      // 只保留最后 ~2KB，避免传输/渲染过慢
+      return s.length > 2048 ? '...' + s.slice(-2048) : s;
+    };
+
+    backendProcess.on('close', (code, signal) => {
       console.log(`Backend process exited with code ${code}`);
       if (code !== 0) {
-        console.error('Backend process failed with code:', code);
+        const reason = signal
+          ? `后端进程被信号终止: ${signal}（退出码 ${code}）`
+          : `后端进程退出，退出码 ${code}`;
+        finish({ ok: false, reason, stderr: tailStderr(), nodePath, backendPath });
       }
     });
-    
+
     backendProcess.on('error', (error) => {
       console.error('Failed to spawn backend process:', error);
-      console.error('Error code:', error.code);
-      console.error('Error message:', error.message);
-      resolve(false);
+      let reason;
+      if (error.code === 'ENOENT') {
+        reason = `找不到 Node 可执行文件\n\n路径: ${error.path || nodePath}\n\n建议:\n1) 在终端执行 nvm root / nvm ls 24 确认 24.x.x 已安装\n2) 确认系统环境变量 NVM_HOME 指向 nvm 安装根目录\n3) 全局 default 是什么版本不影响本项目（本项目已硬编码 v24）`;
+      } else if (error.code === 'EACCES') {
+        reason = `权限不足，无法执行 Node: ${error.path || nodePath}\n\n请以管理员身份启动，或检查文件是否被占用`;
+      } else {
+        reason = `启动后端失败 (${error.code || 'UNKNOWN'}): ${error.message}`;
+      }
+      finish({ ok: false, reason, stderr: tailStderr(), nodePath, backendPath });
     });
-    
+
     backendProcess.stdout.on('data', (data) => {
       const output = data.toString();
       console.log(`Backend stdout: ${output}`);
-      
+
       if (output.includes('Server running on port')) {
         console.log('Backend started successfully!');
-        resolve(true);
+        finish({ ok: true });
       }
     });
-    
+
     backendProcess.stderr.on('data', (data) => {
-      console.error(`Backend stderr: ${data.toString()}`);
+      const text = data.toString();
+      console.error(`Backend stderr: ${text}`);
+      stderrChunks.push(text);
     });
-    
+
     console.log('Waiting for backend to start...');
-    
+
     setTimeout(() => {
-      console.log('Backend startup timeout');
-      resolve(false);
+      finish({
+        ok: false,
+        reason: '15 秒内未检测到 "Server running on port" 标志，后端可能卡在初始化阶段（数据库连接、依赖加载、或 Node 版本不匹配）',
+        stderr: tailStderr(),
+        nodePath,
+        backendPath
+      });
     }, 15000);
   });
+}
+
+function createSplash() {
+  splashWindow = new BrowserWindow({
+    width: 360,
+    height: 360,
+    frame: false,
+    backgroundColor: '#1e293b',
+    resizable: false,
+    movable: false,
+    minimizable: false,
+    maximizable: false,
+    alwaysOnTop: true,
+    skipTaskbar: true,
+    show: false,
+    webPreferences: {
+      nodeIntegration: false,
+      contextIsolation: true
+    }
+  });
+  splashWindow.loadFile(path.join(__dirname, 'splash.html'));
+  splashWindow.once('ready-to-show', () => splashWindow.show());
+  splashWindow.on('closed', () => { splashWindow = null; });
+}
+
+function updateSplash(text, isError = false, detail) {
+  if (splashWindow && !splashWindow.isDestroyed()) {
+    const payload = JSON.stringify({
+      text: text || '',
+      isError: !!isError,
+      detail: detail || null
+    });
+    splashWindow.webContents.executeJavaScript(
+      `void window.splashUpdate(${payload});`,
+      true
+    ).catch(() => {});
+  }
 }
 
 function createWindow() {
@@ -290,17 +403,42 @@ app.on('ready', async () => {
   console.log('App is ready');
   console.log('isPackaged:', app.isPackaged);
   console.log('__dirname:', __dirname);
-  
-  const backendStarted = await startBackend();
-  
-  if (backendStarted) {
-    console.log('Creating window...');
+
+  // 立即显示启动页，避免用户看到黑屏重复点击
+  createSplash();
+  updateSplash('正在启动后端服务...');
+
+  const result = await startBackend();
+
+  if (result.ok) {
+    updateSplash('后端就绪，正在打开主界面...');
     createWindow();
+    // 主窗口首屏渲染完成后才关 splash，避免白屏闪烁
+    mainWindow.webContents.once('did-finish-load', () => {
+      setTimeout(() => {
+        if (splashWindow && !splashWindow.isDestroyed()) {
+          splashWindow.close();
+        }
+      }, 200);
+    });
   } else {
-    console.error('Failed to start backend, exiting...');
+    // 错误时把窗口放大一些，避免错误信息被裁切
+    if (splashWindow && !splashWindow.isDestroyed()) {
+      splashWindow.setSize(480, 460);
+      splashWindow.center();
+      splashWindow.setResizable(true);
+      splashWindow.setMinimumSize(420, 380);
+    }
+    updateSplash(result.reason, true, {
+      reason: result.reason,
+      stderr: result.stderr,
+      nodePath: result.nodePath,
+      backendPath: result.backendPath
+    });
+    // 给用户更多时间看清错误信息、复制日志，再退出
     setTimeout(() => {
       app.quit();
-    }, 3000);
+    }, 60000);
   }
 });
 
