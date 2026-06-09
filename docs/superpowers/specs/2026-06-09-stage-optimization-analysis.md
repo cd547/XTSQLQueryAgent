@@ -363,7 +363,7 @@
 | 3 | **B3** killProcessOnPort 误杀 | Bug | 用户澄清是设计原意 | 🚫 2026-06-09（设计如此，保持） |
 | 4 | **B4** SKILL_V2_PATH 未定义 | Bug | `add-tag` 直接报 500 | ✅ 2026-06-09（上移常量到顶部） |
 | 5 | **B5** 重复 ALTER | Bug | 沉默错误 | ✅ 2026-06-09（删除第二个 ALTER） |
-| 6 | **B6 / B7** 流式滚动 + key=idx | Bug | 用户体验问题 | ⏳ |
+| 6 | **B6 / B7** 流式滚动 + key=idx | Bug | 用户体验问题 | 🟡 B6 已解决 ✅，B7 未处理 |
 | 7 | **P1** resizer 无防抖 | 性能 | 拖动卡顿 | ⏳ |
 | 8 | **P3** ChatMessage 加 React.memo | 性能 | 流式响应性能 | ⏳ |
 | 9 | **P4** loadSkillMd/loadTableIndex 缓存 | 性能 | 后端 IO 优化 | ⏳ |

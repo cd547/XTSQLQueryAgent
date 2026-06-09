@@ -97,6 +97,8 @@ function App() {
   const initialLoadRef = useRef(false);
   const abortControllerRef = useRef(null);
   const chatContentRef = useRef(null);
+  // 流式响应期间用于 rAF 节流的滚动句柄（避免每 chunk 触发 scrollIntoView）
+  const streamingScrollRafRef = useRef(0);
   
   const handleTabChange = (key) => {
     if (activeTabKey === 'chat' && chatContentRef.current) {
@@ -531,6 +533,14 @@ function App() {
                   }
                   return newMsgs;
                 });
+                // 流式 chunk 不改变 messages.length，原 useEffect 不会触发滚动；
+                // 这里用 rAF 节流：同一帧多次 chunk 只滚动一次
+                if (!streamingScrollRafRef.current) {
+                  streamingScrollRafRef.current = requestAnimationFrame(() => {
+                    streamingScrollRafRef.current = 0;
+                    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                  });
+                }
               } else if (data.type === 'LLM' || data.type === 'tool' || data.type === 'tool_return') {
                 const logContent = data.log || '';
                 
