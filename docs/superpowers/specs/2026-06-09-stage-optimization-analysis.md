@@ -193,15 +193,17 @@
 ### B8. `/api/tables` 路由是空 router
 
 - **严重度**：🟡 L
+- **状态**：🚫 **暂缓**（2026-06-10）— 以后会有 `/api/tables` 接口
 - **文件**：[`backend/src/routes/tables.js`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/tables.js) + [`backend/src/index.js:24`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/index.js#L24)
 - **问题**：整个 `tables.js` 只有 5 行，但 `app.use('/api/tables', tablesRouter)` 仍被注册。无用代码、误导维护。
-
 - **建议**：删除 `tables.js` 和对应 `app.use`。
+- **决定**：保留 `tables.js` 和 `app.use('/api/tables', ...)`。理由：以后会补真正的 `/api/tables` 接口（用户口述），提前占好路由位可避免届时再次修改 `index.js`。等接口就绪时再回头清理。
 
 ### B9. 给函数对象挂属性做"全局去重"
 
 - **严重度**：🟡 L
-- **文件**：[`frontend/src/App.jsx:97-99, 138-140, 190-192`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L97-L99)
+- **状态**：✅ **已解决**（2026-06-10）
+- **文件**：[`frontend/src/App.jsx:104-106, 132-139, 171-202, 205-227`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L132-L139)（原 line 97-99 / 138-140 / 190-192；现位置因 2026-06-10 改 P3 useCallback 等行号下移）
 - **问题**：
 
   ```js
@@ -213,9 +215,21 @@
   loadCurrentModel.loading = false;
   ```
 
-  这种"把状态挂在函数对象上"的写法是非标准模式，多个组件同时调用、Hot Reload、HMR 时容易出错（loading 标志可能残留）。
+  这种"把状态挂在函数对象上"的写法是非标准模式：
+  1. React 函数组件每次 render 都会重新执行函数体，`const loadCurrentModel = async () => {...}` 创建**新的函数对象**，挂的属性属于**上次 render 的旧对象**，新对象上没这个属性
+  2. 实际上 `loadCurrentModel` 和 `loadSessions` 只在 `useEffect(() => {...}, [])` 里调一次（空依赖），去重逻辑形同虚设
+  3. `loadMessages` 是在用户点击会话时调，可能被快速点击多次，但因对象重建，去重状态可能丢失
+  4. `loadXxx.loading = false` 这种"函数体外初始化"也很反直觉
 
 - **建议**：改用 `useRef` 或 `useState` + React Query / SWR 之类的请求去重方案。
+
+- **解决方式**：新增 `loadingRef = useRef({ model: false, sessions: false, messagesId: null })`（[`App.jsx:106`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L106)），跨 render 持久化：
+  - `loadCurrentModel` → `loadingRef.current.model`（[line 132-139](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L132-L139)）
+  - `loadSessions` → `loadingRef.current.sessions`（[line 171-202](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L171-L202)）
+  - `loadMessages` → `loadingRef.current.messagesId`（[line 205-227](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L205-L227)）
+  - 删除 3 个函数体外的"初始化行"
+  - `npm run build:frontend` 通过（24.83s）
+  - 行为等价、语义更明确，符合 React 习惯；loadMessages 按 sessionId 去重**真的起作用**了（之前可能因对象重建失效）
 
 ### B10. useEffect 重复 appendChild `<style>`
 
@@ -401,6 +415,27 @@
 | **U10** | 🟡 L | 滚动条过细（6px）建议 8px 提升可见性 | [App.css:1-9](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.css#L1-L9) |
 | **U11** | 🟡 L | Skill drawer 内编辑器锁定时没有明显视觉提示（应加遮罩/水印） | [App.jsx:1570-1600](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L1570-L1600) |
 | **U12** | 🟡 L | 按钮 / 卡片无 hover 动效，整体偏静态 | `App.css` |
+| **U13** | 🟠 M | SQL 查询结果表溢出容器 + 垂直滚动时表头不固定 | `App.jsx:1041-1240`、`App.css:82-90` |
+
+### U13 详情：SQL 查询结果表溢出容器 + sticky 表头
+
+- **状态**：⏸️ **暂缓**（2026-06-10）— 多次尝试未能兼顾"无多余滚动条 + 表头不消失 + 行不丢 + 分页可见"全部需求
+- **背景**：
+  1. **原始行为**：表格过长会超出 Collapse 容器宽度，单个列宽无上限（用户拖到 1500px 也允许），不美观
+  2. **需求**：限制列宽有界（80-300px），垂直滚动时表头 sticky 在容器顶部不消失
+  3. **已尝试的方案**（全部失败或回滚）：
+     - **方案 A**：列宽 cap + Collapse `overflow: hidden` + wrapper `flex: 1, minHeight: 0, maxHeight: resultTableHeight, overflow: auto, minWidth: 0` + top/bottom 双分页。问题：右侧仍有 2 个滚动条（Collapse 一个 + wrapper 一个）
+     - **方案 B**：方案 A 的基础上，CSS 加 `.sql-result-table .ant-table-body { overflow: visible !important }` 让 wrapper 唯一滚动 + sticky 表头生效。问题：底部行数被裁切（wrapper maxHeight + 实际高度不匹配），分页器位置错乱
+     - **方案 C**（最终采用）：**回滚** Collapse 和 wrapper 到原始 CSS，恢复单一外层滚动条；**只保留**列宽 cap
+  4. **最终 diff**（最小化）：
+     - [`App.jsx:871`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L871) 列宽 `Math.min(300, Math.max(80, columnWidths[key] || 150))`（用户拖动时有界，原始的 1500px 极端情况不再发生）
+     - [`App.jsx:885`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L885) explainColumns 同步
+     - [`App.css:85`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.css#L85) 仅注释微调，CSS 实质内容不变
+  5. **下次重新设计方案**（仅记录，不实施）：
+     - 用 React 表格库替代 antd Table（如 `react-table` / `ag-grid`），内置 sticky header + virtual scroll
+     - 或用 `position: sticky; top: 0` 配合 `z-index` + 把 `<table>` 拆成 `<thead>` + `<tbody>` 两个独立滚动容器
+     - 重新设计时**先**把表头 + 分页 + 滚动三个组件抽出来单独 mock 测，**不要在 App.jsx 上反复改**
+  6. **建议优先级**：U1/U2/U3/U5/U6 都比 U13 收益高（更基础、用户感知更强），**先做那 5 个再做 U13**
 
 ---
 
@@ -458,5 +493,9 @@
 | 2026-06-10 | ✅ **P6**：用户要求"日志按日期切分，永久保留"。处理方式：自定义 `DailyFileTransport extends winston.transports.Stream`，按 `YYYY-MM-DD` 后缀生成 `app-2026-06-10.log` / `error-2026-06-10.log`，跨天自动切流（end 旧流 + createWriteStream 新流），不传 `maxFiles` → 永久保留，不引新依赖。`npx -p node@20` 跑 `import('./backend/src/logger.js')` 验证：app 文件 214 字节、error 文件 108 字节、JSON 格式正常。注：系统 node v12 跑不动（winston 依赖 `||=` 需 15+），实际 app 用 Electron node 20+ 无此问题。 |
 | 2026-06-10 | 🚫 **P7** 不动（用户决定）。 |
 | 2026-06-10 | ✅ **P8**：SSE 关 Nagle。处理方式：在 `/generate` 流分支和 `/explain/analyze` 两处的 `res.flushHeaders()` 之前各加一行 `req.socket.setNoDelay(true);`，避免小包攒批导致 100-200ms 顿挫。`node --check src/routes/query.js` 通过。 |
+| 2026-06-10 | ✅ **P9**：删除 [`backend/src/routes/query.js:329-381`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/query.js#L329-L381) 的"合并 allLogs 只 logger.info"死代码块（约 12 行，含 `allLogs` 数组声明、`allLogs.push` 和无意义的 try-catch）。for 循环里的逐条 `saveSkillLog` 真实写库逻辑保持不变。`node --check src/routes/query.js` 通过。 |
+| 2026-06-10 | ⏸️ **U13**：SQL 查询结果表溢出容器 + sticky 表头，**暂缓**。尝试了 3 个方案（A 双滚动条 / B sticky 表头但底部行被裁 / C 回滚保留列宽 cap），均未能同时满足"无多余滚动条 + 表头不消失 + 行不丢 + 分页可见"全部需求。决定**回滚到原始布局**（单外层滚动条）+ **保留**列宽 cap `Math.min(300, Math.max(80, ...))`（App.jsx:871/885）。下次重做建议：换 `react-table` / `ag-grid` 或把 `<thead>`/`<tbody>` 拆为两个独立滚动容器；并先 mock 测再上 App.jsx。优先级：U1/U2/U3/U5/U6 收益更高，先做那 5 个。 |
+| 2026-06-10 | 🚫 **B8** 暂缓（用户口述"以后会有 `/api/tables` 接口"）。保留 `backend/src/routes/tables.js` + `app.use('/api/tables', ...)` 占位，等接口就绪时再回头清理空 router。 |
+| 2026-06-10 | ✅ **B9**：3 个函数（`loadCurrentModel` / `loadSessions` / `loadMessages`）从"挂函数对象属性做去重"改为 `loadingRef = useRef({ model, sessions, messagesId })` 跨 render 持久化。位置：新增 [`App.jsx:106`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L106)；3 个函数改 [`line 132-139 / 171-202 / 205-227`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L132-L139)。删除 3 个函数体外的"初始化行"。`npm run build:frontend` 通过（24.83s）。 |
 
 下一步行动：用户决定修复范围后，按项修改，每个修改做最小化 diff，不动现有业务逻辑。
