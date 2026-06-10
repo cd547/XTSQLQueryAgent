@@ -82,7 +82,7 @@
 .sql-result-table .ant-table-tbody > tr > td {
   background: white !important;
 }
-/* 隐藏表格内部滚动条 */
+/* 表格内部不滚动 - 让 wrapper 成为唯一的滚动容器，sticky 表头才能粘到 wrapper 顶部 */
 .sql-result-table .ant-table-body {
   overflow: visible !important;
 }

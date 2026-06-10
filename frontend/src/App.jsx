@@ -868,7 +868,7 @@ const columns = useMemo(() => currentResults.length > 0
     dataIndex: key,
     key: `col-${idx}`,
     ellipsis: true,
-    width: columnWidths[key] || 150
+    width: Math.min(300, Math.max(80, columnWidths[key] || 150))
   }))
 : [], [currentResults, columnWidths]);
 
@@ -882,7 +882,7 @@ const explainColumns = useMemo(() => explainResults.length > 0
     dataIndex: key,
     key: `col-${idx}`,
     ellipsis: true,
-    width: columnWidths[key] || 150
+    width: Math.min(300, Math.max(80, columnWidths[key] || 150))
   }))
 : [], [explainResults, columnWidths]);
   
