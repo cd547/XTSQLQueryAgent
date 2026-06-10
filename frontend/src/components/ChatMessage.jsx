@@ -1,10 +1,10 @@
-import React from 'react';
+import React, { memo } from 'react';
 import { Button, Spin } from 'antd';
 import { CaretRightOutlined, DownOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-function ChatMessage({ role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, onOpenSqlTab, onCopyAndExecute }) {
+const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, onOpenSqlTab, onCopyAndExecute }) {
   const isUser = role === 'user';
   const isLog = role === 'log' || role === 'LLM' || role === 'tool' || role === 'tool_return';
   
@@ -47,7 +47,7 @@ function ChatMessage({ role, content, isStreaming, timestamp, collapsed, onToggl
         }}>
           <div 
             style={{ cursor: 'pointer', display: 'flex', alignItems: 'center', marginBottom: collapsed ? 0 : 4 }}
-            onClick={() => { if (onToggleCollapse) onToggleCollapse(); }}
+            onClick={() => { if (onToggleCollapse) onToggleCollapse(msgId); }}
           >
             <span style={{ marginRight: 4, fontSize: 10 }}>
               {collapsed ? <CaretRightOutlined /> : <DownOutlined />}
@@ -152,6 +152,6 @@ function ChatMessage({ role, content, isStreaming, timestamp, collapsed, onToggl
       </div>
     </div>
   );
-}
+});
 
 export default ChatMessage;

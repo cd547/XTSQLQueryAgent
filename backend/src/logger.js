@@ -1,9 +1,66 @@
 import winston from 'winston';
 import path from 'path';
+import fs from 'fs';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOG_PATH = process.env.LOG_PATH || './logs';
+
+// 确保日志目录存在（双保险：startup 时也建）
+try { fs.mkdirSync(LOG_PATH, { recursive: true }); } catch (e) {}
+
+/**
+ * 按日期切分的 File transport：
+ * - 每天一个文件：<filename>-<YYYY-MM-DD>.log（如 app-2026-06-10.log）
+ * - 跨天自动切换（写入时检查日期，变化就关旧流、开新流）
+ * - 永久保留：从不删除旧日志
+ * - 同步尾部 flush：进程被 kill -9 时也能尽量多落盘
+ */
+class DailyFileTransport extends winston.transports.Stream {
+  constructor(opts) {
+    const { filename, datePattern = 'YYYY-MM-DD', ...rest } = opts;
+    // 给基类一个初始 stream（任何值都行，因为 log() 重写后不会再用 .write()）
+    super({ stream: fs.createWriteStream(path.join(LOG_PATH, 'temp'), { flags: 'a' }), ...rest });
+    this._baseFilename = filename;
+    this._datePattern = datePattern;
+    this._currentDate = this._todayKey();
+    this._stream = null;
+    this._openStream();
+  }
+
+  _todayKey() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  }
+
+  _openStream() {
+    if (this._stream) {
+      try { this._stream.end(); } catch (e) {}
+    }
+    const filePath = path.join(LOG_PATH, `${this._baseFilename}-${this._currentDate}.log`);
+    // 'a' 追加，'encoding utf8' 写中文安全
+    this._stream = fs.createWriteStream(filePath, { flags: 'a', encoding: 'utf8' });
+    // 写穿到 disk，避免异常退出丢最近的日志
+    this._stream.on('error', (e) => process.stderr.write(`[logger:${this._baseFilename}] stream error: ${e.message}\n`));
+  }
+
+  log(info, callback) {
+    // 跨天切流
+    const today = this._todayKey();
+    if (today !== this._currentDate) {
+      this._currentDate = today;
+      this._openStream();
+    }
+    setImmediate(() => this.emit('logged', info));
+    // 父类 log 会把 info 写到 super().stream，但我们直接写我们自己的 _stream
+    const line = `${info[Symbol.for('message')] || info.message}\n`;
+    try { this._stream.write(line); } catch (e) {}
+    callback();
+  }
+}
 
 export const logger = winston.createLogger({
   level: 'info',
@@ -18,13 +75,7 @@ export const logger = winston.createLogger({
         winston.format.simple()
       )
     }),
-    new winston.transports.File({
-      filename: path.join(LOG_PATH, 'error.log'),
-      level: 'error'
-    }),
-    new winston.transports.File({
-      filename: path.join(LOG_PATH, 'app.log')
-    })
+    new DailyFileTransport({ filename: 'error', level: 'error' }),
+    new DailyFileTransport({ filename: 'app' })
   ]
 });
-

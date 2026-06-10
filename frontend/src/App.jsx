@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Layout, Input, Button, Table, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, InputNumber, Modal, Steps, Space, Dropdown } from 'antd';
 import 'react-resizable/css/styles.css';
 import './App.css';
@@ -405,6 +405,10 @@ function App() {
     setExplainResults([]);
     await handleExecute(sql, newKey);
   };
+
+  const handleToggleCollapse = useCallback((msgId) => {
+    setMessages(prev => prev.map(m => m.id === msgId ? { ...m, collapsed: !(m.collapsed ?? true) } : m));
+  }, []);
   
   const handleSend = async () => {
     if (!input.trim() || loading) return;
@@ -1014,23 +1018,16 @@ const explainColumns = useMemo(() => explainResults.length > 0
                     <div style={{ color: '#999', fontSize: 14 }}>例如: "查询2024年的课程销售额"</div>
                   </Empty>
                 ) : (
-                  messages.map((msg, idx) => (
+                  messages.map((msg) => (
                     <ChatMessage
                       key={msg.id}
+                      msgId={msg.id}
                       role={msg.role}
                       content={msg.content}
                       isStreaming={msg.isStreaming}
                       timestamp={msg.timestamp}
                       collapsed={msg.collapsed !== undefined ? msg.collapsed : true}
-                      onToggleCollapse={() => {
-                        setMessages(prev => {
-                          const newMsgs = [...prev];
-                          const current = newMsgs[idx]?.collapsed ?? true;
-                          const newCollapsed = !current;
-                          newMsgs[idx] = { ...newMsgs[idx], collapsed: newCollapsed };
-                          return newMsgs;
-                        });
-                      }}
+                      onToggleCollapse={handleToggleCollapse}
                       logType={msg.logType}
                       sql={msg.sql}
                       onOpenSqlTab={handleOpenSqlTab}

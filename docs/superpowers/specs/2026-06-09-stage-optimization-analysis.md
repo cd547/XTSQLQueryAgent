@@ -280,10 +280,17 @@
 ### P3. `<ChatMessage>` 没用 `React.memo`
 
 - **严重度**：🟠 M
-- **文件**：[`App.jsx:1245-1268`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L1245-L1268)
+- **状态**：✅ **已解决**（2026-06-10）
+- **文件**：[`App.jsx:1014-1027`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L1014-L1027)、[`components/ChatMessage.jsx:7`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/components/ChatMessage.jsx#L7)
 - **问题**：流式响应时所有历史消息跟着重渲染（因 `setMessages` 整个数组引用变化）。
-
 - **建议**：用 `React.memo(ChatMessage)` 包装；并将 `onToggleCollapse` 等用 `useCallback` 包装保持稳定。
+- **解决方式**：
+  1. `ChatMessage` 用 `memo()` 包裹，新增 `msgId` prop（避免父级再传 inline arrow）
+  2. `App.jsx` 把 3 个回调包成 `useCallback`：`handleOpenSqlTab`（依赖 `[]`）、`handleCopyAndExecute`（依赖 `[handleExecute]`）、新增 `handleToggleCollapse(id)`（依赖 `[]`）
+  3. `messages.map((msg, idx) =>` 改为 `messages.map((msg) =>`，用 `msg.id` 而非 `idx` 定位（id 稳定，idx 在插入时会漂移）
+  4. `import` 增加 `useCallback`
+  5. `npm run build:frontend` 通过（26.87s）
+  6. 效果：流式响应时，只有 `isStreaming: true` 和刚 append 的新消息 props 变化时会重渲；历史消息 props 全部稳定 → 直接跳渲
 
 ### P4. 后端 `loadTableIndex` / `loadSkillMd` 每次都同步读盘
 
@@ -307,14 +314,26 @@
 ### P6. winston logger 单文件无限增长
 
 - **严重度**：🟡 L
+- **状态**：✅ **已解决**（2026-06-10）
 - **文件**：[`backend/src/logger.js`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/logger.js)
 - **问题**：`app.log` 和 `error.log` 不会轮转，长期运行会占满磁盘。
 
 - **建议**：使用 `winston-daily-rotate-file`，按天切分并保留 7-30 天。
+- **解决方式**：
+  1. 自定义 `DailyFileTransport extends winston.transports.Stream`，按 `YYYY-MM-DD` 切分文件
+  2. 跨天自动 `end()` 旧流 + `createWriteStream` 新流
+  3. 不传 `maxFiles` → 永久保留（用户要求"永久保留"）
+  4. 不引新依赖（不装 `winston-daily-rotate-file`）
+  5. 测试通过（用 `npx -p node@20` 跑 `import('./src/logger.js')`）：
+     - `app-2026-06-10.log`（214 字节，含 info + error）
+     - `error-2026-06-10.log`（108 字节，只含 error）
+     - JSON 格式正常：`{level, message, timestamp}`
+- **运行验证**：系统 node v12 跑不动（winston 依赖 `||=`，需 15+），需在 Electron 实际环境（node 20+）跑。已用 `npx -p node@20` 验证。
 
 ### P7. 多个并发请求可合并
 
 - **严重度**：🟡 L
+- **状态**：🚫 **不动**（2026-06-10 用户决定）
 - **文件**：[`App.jsx:117-135`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L117-L135)
 - **问题**：`getSessions` → `getQueryMessages` → `getAgentConfig` 在加载第一个 session 时并发跑三次。
 
@@ -323,15 +342,17 @@
 ### P8. SSE 写入未显式 `socket.setNoDelay(true)`
 
 - **严重度**：🟡 L
-- **文件**：[`backend/src/routes/query.js:255-280`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/query.js#L255-L280)
+- **状态**：✅ **已解决**（2026-06-10）
+- **文件**：[`backend/src/routes/query.js:306-313`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/query.js#L306-L313)、[`backend/src/routes/query.js:706-711`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/query.js#L706-L711)
 - **问题**：小包数据可能因 Nagle 算法延迟。
-
 - **建议**：在 `req.socket.setNoDelay(true)`。
+- **解决方式**：在两个 SSE 端点（`/generate` 的 stream 分支 + `/explain/analyze`）的 `res.flushHeaders()` 之前各加一行 `req.socket.setNoDelay(true);`，关 Nagle 让每个 chunk 立即发出，避免 100-200ms 攒批延迟。`node --check src/routes/query.js` 语法检查通过。
 
 ### P9. 死代码：合并 allLogs 仅 logger.info 未实际存储
 
 - **严重度**：🟡 L
-- **文件**：[`backend/src/routes/query.js:306-318`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/query.js#L306-L318)
+- **状态**：✅ **已解决**（2026-06-10）
+- **文件**：[`backend/src/routes/query.js:329-381`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/query.js#L329-L381)
 - **问题**：
 
   ```js
@@ -344,8 +365,8 @@
   ```
 
   实际上 `allLogs` 中的每条日志已经在 for 循环里实时单独保存了（line 280-291），这里只是 `logger.info` 一行，"保存"名不副实。
-
 - **建议**：删除该块或实际写库。
+- **解决方式**：删除 `allLogs` 数组声明、`allLogs.push` 和 10 行死块。for 循环里的逐条保存逻辑保持不变（这是真实写库）。`node --check src/routes/query.js` 通过。
 
 ---
 
@@ -396,11 +417,16 @@
 | 5 | **B5** 重复 ALTER | Bug | 沉默错误 | ✅ 2026-06-09（删除第二个 ALTER） |
 | 6 | **B6 / B7** 流式滚动 + key=idx | Bug | 用户体验问题 | ✅ 2026-06-09（B6 rAF 滚动，B7 双命名空间稳定 id） |
 | 7 | **P1** resizer 无防抖 | 性能 | 拖动卡顿 | ✅ 2026-06-09（rAF 节流 6 处） |
-| 8 | **P3** ChatMessage 加 React.memo | 性能 | 流式响应性能 | ⏳ |
-| 9 | **P4** loadSkillMd/loadTableIndex 缓存 | 性能 | 后端 IO 优化 | 🚫 2026-06-09（用户决定不修，要保证实时性） |
-| 10 | **U3** token 进度条加数字 | 界面 | 用户一目了然 | ⏳ |
-| 11 | **B10** 动态 `<style>` useEffect | Bug | 性能浪费 | ✅ 2026-06-09（CSS 提到 App.css，删除 useEffect） |
-| 12 | **B11** splash 60s 卡死 | Bug | 用户体验问题 | ✅ 2026-06-09（commit `110cd12` 修复按钮 + 本次补漏 did-finish-load 竞态） |
+| 8 | **P3** ChatMessage 加 React.memo | 性能 | 流式响应性能 | ✅ |
+| 9 | **P9** 死代码：合并 allLogs 只 logger.info | 性能 | 无 | ✅ 2026-06-10 |
+| 10 | **P4** loadSkillMd/loadTableIndex 缓存 | 性能 | 后端 IO 优化 | 🚫 2026-06-09（用户决定不修，要保证实时性） |
+| 11 | **U3** token 进度条加数字 | 界面 | 用户一目了然 | ⏳ |
+| 12 | **B10** 动态 `<style>` useEffect | Bug | 性能浪费 | ✅ 2026-06-09（CSS 提到 App.css，删除 useEffect） |
+| 13 | **B11** splash 60s 卡死 | Bug | 用户体验问题 | ✅ 2026-06-09（commit `110cd12` 修复按钮 + 本次补漏 did-finish-load 竞态） |
+| 14 | **P2** columns/explainColumns useMemo | 性能 | Table 重渲 | ✅ 2026-06-10 |
+| 15 | **P6** 日志按日期切分 | 性能 | 长期占盘 | ✅ 2026-06-10（自定义 DailyFileTransport） |
+| 16 | **P7** 多个并发请求可合并 | 性能 | 启动略慢 | 🚫 2026-06-10（用户决定） |
+| 17 | **P8** SSE 没 setNoDelay | 性能 | 流式偶发卡顿 | ✅ 2026-06-10 |
 
 ---
 
@@ -428,5 +454,9 @@
 | 2026-06-09 | ✅ **P1**：[`App.jsx`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx) 6 处 resizer 拖动无 rAF 节流。处理方式：每个 `handleMove` 内 `cancelAnimationFrame` + 重新 `requestAnimationFrame`，`handleUp` 兜底 `cancelAnimationFrame`；状态结构不动。`npm run build` 通过（26.15s）。 |
 | 2026-06-09 | ✅ **B11 补漏**：用户反馈"按钮好像没显示"，复核 [`electron/main.js`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/electron/main.js) 发现 `app.on('ready')` 处理器存在竞态——`createSplash()` 后立即 `startBackend()`，但 `loadFile` 异步；极端情况下 spawn 几乎同步失败时第二次 `updateSplash` 早于 `did-finish-load`，`window.splashUpdate` 不存在 → `executeJavaScript` 抛错被 `.catch` 吞掉 → 错误面板永不显示。处理方式：在 `createSplash()` 后 `await` `did-finish-load` 再 `startBackend()`，最小 +12 行。`node -c main.js` 语法检查通过。 |
 | 2026-06-10 | ✅ **P2**：`columns` / `explainColumns` 每次渲染重新构造。处理方式：两个数组包成 `useMemo`，依赖项分别为 `[currentResults, columnWidths]` / `[explainResults, columnWidths]`，import 增加 `useMemo`。`npm run build:frontend` 通过（27.23s）。 |
+| 2026-06-10 | ✅ **P3**：`ChatMessage` 包 `React.memo` 才能让流式响应时不重渲历史消息。处理方式：(1) `ChatMessage` 用 `memo()` 包裹，新增 `msgId` prop；(2) `App.jsx` 把 3 个回调包成 `useCallback`：`handleOpenSqlTab`、`handleCopyAndExecute`、新增 `handleToggleCollapse(id)`；(3) `messages.map((msg, idx) =>` 改为 `messages.map((msg) =>`，用 `msg.id` 而非 `idx` 定位；(4) `import` 增加 `useCallback`。`npm run build:frontend` 通过（26.87s）。效果：流式响应时只有 `isStreaming: true` 和刚 append 的新消息 props 变化时会重渲。**实施缺陷补充**（2026-06-10）：首次实施时把 `<ChatMessage onToggleCollapse={...}>` 从内联箭头改为 `handleToggleCollapse` 后，**漏写了 useCallback 函数体**，导致点击消息触发 `ReferenceError: handleToggleCollapse is not defined`。已补：`setMessages(prev => prev.map(m => m.id === msgId ? { ...m, collapsed: !(m.collapsed ?? true) } : m))`，按 `msgId` 找（`idx` 已不可用），`useCallback([])` 包裹，新 bundle `index-DaKfKrAM.js`。教训：`useCallback` 重构是结构性变更，不能只看 `npm run build` 通过，要实际点击验证。 |
+| 2026-06-10 | ✅ **P6**：用户要求"日志按日期切分，永久保留"。处理方式：自定义 `DailyFileTransport extends winston.transports.Stream`，按 `YYYY-MM-DD` 后缀生成 `app-2026-06-10.log` / `error-2026-06-10.log`，跨天自动切流（end 旧流 + createWriteStream 新流），不传 `maxFiles` → 永久保留，不引新依赖。`npx -p node@20` 跑 `import('./backend/src/logger.js')` 验证：app 文件 214 字节、error 文件 108 字节、JSON 格式正常。注：系统 node v12 跑不动（winston 依赖 `||=` 需 15+），实际 app 用 Electron node 20+ 无此问题。 |
+| 2026-06-10 | 🚫 **P7** 不动（用户决定）。 |
+| 2026-06-10 | ✅ **P8**：SSE 关 Nagle。处理方式：在 `/generate` 流分支和 `/explain/analyze` 两处的 `res.flushHeaders()` 之前各加一行 `req.socket.setNoDelay(true);`，避免小包攒批导致 100-200ms 顿挫。`node --check src/routes/query.js` 通过。 |
 
 下一步行动：用户决定修复范围后，按项修改，每个修改做最小化 diff，不动现有业务逻辑。

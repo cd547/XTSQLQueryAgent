@@ -374,17 +374,6 @@ router.post('/generate', async (req, res) => {
           }
         }
 
-        // 保留合并保存（兼容）
-        if (sessionId && allLogs.length > 0) {
-          try {
-            const db = getDb();
-            const logContent = allLogs.join('\n---\n');
-            logger.info('保存日志', { sessionId: String(sessionId), logLength: logContent.length, logCount: allLogs.length });
-          } catch (e) {
-            logger.error('保存日志失败', { error: e.message, stack: e.stack });
-          }
-        }
-
         // 如果 sql 为空，尝试从 message 或 fullContent 中提取 SQL
         if (!sql || sql.trim() === '') {
           const contentToExtract = message || fullContent;
@@ -704,9 +693,12 @@ ${JSON.stringify(explainResults, null, 2)}
 请用中文回复，结构化输出分析结果。`;
 
     res.setHeader('Content-Type', 'text/event-stream');
-    res.setHeader('Cache-Control', 'no-cache');
-    res.setHeader('Connection', 'keep-alive');
-    res.flushHeaders();
+      res.setHeader('Cache-Control', 'no-cache');
+      res.setHeader('Connection', 'keep-alive');
+      // SSE 场景关闭 Nagle 算法，每个 chunk 立即发出，避免小包攒批导致 100-200ms 顿挫
+      req.socket.setNoDelay(true);
+
+      res.flushHeaders();
 
     const provider = config.provider || 'deepseek';
     const apiKey = config.apiKey;
