@@ -8,13 +8,13 @@
     "start": "node src/index.js"
   },
   "dependencies": {
-    "@langchain/core": "^1.1.38",
+    "@langchain/core": "^1.1.48",
     "@langchain/deepseek": "^1.0.22",
-    "better-sqlite3": "^11.1.0",
+    "@langchain/openai": "^1.0.0",
+    "better-sqlite3": "^12.10.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.0",
     "express": "^4.21.0",
-    "langchain": "^0.3.0",
     "mysql2": "^3.11.0",
     "sql-parser": "^0.5.0",
     "winston": "^3.14.0",

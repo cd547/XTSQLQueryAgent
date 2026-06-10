@@ -271,10 +271,11 @@
 ### P2. `columns` / `explainColumns` 每次渲染重新构造
 
 - **严重度**：🟠 M
-- **文件**：[`App.jsx:935-960`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L935-L960)
+- **状态**：✅ **已解决**（2026-06-10）
+- **文件**：[`frontend/src/App.jsx:857-869`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L857-L869)（原行号）
 - **问题**：未用 `useMemo`，结果集变化时整张 table 重渲染（column 对象身份变化 → AntD Table 全部 cell 重渲）。
-
 - **建议**：用 `useMemo` 包装 `columns`、`explainColumns`。
+- **解决方式**：两个数组都包成 `useMemo`，依赖项为 `[currentResults, columnWidths]` / `[explainResults, columnWidths]`。import 增加 `useMemo`。`npm run build:frontend` 通过（27.23s）。
 
 ### P3. `<ChatMessage>` 没用 `React.memo`
 
@@ -399,7 +400,7 @@
 | 9 | **P4** loadSkillMd/loadTableIndex 缓存 | 性能 | 后端 IO 优化 | 🚫 2026-06-09（用户决定不修，要保证实时性） |
 | 10 | **U3** token 进度条加数字 | 界面 | 用户一目了然 | ⏳ |
 | 11 | **B10** 动态 `<style>` useEffect | Bug | 性能浪费 | ✅ 2026-06-09（CSS 提到 App.css，删除 useEffect） |
-| 12 | **B11** splash 60s 卡死 | Bug | 用户体验问题 | ✅ 此前已修（commit `110cd12`，本次复核） |
+| 12 | **B11** splash 60s 卡死 | Bug | 用户体验问题 | ✅ 2026-06-09（commit `110cd12` 修复按钮 + 本次补漏 did-finish-load 竞态） |
 
 ---
 
@@ -424,7 +425,8 @@
 | 2026-06-09 | ✅ **B6**：流式 chunk 不触发滚动。处理方式：streaming chunk handler 末尾追加 rAF 节流的 `scrollIntoView`，并新增 `streamingScrollRafRef` 句柄。`npm run build` 验证通过。 |
 | 2026-06-09 | ✅ **B7**：`<ChatMessage key={idx}>` 在流式 splice log 时触发不必要的 re-render。处理方式：双命名空间稳定 id 方案——`db-N`（后端 row id） + `c-N`（前端计数器 `clientMsgIdRef`），`key={msg.id}`。`npm run build` 通过。**附带发现**：DB messages 表无 `collapsed` 列，log 展开/收起状态不持久化，用户表示影响不大暂不修。 |
 | 2026-06-09 | ✅ **B10**：App.jsx 中 79 行的 `useEffect(() => { createElement('style') ... })` 块。处理方式：把全部 CSS 提取到 `App.css`（已 import），分类表头固定 / 配置面板字体 / 隐藏滚动条三段；删除原 useEffect。`npm run build` 通过。 |
-| 2026-06-09 | ✅ **B11**（此前已修）：复核 [`electron/splash.html`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/electron/splash.html) 与 [`main.js:276-337`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/electron/main.js#L276-L337)，"复制日志" / "退出" 按钮、backend `close` / `error` 监听、15s 启动超时、`finish` 幂等均已就位（commit `110cd12` 引入）。**无新代码改动**。 |
 | 2026-06-09 | ✅ **P1**：[`App.jsx`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx) 6 处 resizer 拖动无 rAF 节流。处理方式：每个 `handleMove` 内 `cancelAnimationFrame` + 重新 `requestAnimationFrame`，`handleUp` 兜底 `cancelAnimationFrame`；状态结构不动。`npm run build` 通过（26.15s）。 |
+| 2026-06-09 | ✅ **B11 补漏**：用户反馈"按钮好像没显示"，复核 [`electron/main.js`](file:///d:/Ai_Program_Files/XTSQLQueryAgent/electron/main.js) 发现 `app.on('ready')` 处理器存在竞态——`createSplash()` 后立即 `startBackend()`，但 `loadFile` 异步；极端情况下 spawn 几乎同步失败时第二次 `updateSplash` 早于 `did-finish-load`，`window.splashUpdate` 不存在 → `executeJavaScript` 抛错被 `.catch` 吞掉 → 错误面板永不显示。处理方式：在 `createSplash()` 后 `await` `did-finish-load` 再 `startBackend()`，最小 +12 行。`node -c main.js` 语法检查通过。 |
+| 2026-06-10 | ✅ **P2**：`columns` / `explainColumns` 每次渲染重新构造。处理方式：两个数组包成 `useMemo`，依赖项分别为 `[currentResults, columnWidths]` / `[explainResults, columnWidths]`，import 增加 `useMemo`。`npm run build:frontend` 通过（27.23s）。 |
 
 下一步行动：用户决定修复范围后，按项修改，每个修改做最小化 diff，不动现有业务逻辑。

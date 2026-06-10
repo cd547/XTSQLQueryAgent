@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Layout, Input, Button, Table, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, InputNumber, Modal, Steps, Space, Dropdown } from 'antd';
 import 'react-resizable/css/styles.css';
 import './App.css';
@@ -854,33 +854,33 @@ const handleResize = (columnKey) => (e, { size }) => {
   setColumnWidths(prev => ({ ...prev, [columnKey]: size.width }));
 };
 
-const columns = currentResults.length > 0
-? Object.keys(currentResults[0]).map((key, idx) => ({ 
+const columns = useMemo(() => currentResults.length > 0
+? Object.keys(currentResults[0]).map((key, idx) => ({
     title: (props) => (
       <ResizableTitle width={columnWidths[key] || 150} onResize={handleResize(key)}>
         <span style={{ fontSize: 12 }}>{key}</span>
       </ResizableTitle>
     ),
-    dataIndex: key, 
+    dataIndex: key,
     key: `col-${idx}`,
     ellipsis: true,
     width: columnWidths[key] || 150
   }))
-: [];
+: [], [currentResults, columnWidths]);
 
-const explainColumns = explainResults.length > 0
-? Object.keys(explainResults[0]).map((key, idx) => ({ 
+const explainColumns = useMemo(() => explainResults.length > 0
+? Object.keys(explainResults[0]).map((key, idx) => ({
     title: (props) => (
       <ResizableTitle width={columnWidths[key] || 150} onResize={handleResize(key)}>
         <span style={{ fontSize: 12 }}>{key}</span>
       </ResizableTitle>
     ),
-    dataIndex: key, 
+    dataIndex: key,
     key: `col-${idx}`,
     ellipsis: true,
     width: columnWidths[key] || 150
   }))
-: [];
+: [], [explainResults, columnWidths]);
   
   useEffect(() => {
     if (currentSessionId) {

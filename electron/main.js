@@ -8,6 +8,45 @@ let mainWindow;
 let splashWindow;
 let backendProcess;
 
+// 启动期日志双写：原有 console.log / console.error 仍走终端 / DevTools，
+// 同时落盘到 logs/electron-startup-<时间戳>.log，下次启动失败可直接打开复盘。
+// 用 appendFileSync 同步落盘：electron 异常退出 / kill -9 时不会丢日志。
+function setupStartupLogging() {
+  try {
+    const projectRoot = app.isPackaged
+      ? path.dirname(path.dirname(path.dirname(app.getPath('exe'))))
+      : path.join(__dirname, '..');
+    const logsDir = path.join(projectRoot, 'logs');
+    fs.mkdirSync(logsDir, { recursive: true });
+    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
+    const logFile = path.join(logsDir, `electron-startup-${ts}.log`);
+
+    const writeLine = (level, args) => {
+      const text = args.map(a => {
+        if (typeof a === 'string') return a;
+        try { return JSON.stringify(a); } catch { return String(a); }
+      }).join(' ');
+      try {
+        fs.appendFileSync(logFile, `[${new Date().toISOString()}] [${level}] ${text}\n`);
+      } catch {}
+    };
+
+    const origLog = console.log.bind(console);
+    const origError = console.error.bind(console);
+    const origWarn = console.warn.bind(console);
+    console.log = (...args) => { writeLine('LOG', args); origLog(...args); };
+    console.error = (...args) => { writeLine('ERR', args); origError(...args); };
+    console.warn = (...args) => { writeLine('WRN', args); origWarn(...args); };
+
+    origLog('=== Electron startup log initialized ===');
+    origLog('Log file:', logFile);
+  } catch (e) {
+    // 日志初始化失败不能让主进程起不来
+    process.stderr.write(`[startup-log] failed to init: ${e.message}\n`);
+  }
+}
+setupStartupLogging();
+
 function checkPort(port, host) {
   return new Promise((resolve) => {
     // 创建一个连接来测试端口是否被占用
@@ -402,6 +441,16 @@ app.on('ready', async () => {
 
   // 立即显示启动页，避免用户看到黑屏重复点击
   createSplash();
+  // 等 splash 页加载完再调 startBackend，否则极端情况下（端口被占 / Node 缺失
+  // → spawn 几乎同步失败 → updateSplash 立即触发）splashUpdate 还没挂上，
+  // executeJavaScript 抛错被 .catch 吞掉，B11 的"复制日志/退出"按钮永远不显示。
+  await new Promise((resolve) => {
+    if (splashWindow.webContents.isLoadingMainFrame()) {
+      splashWindow.webContents.once('did-finish-load', resolve);
+    } else {
+      resolve();
+    }
+  });
   updateSplash('正在启动后端服务...');
 
   const result = await startBackend();
