@@ -102,6 +102,12 @@ function App() {
   // 客户端消息 id 计数器：保证新创建的每条消息都有稳定唯一 key
   // DB 加载的消息用 `db-<row_id>` 命名空间，与客户端 `c-N` 互不冲突
   const clientMsgIdRef = useRef(0);
+  // 异步加载去重 ref：用 useRef 跨 render 持久化标志位，
+  // 替代原先 "loadXxx.loading = ..." 这种挂函数对象属性的反模式
+  // - model: 加载当前模型（boolean）
+  // - sessions: 加载会话列表（boolean）
+  // - messagesId: 加载某 sessionId 的消息（sessionId 或 null）
+  const loadingRef = useRef({ model: false, sessions: false, messagesId: null });
   
   const handleTabChange = (key) => {
     if (activeTabKey === 'chat' && chatContentRef.current) {
@@ -164,8 +170,8 @@ function App() {
   };
 
   const loadSessions = async () => {
-    if (loadSessions.loading) return;
-    loadSessions.loading = true;
+    if (loadingRef.current.sessions) return;
+    loadingRef.current.sessions = true;
     try {
       const data = await getSessions();
       setSessions(data.sessions || []);
@@ -194,14 +200,13 @@ function App() {
     } catch (e) {
       console.error('加载会话失败:', e);
     } finally {
-      loadSessions.loading = false;
+      loadingRef.current.sessions = false;
     }
   };
-  loadSessions.loading = false;
   
   const loadMessages = async (sessionId) => {
-    if (loadMessages.loading === sessionId) return;
-    loadMessages.loading = sessionId;
+    if (loadingRef.current.messagesId === sessionId) return;
+    loadingRef.current.messagesId = sessionId;
     try {
       const data = await getSessionMessages(sessionId);
       if (data.messages) {
@@ -219,10 +224,9 @@ function App() {
     } catch (e) {
       console.error('加载消息失败:', e);
     } finally {
-      loadMessages.loading = null;
+      loadingRef.current.messagesId = null;
     }
   };
-  loadMessages.loading = null;
   
   useEffect(() => {
     if (messages.length > messageCountRef.current) {
