@@ -5,5 +5,17 @@
   "virtual_associations": [],
   "calculated_fields": {},
   "business_constraints": {},
-  "business_rules": []
+  "business_rules": [],
+  "field_semantics": {
+    "created_time": {
+      "ddl_type": "VARCHAR",
+      "actual_type": "timestamp_ms",
+      "description": "DDL 声明 VARCHAR，但实际存的是 13 位毫秒时间戳",
+      "parse_expression": "FROM_UNIXTIME(CAST({col} AS UNSIGNED) / 1000)",
+      "common_uses": {
+        "year_equal_current": "YEAR({parsed}) = YEAR(CURDATE())",
+        "month_range": "{parsed} BETWEEN ? AND ?"
+      }
+    }
+  }
 }

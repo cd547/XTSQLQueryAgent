@@ -2,10 +2,10 @@
   "table_name": "order_type",
   "field_aliases": {},
   "field_enums": {
-   "admin_division" {
-      "1": {"label": "机构", "description": "之前叫学通"},
-      "2": {"label": "学校", "description": "之前叫科桥"}
-    },
+    "admin_division": {
+      "1": { "label": "机构", "description": "之前叫学通" },
+      "2": { "label": "学校", "description": "之前叫科桥" }
+    }
   },
   "virtual_associations": [],
   "calculated_fields": {},

@@ -14,11 +14,15 @@
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
+    justify-content: flex-start;
     height: 100vh;
-    overflow: hidden;
+    overflow-y: auto;
+    overflow-x: hidden;
     user-select: none;
+    padding: 24px 16px 16px;
   }
+  body::-webkit-scrollbar { width: 6px; }
+  body::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.2); border-radius: 3px; }
   .title { font-size: 22px; font-weight: 600; margin-bottom: 6px; letter-spacing: 0.5px; }
   .subtitle { font-size: 12px; opacity: 0.55; margin-bottom: 40px; }
   .spinner {
@@ -55,8 +59,8 @@
   .error-icon.show { display: flex; }
   .error-panel {
     display: none;
-    width: calc(100% - 32px);
-    max-width: 360px;
+    width: 100%;
+    max-width: 560px;
     margin-top: 14px;
     text-align: left;
   }
@@ -77,11 +81,17 @@
     font-size: 11px;
     font-family: 'Consolas', 'Monaco', monospace;
     color: #fda4af;
-    max-height: 110px;
+    max-height: 200px;
     overflow-y: auto;
     white-space: pre-wrap;
     word-break: break-all;
     margin: 0 0 12px 0;
+  }
+  .error-logfile {
+    font-size: 11px;
+    opacity: 0.6;
+    margin-bottom: 12px;
+    word-break: break-all;
   }
   .error-stderr:empty { display: none; }
   .error-stderr::-webkit-scrollbar { width: 6px; }
@@ -107,15 +117,18 @@
 </head>
 <body>
   <div class="title">XT SQL Query Agent</div>
-  <div class="subtitle">智能数据查询助手</div>
+  <div class="subtitle" id="subtitle">智能数据查询助手</div>
+  <div class="version" id="versionTag" style="font-size:10px;opacity:0.4;margin-top:-30px;margin-bottom:20px;"></div>
   <div class="spinner" id="spinner"></div>
   <div class="error-icon" id="errorIcon">!</div>
   <div class="status" id="status">正在启动...</div>
   <div class="error-panel" id="errorPanel">
     <div class="error-reason" id="errorReason"></div>
     <pre class="error-stderr" id="errorStderr"></pre>
+    <div class="error-logfile" id="errorLogfile"></div>
     <div class="error-actions">
       <button id="copyBtn">复制日志</button>
+      <button id="openLogBtn">打开日志</button>
       <button id="exitBtn">退出</button>
     </div>
   </div>
@@ -123,33 +136,75 @@
     const statusEl = document.getElementById('status');
     const spinnerEl = document.getElementById('spinner');
     const errorEl = document.getElementById('errorIcon');
+    const versionEl = document.getElementById('versionTag');
+    if (versionEl) versionEl.textContent = 'v' + window.__splashVersion;
     const panelEl = document.getElementById('errorPanel');
     const reasonEl = document.getElementById('errorReason');
     const stderrEl = document.getElementById('errorStderr');
+    const logfileEl = document.getElementById('errorLogfile');
     const copyBtn = document.getElementById('copyBtn');
+    const openLogBtn = document.getElementById('openLogBtn');
     const exitBtn = document.getElementById('exitBtn');
 
     let lastErrorText = '';
+    // 版本戳：改了 splash.html 后请同步改这个值，避免浏览器/Electron 缓存导致看不到改动
+    window.__splashVersion = '2026-06-12-v3-safeStr';
 
     // 由主进程通过 executeJavaScript 调用
     window.splashUpdate = function(text, isError, detail) {
+      // 调试：记录被传入的实际类型，方便定位 [object Object] 来源
+      try {
+        console.log('[splash:update]', {
+          version: window.__splashVersion,
+          textType: typeof text,
+          textPreview: typeof text === 'string' ? text.slice(0, 50) : (text === null ? 'null' : typeof text),
+          isError,
+          detailKeys: detail && typeof detail === 'object' ? Object.keys(detail) : null,
+          reasonType: detail && typeof detail.reason,
+          stderrType: detail && typeof detail.stderr,
+          logFileType: detail && typeof detail.logFile
+        });
+      } catch {}
+      // 防御性：把所有可能为对象的字段强制转字符串，防止 "[object Object]"
+      // 注意：String(obj) === "[object Object]"，必须用 JSON.stringify 才能拿到真实内容
+      const safeStr = (v, fallback) => {
+        if (v === null || v === undefined) return fallback || '';
+        if (typeof v === 'string') return v;
+        if (typeof v === 'number' || typeof v === 'boolean') return String(v);
+        if (typeof v === 'object') {
+          try {
+            // 避免循环引用 + 限制长度
+            const s = JSON.stringify(v);
+            return s.length > 500 ? s.slice(0, 500) + '...' : s;
+          } catch {
+            return '[无法序列化的对象]';
+          }
+        }
+        try { return String(v); } catch { return fallback || ''; }
+      };
       if (isError) {
         spinnerEl.classList.add('hidden');
         errorEl.classList.add('show');
         statusEl.textContent = '后端启动失败';
-        reasonEl.textContent = (detail && detail.reason) || text || '未知错误';
-        stderrEl.textContent = (detail && detail.stderr) || '';
+        reasonEl.textContent = safeStr(detail && detail.reason, text) || '未知错误';
+        stderrEl.textContent = safeStr(detail && detail.stderr, '');
+        if (detail && detail.logFile) {
+          logfileEl.textContent = '日志: ' + safeStr(detail.logFile, '');
+        } else {
+          logfileEl.textContent = '';
+        }
         lastErrorText =
           '原因:\n' + reasonEl.textContent +
           (stderrEl.textContent ? '\n\n后端输出:\n' + stderrEl.textContent : '') +
-          (detail && detail.nodePath ? '\n\nNode 路径: ' + detail.nodePath : '') +
-          (detail && detail.backendPath ? '\n后端入口: ' + detail.backendPath : '');
+          (detail && detail.nodePath ? '\n\nNode 路径: ' + safeStr(detail.nodePath, '') : '') +
+          (detail && detail.backendPath ? '\n后端入口: ' + safeStr(detail.backendPath, '') : '') +
+          (detail && detail.logFile ? '\n\n启动日志: ' + safeStr(detail.logFile, '') : '');
         panelEl.classList.add('show');
       } else {
         spinnerEl.classList.remove('hidden');
         errorEl.classList.remove('show');
         panelEl.classList.remove('show');
-        statusEl.textContent = text;
+        statusEl.textContent = safeStr(text, '');
       }
     };
 
@@ -165,6 +220,19 @@
       } catch (e) {
         copyBtn.textContent = '复制失败';
         setTimeout(() => { copyBtn.textContent = '复制日志'; }, 1500);
+      }
+    });
+
+    openLogBtn.addEventListener('click', async () => {
+      try {
+        const r = await window.splashApi.openLog();
+        if (!r.ok) {
+          openLogBtn.textContent = '打开失败';
+          setTimeout(() => { openLogBtn.textContent = '打开日志'; }, 1500);
+        }
+      } catch (e) {
+        openLogBtn.textContent = '打开失败';
+        setTimeout(() => { openLogBtn.textContent = '打开日志'; }, 1500);
       }
     });
 

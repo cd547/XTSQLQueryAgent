@@ -1,4 +1,4 @@
-const { app, BrowserWindow } = require('electron');
+const { app, BrowserWindow, ipcMain, shell } = require('electron');
 const path = require('path');
 const { spawn } = require('child_process');
 const net = require('net');
@@ -7,6 +7,7 @@ const fs = require('fs');
 let mainWindow;
 let splashWindow;
 let backendProcess;
+let startupLogFile = null;  // 启动日志文件路径，错误时给前端打开用
 
 // 启动期日志双写：原有 console.log / console.error 仍走终端 / DevTools，
 // 同时落盘到 logs/electron-startup-<时间戳>.log，下次启动失败可直接打开复盘。
@@ -19,7 +20,7 @@ function setupStartupLogging() {
     const logsDir = path.join(projectRoot, 'logs');
     fs.mkdirSync(logsDir, { recursive: true });
     const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    const logFile = path.join(logsDir, `electron-startup-${ts}.log`);
+    startupLogFile = path.join(logsDir, `electron-startup-${ts}.log`);
 
     const writeLine = (level, args) => {
       const text = args.map(a => {
@@ -27,7 +28,7 @@ function setupStartupLogging() {
         try { return JSON.stringify(a); } catch { return String(a); }
       }).join(' ');
       try {
-        fs.appendFileSync(logFile, `[${new Date().toISOString()}] [${level}] ${text}\n`);
+        fs.appendFileSync(startupLogFile, `[${new Date().toISOString()}] [${level}] ${text}\n`);
       } catch {}
     };
 
@@ -39,13 +40,40 @@ function setupStartupLogging() {
     console.warn = (...args) => { writeLine('WRN', args); origWarn(...args); };
 
     origLog('=== Electron startup log initialized ===');
-    origLog('Log file:', logFile);
+    origLog('Log file:', startupLogFile);
   } catch (e) {
     // 日志初始化失败不能让主进程起不来
     process.stderr.write(`[startup-log] failed to init: ${e.message}\n`);
   }
 }
 setupStartupLogging();
+
+// IPC: splash 错误界面点击"打开日志"时调用，用系统默认应用打开日志文件
+ipcMain.handle('splash:openLog', async () => {
+  if (!startupLogFile) return { ok: false, reason: '日志文件路径未初始化' };
+  if (!fs.existsSync(startupLogFile)) {
+    return { ok: false, reason: `日志文件不存在: ${startupLogFile}` };
+  }
+  try {
+    // shell.showItemInFolder 在资源管理器中高亮该文件
+    shell.showItemInFolder(startupLogFile);
+    return { ok: true, path: startupLogFile };
+  } catch (e) {
+    return { ok: false, reason: e.message };
+  }
+});
+
+ipcMain.handle('splash:readLog', async () => {
+  if (!startupLogFile) return { ok: false, reason: '日志文件路径未初始化' };
+  try {
+    if (!fs.existsSync(startupLogFile)) return { ok: false, reason: '日志文件不存在' };
+    const content = fs.readFileSync(startupLogFile, 'utf-8');
+    // 只返回最后 4KB，避免主进程卡死
+    return { ok: true, content: content.length > 4096 ? '...' + content.slice(-4096) : content, path: startupLogFile };
+  } catch (e) {
+    return { ok: false, reason: e.message };
+  }
+});
 
 function checkPort(port, host) {
   return new Promise((resolve) => {
@@ -351,8 +379,12 @@ async function startBackend() {
       const output = data.toString();
       console.log(`Backend stdout: ${output}`);
 
-      if (output.includes('Server running on port')) {
+      // 阶段性提示，让用户知道在干啥
+      if (/SQLite initialized/i.test(output)) {
+        updateSplash('数据库就绪，正在加载路由...');
+      } else if (/Server running on port/i.test(output)) {
         console.log('Backend started successfully!');
+        updateSplash('后端就绪，正在打开主界面...');
         finish({ ok: true });
       }
     });
@@ -365,15 +397,26 @@ async function startBackend() {
 
     console.log('Waiting for backend to start...');
 
+    // 阶段性提示（前端没动静时告诉用户"还在等"）
+    setTimeout(() => {
+      if (!resolved) updateSplash('正在启动后端服务...（首次较慢）');
+    }, 3000);
+    setTimeout(() => {
+      if (!resolved) updateSplash('仍在等待后端响应（数据库或原生模块可能还在加载）');
+    }, 10000);
+    setTimeout(() => {
+      if (!resolved) updateSplash('即将超时...（如持续等待请打开日志查看详情）');
+    }, 25000);
+
     setTimeout(() => {
       finish({
         ok: false,
-        reason: '15 秒内未检测到 "Server running on port" 标志，后端可能卡在初始化阶段（数据库连接、依赖加载、或 Node 版本不匹配）',
+        reason: '30 秒内未检测到 "Server running on port" 标志，后端可能卡在初始化阶段（数据库连接、依赖加载、或 Node 版本不匹配）',
         stderr: tailStderr(),
         nodePath,
         backendPath
       });
-    }, 15000);
+    }, 30000);
   });
 }
 
@@ -392,7 +435,8 @@ function createSplash() {
     show: false,
     webPreferences: {
       nodeIntegration: false,
-      contextIsolation: true
+      contextIsolation: true,
+      preload: path.join(__dirname, 'splash-preload.js')
     }
   });
   splashWindow.loadFile(path.join(__dirname, 'splash.html'));
@@ -410,7 +454,9 @@ function updateSplash(text, isError = false, detail) {
     splashWindow.webContents.executeJavaScript(
       `void window.splashUpdate(${payload});`,
       true
-    ).catch(() => {});
+    ).catch((err) => {
+      console.error('[splash] executeJavaScript 失败:', err);
+    });
   }
 }
 
@@ -469,21 +515,22 @@ app.on('ready', async () => {
   } else {
     // 错误时把窗口放大一些，避免错误信息被裁切
     if (splashWindow && !splashWindow.isDestroyed()) {
-      splashWindow.setSize(480, 460);
+      splashWindow.setSize(620, 640);
       splashWindow.center();
       splashWindow.setResizable(true);
-      splashWindow.setMinimumSize(420, 380);
+      splashWindow.setMinimumSize(520, 520);
     }
     updateSplash(result.reason, true, {
       reason: result.reason,
       stderr: result.stderr,
       nodePath: result.nodePath,
-      backendPath: result.backendPath
+      backendPath: result.backendPath,
+      logFile: startupLogFile
     });
-    // 给用户更多时间看清错误信息、复制日志，再退出
+    // 给用户看清错误信息、复制日志的时间，再退出
     setTimeout(() => {
       app.quit();
-    }, 60000);
+    }, 20000);
   }
 });
 

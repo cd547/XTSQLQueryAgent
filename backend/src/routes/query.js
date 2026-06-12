@@ -7,7 +7,7 @@ import mysql from 'mysql2/promise';
 import { getDb } from '../db/sqlite.js';
 import { getConfig, getLlmConfig } from '../services/config.js';
 import { logger } from '../logger.js';
-import { generateSQLWithLangChainStreamGen_BAK, loadSkillMd, getLastMessages, loadMessagesFromDb } from '../services/llm.js';
+import { generateSQLWithLangChainStreamGen_BAK, loadSkillMd, getLastMessages, loadMessagesFromDb, clearSessionRegistry } from '../services/llm.js';
 
 function ensureSession() {
   const db = getDb();
@@ -245,23 +245,25 @@ router.delete('/messages/:sessionId', async (req, res) => {
   try {
     const db = getDb();
     const result = db.prepare('DELETE FROM llm_messages WHERE session_id = ?').run(sessionId);
+    // 清空工具调用注册表，避免后续请求仍按旧清单拦截
+    clearSessionRegistry(sessionId);
     if (result.changes > 0) {
-      res.json({ 
-        success: true, 
+      res.json({
+        success: true,
         message: `已清除会话 ${sessionId} 的消息历史`,
-        deletedRows: result.changes 
+        deletedRows: result.changes
       });
     } else {
-      res.json({ 
-        success: false, 
-        message: `会话 ${sessionId} 没有消息历史可清除` 
+      res.json({
+        success: false,
+        message: `会话 ${sessionId} 没有消息历史可清除`
       });
     }
   } catch (e) {
     logger.error('Failed to delete messages from database', { error: e.message });
-    res.json({ 
-      success: false, 
-      message: '清除消息历史失败: ' + e.message 
+    res.json({
+      success: false,
+      message: '清除消息历史失败: ' + e.message
     });
   }
 });

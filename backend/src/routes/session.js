@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { getDb } from '../db/sqlite.js';
 import { getLlmConfig } from '../services/config.js';
+import { clearSessionRegistry } from '../services/llm.js';
 import { logger } from '../logger.js';
 
 const router = Router();
@@ -93,6 +94,8 @@ router.delete('/:id', (req, res) => {
     db.prepare('DELETE FROM messages WHERE session_id = ?').run(req.params.id);
     // 最后删除会话记录
     db.prepare('DELETE FROM sessions WHERE id = ?').run(req.params.id);
+    // 释放工具调用注册表
+    clearSessionRegistry(req.params.id);
     res.json({ success: true });
   } catch (error) {
     res.json({ error: error.message });
