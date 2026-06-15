@@ -55,7 +55,13 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
             <span style={{ fontSize: 9, color: '#999' }}>{timeStr} · {typeLabel}</span>
           </div>
           {!collapsed && (
-            <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word', fontSize: 10 }}>{content}</div>
+            <div style={{
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-word',
+              fontSize: 10,
+              maxHeight: 240,
+              overflowY: 'auto'
+            }}>{content}</div>
           )}
         </div>
       </div>
