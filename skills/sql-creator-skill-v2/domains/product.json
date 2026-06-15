@@ -1,0 +1,8 @@
+{
+  "id": "product",
+  "name": "产品",
+  "tables": [
+    "edu_goods",
+    "edu_goods_subject_name"
+  ]
+}

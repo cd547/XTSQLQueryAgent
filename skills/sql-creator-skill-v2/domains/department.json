@@ -1,0 +1,10 @@
+{
+  "id": "department",
+  "name": "部门",
+  "tables": [
+    "admin_department",
+    "admin_department_children",
+    "admin_department_manage",
+    "admin_department_type"
+  ]
+}

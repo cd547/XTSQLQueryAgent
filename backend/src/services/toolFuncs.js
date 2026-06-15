@@ -16,6 +16,106 @@ export function loadTableIndex() {
   return null;
 }
 
+export function loadDomainRouterIndex() {
+  const domainIndexPath = path.join(SKILL_V2_PATH, 'domain_router_index.json');
+  if (fs.existsSync(domainIndexPath)) {
+    return JSON.parse(fs.readFileSync(domainIndexPath, 'utf-8'));
+  }
+  return null;
+}
+
+export function sliceTableIndex(tableNames) {
+  // 1. 规范化输入：转数组、去重、过滤空值和非字符串
+  const arr = Array.isArray(tableNames) ? tableNames : [tableNames];
+  const uniqueNames = [...new Set(
+    arr.filter(n => typeof n === 'string' && n.trim())
+  )];
+
+  // 2. 加载全量索引
+  const full = loadTableIndex();
+  if (!full || !Array.isArray(full.tables) || full.tables.length === 0) {
+    logger.warn('sliceTableIndex: 全量索引为空或加载失败', { tableNames });
+    return {
+      version: full?.version || 'unknown',
+      description: 'Sliced index (source empty)',
+      sliced_at: new Date().toISOString(),
+      source: 'table_index.json',
+      request_tables: uniqueNames,
+      tables: []
+    };
+  }
+
+  // 3. 建 name → table 映射 (O(1) 查找)
+  const fullByName = Object.fromEntries(full.tables.map(t => [t.name, t]));
+
+  // 4. 切片：按入参顺序、跳过不存在的
+  const tables = [];
+  const missing = [];
+  for (const name of uniqueNames) {
+    if (fullByName[name]) {
+      tables.push(fullByName[name]);
+    } else {
+      missing.push(name);
+    }
+  }
+
+  // 5. 输出结构对齐 table_index.json
+  const result = {
+    version: full.version,
+    description: `Sliced index (${tables.length}/${uniqueNames.length} matched)`,
+    sliced_at: new Date().toISOString(),
+    source: 'table_index.json',
+    request_tables: uniqueNames,
+    tables
+  };
+  if (missing.length > 0) {
+    result.missing_tables = missing;
+    logger.warn('sliceTableIndex: 部分表名未在索引中找到', { missing, requested: uniqueNames });
+  }
+
+  return result;
+}
+
+export function sliceTableIndexByDomains(domainIds) {
+  // 1. 规范化输入
+  const arr = Array.isArray(domainIds) ? domainIds : [domainIds];
+  const uniqueIds = [...new Set(
+    arr.filter(id => typeof id === 'string' && id.trim())
+  )];
+
+  // 2. 加载每个域的表名
+  const tableNames = [];
+  const missingDomains = [];
+  const emptyDomains = [];
+
+  for (const id of uniqueIds) {
+    const domainPath = path.join(SKILL_V2_PATH, 'domains', `${id}.json`);
+    if (!fs.existsSync(domainPath)) {
+      missingDomains.push(id);
+      continue;
+    }
+    const domain = JSON.parse(fs.readFileSync(domainPath, 'utf-8'));
+    if (!domain.tables || domain.tables.length === 0) {
+      emptyDomains.push(id);
+      continue;
+    }
+    tableNames.push(...domain.tables);
+  }
+
+  // 3. 去重
+  const uniqueTableNames = [...new Set(tableNames)];
+
+  // 4. 复用 sliceTableIndex 拿完整卡片
+  const sliced = sliceTableIndex(uniqueTableNames);
+
+  // 5. 补充域层信息
+  sliced.request_domains = uniqueIds;
+  sliced.description = `Sliced by domains (${uniqueIds.length} domains → ${sliced.tables.length}/${uniqueTableNames.length} tables matched)`;
+  if (missingDomains.length > 0) sliced.missing_domains = missingDomains;
+  if (emptyDomains.length > 0) sliced.empty_domains = emptyDomains;
+
+  return sliced;
+}
 export function loadSkillMd() {
   const skillMdPath = path.join(SKILL_V2_PATH, 'SKILL.md');
   if (!fs.existsSync(skillMdPath)) {
@@ -127,10 +227,33 @@ export function requestTagConfirmation(term, table, description) {
   return `<!--confirm_tag_add:${JSON.stringify({ term, table, description })}-->`;
 }
 
+// 表格卡片格式化：与 get_tables 输出保持一致，供 get_sliced_index 共用
+function formatTableInfo(tables) {
+  return tables.map(t => {
+    let info = `- ${t.name}: ${t.description || ''}`;
+    if (t.tags?.length) info += `\n  标签: ${t.tags.join(', ')}`;
+    if (t.related_tables?.length) info += `\n  关联表: ${t.related_tables.join(', ')}`;
+    if (t.business_constraints?.length) {
+      info += `\n  业务约束:`;
+      t.business_constraints.forEach(c => {
+        info += `\n    - ${c.name}: ${c.description}`;
+      });
+    }
+    if (t.business_rules?.length) {
+      info += `\n  业务规则:`;
+      t.business_rules.forEach(r => {
+        info += `\n    - ${r.rule || r.description}: ${r.description}`;
+        if (r.query) info += `\n      示例: ${r.query}`;
+      });
+    }
+    return info;
+  }).join('\n\n');
+}
+
 export const tools = [
   new DynamicTool({
     name: "get_tables",
-    description: "从table_index.json中列出全部表名、描述、标签、关联表及业务约束（business_constraints）、业务规则（business_constraints）。用于按主题找表。",
+    description: "【兜底工具，非必要时禁止使用】返回全部表的完整信息。请优先使用 get_domain_index → get_sliced_index 域路由流程。仅当所有业务域都不匹配或 get_sliced_index 返回的表确实不够用时，才调用此工具。",
     params: {
       type: 'object',
       properties: {},
@@ -187,26 +310,26 @@ export const tools = [
   }),
   new DynamicTool({
     name: "get_table_ddl",
-    description: "获取指定表的DDL建表语句，支持一次获取多个表。传short=1时只返回列定义，不含索引、主键、外键。",
+    description: "获取指定表的DDL建表语句。默认只返回列定义（short=1），不含索引、主键、外键。传short=0返回完整DDL。",
     params: {
       type: 'object',
       properties: {
         table_names: { type: 'array', items: { type: 'string' }, description: '需要查询DDL的表名列表' },
-        short: { type: 'integer', description: '传1时只返回列定义，不含索引、主键、外键' }
+        short: { type: 'integer', description: '默认1只返回列定义；传0返回完整DDL含索引/主键/外键' }
       },
       required: ['table_names']
     },
     func: (input) => {
       let tableNames = [];
-      let short = 0;
+      let short = 1;
       try {
         if (typeof input === 'object' && input !== null) {
           tableNames = input.table_names || [];
-          short = input.short || 0;
+          short = input.short ?? 1;
         } else if (typeof input === 'string') {
           const parsed = JSON.parse(input);
           tableNames = parsed.table_names || [];
-          short = parsed.short || 0;
+          short = parsed.short ?? 1;
         }
       } catch (e) { logger.debug('Parse tableNames failed', { error: e.message }); }
       if (!Array.isArray(tableNames) || tableNames.length === 0) return '请提供 table_names 参数（表名数组）';
@@ -245,6 +368,52 @@ export const tools = [
       }
 
       return requestTagConfirmation(term, table, description || '');
+    }
+  }),
+    new DynamicTool({
+    name: "get_domain_index",
+    description: "获取业务域路由索引：列出所有业务域。用于判断用户问题归属哪些业务域。",
+    params: {
+      type: 'object',
+      properties: {},
+      required: []
+    },
+    func: () => {
+      const domainIndex = loadDomainRouterIndex();
+      if (!domainIndex || !domainIndex.domains) return '暂无业务域数据';
+      return domainIndex.domains.map(d =>
+        `- ${d.id} (${d.name}): ${d.description}`
+      ).join('\n');
+    }
+  }),
+  new DynamicTool({
+    name: "get_sliced_index",
+    description: "【按域裁剪→精简 table_index】在 get_domain_index 选定业务域后调用。传入 1-5 个 domain id 数组，返回这些域涉及的所有表的完整卡片，作为候选表池和最终喂给 SQL 生成器的精简 table_index。",
+    params: {
+      type: 'object',
+      properties: {
+        domain_ids: { type: 'array', items: { type: 'string' }, description: '业务域 id 数组（1-5 个），如 [\"people\", \"finance\"]' }
+      },
+      required: ['domain_ids']
+    },
+    func: (input) => {
+      let domainIds = [];
+      try {
+        if (typeof input === 'object' && input !== null) {
+          domainIds = input.domain_ids || [];
+        } else if (typeof input === 'string') {
+          const parsed = JSON.parse(input);
+          domainIds = parsed.domain_ids || [];
+        }
+      } catch (e) { logger.debug('Parse domainIds failed', { error: e.message }); }
+      if (!Array.isArray(domainIds) || domainIds.length === 0) {
+        return '请提供 domain_ids 参数（业务域 id 数组）';
+      }
+      const sliced = sliceTableIndexByDomains(domainIds);
+      if (!sliced.tables || sliced.tables.length === 0) {
+        return '指定域下未找到任何表';
+      }
+      return formatTableInfo(sliced.tables);
     }
   })
 ];

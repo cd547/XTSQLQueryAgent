@@ -40,7 +40,7 @@ export function getLastMessages() {
 // 工具调用注册表（用于程序化拦截重复调用，规则 10）
 // ============================================================
 // 会话级状态：跟踪已调用过的工具及其关键参数，避免 LLM 重复获取
-// 已有信息（schema/ddl/get_tables/tag 确认）。跨多次 invoke 持久，
+// 已有信息（schema/ddl/get_tables/tag 确认/域路由）。跨多次 invoke 持久，
 // 会话删除或 llm_messages 清空时通过 clearSessionRegistry 释放。
 const sessionToolRegistries = new Map();
 
@@ -49,6 +49,8 @@ function getOrCreateRegistry(sessionId) {
   if (!sessionToolRegistries.has(sessionId)) {
     sessionToolRegistries.set(sessionId, {
       getTablesCalled: false,
+      getDomainIndexCalled: false,
+      slicedDomains: new Set(),       // 已通过 get_sliced_index 加载过的域 ID
       tableSchema: new Set(),
       tableDdl: new Set(),
       termConfirmed: new Set(),
@@ -64,10 +66,18 @@ function normalizeTableNames(arr) {
 
 function buildChecklist(reg) {
   if (!reg) return '（空）';
+  const domainIndexFlag = reg.getDomainIndexCalled ? '已调用' : '未调用';
+  const slicedDomainsList = [...reg.slicedDomains].sort().join(', ') || '无';
   const schemaList = [...reg.tableSchema].sort().join(', ') || '无';
   const ddlList = [...reg.tableDdl].sort().join(', ') || '无';
   const tablesFlag = reg.getTablesCalled ? '已调用' : '未调用';
-  return `- get_tables: ${tablesFlag}\n- 已获取 field_config 的表: ${schemaList}\n- 已获取 DDL 的表: ${ddlList}`;
+  return [
+    `- get_domain_index: ${domainIndexFlag}`,
+    `- get_sliced_index 已覆盖的域: ${slicedDomainsList}`,
+    `- get_tables: ${tablesFlag}`,
+    `- 已获取 field_config 的表: ${schemaList}`,
+    `- 已获取 DDL 的表: ${ddlList}`,
+  ].join('\n');
 }
 
 /**
@@ -88,6 +98,47 @@ function checkAndFilterDuplicateCall(toolName, args, sessionId) {
           `⚠️ 【重复调用已被程序拦截】get_tables 在本会话中已被调用过一次，table_index 数据已存在于你的上下文中。\n\n` +
           `📋 已有信息清单:\n${buildChecklist(reg)}\n\n` +
           `请直接复用已有信息，禁止再次调用 get_tables。`
+      };
+    }
+    return { block: false, args };
+  }
+
+  if (toolName === 'get_domain_index') {
+    if (reg.getDomainIndexCalled) {
+      return {
+        block: true,
+        message:
+          `⚠️ 【重复调用已被程序拦截】get_domain_index 在本会话中已被调用过一次，业务域列表已存在于你的上下文中。\n\n` +
+          `📋 已有信息清单:\n${buildChecklist(reg)}\n\n` +
+          `请直接复用已有域列表，禁止再次调用 get_domain_index。`
+      };
+    }
+    return { block: false, args };
+  }
+
+  if (toolName === 'get_sliced_index') {
+    const requestedDomains = normalizeTableNames(args.domain_ids);
+    if (requestedDomains.length === 0) return { block: false, args };
+    const dupes = requestedDomains.filter(d => reg.slicedDomains.has(d));
+    const fresh = requestedDomains.filter(d => !reg.slicedDomains.has(d));
+
+    if (dupes.length === requestedDomains.length) {
+      return {
+        block: true,
+        message:
+          `⚠️ 【重复调用已被程序拦截】get_sliced_index 中所有域在本会话中都已被加载过: ${dupes.join(', ')}。\n\n` +
+          `📋 已有信息清单:\n${buildChecklist(reg)}\n\n` +
+          `请直接复用已有信息，禁止重复加载相同域。\n` +
+          `如需加载尚未覆盖的域，请重新传入只包含新域的 domain_ids 参数。`
+      };
+    }
+    if (dupes.length > 0) {
+      return {
+        block: false,
+        args: { ...args, domain_ids: fresh },
+        notice:
+          `ℹ️ 自动过滤已加载域: ${dupes.join(', ')}。仅对 [${fresh.join(', ')}] 执行 get_sliced_index。\n` +
+          `📋 已有信息清单:\n${buildChecklist(reg)}`
       };
     }
     return { block: false, args };
@@ -159,6 +210,10 @@ function recordToolCall(toolName, args, sessionId) {
   if (!reg) return;
   if (toolName === 'get_tables') {
     reg.getTablesCalled = true;
+  } else if (toolName === 'get_domain_index') {
+    reg.getDomainIndexCalled = true;
+  } else if (toolName === 'get_sliced_index') {
+    normalizeTableNames(args.domain_ids).forEach(d => reg.slicedDomains.add(d));
   } else if (toolName === 'get_table_schema') {
     normalizeTableNames(args.table_names).forEach(n => reg.tableSchema.add(n));
   } else if (toolName === 'get_table_ddl') {

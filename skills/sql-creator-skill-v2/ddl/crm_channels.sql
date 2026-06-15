@@ -1,0 +1,21 @@
+CREATE TABLE `crm_channels` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '主键',
+  `channel_code` bigint(20) NOT NULL DEFAULT '0' COMMENT '渠道代码',
+  `channel_name` varchar(50) NOT NULL COMMENT '渠道名称',
+  `channel_status` tinyint(1) NOT NULL DEFAULT '0' COMMENT '渠道状态: 0-上线, 1-下线',
+  `channel_parent_id` bigint(20) NOT NULL DEFAULT '0' COMMENT '父级渠道ID',
+  `deleted` tinyint(1) unsigned NOT NULL DEFAULT '0' COMMENT '是否删除: 0-否, 1-是',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `channel_create_user_id` bigint(20) NOT NULL COMMENT '渠道创建人ID',
+  `channel_update_user_id` bigint(20) NOT NULL DEFAULT '0' COMMENT '渠道更新人ID',
+  `channel_type` tinyint(4) NOT NULL COMMENT '渠道类型: 1-一级, 2-二级, 3-三级, 4-四级  5-五级',
+  `org` tinyint(4) DEFAULT NULL COMMENT '所属事业部',
+  `version` tinyint(4) unsigned NOT NULL DEFAULT '0' COMMENT '版本号',
+  `sort_num` int(11) DEFAULT '9999' COMMENT '排序字段',
+  PRIMARY KEY (`id`),
+  UNIQUE KEY `idx_channel_code` (`channel_code`),
+  KEY `idx_channel_parent_id` (`channel_parent_id`),
+  KEY `idx_channel_name` (`channel_name`),
+  KEY `idx_channel_code_type` (`channel_code`,`channel_type`)
+) ENGINE=InnoDB AUTO_INCREMENT=4066 DEFAULT CHARSET=utf8mb4 COMMENT='CRM渠道表'

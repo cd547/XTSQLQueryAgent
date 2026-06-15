@@ -532,6 +532,96 @@
       "related_tables": [],
       "business_constraints": [],
       "business_rules": []
+    },
+    {
+      "name": "customer_education_info",
+      "description": "线索教育信息表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "customer_intention_info",
+      "description": "线索意向表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "customer_clue_pool",
+      "description": "线索池",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "crm_channels",
+      "description": "CRM渠道表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "admin_user_channel",
+      "description": "渠道库",
+      "tags": [],
+      "related_tables": [
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "customer_info",
+      "description": "线索主表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "customer_clue_info",
+      "description": "线索扩展表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "customer_label_rel",
+      "description": "线索标签关系表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "customer_contact",
+      "description": "线索联系方式表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "customer_auto_assign_result",
+      "description": "线索自动分配结果表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "customer_label",
+      "description": "线索标签表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
     }
   ]
 }

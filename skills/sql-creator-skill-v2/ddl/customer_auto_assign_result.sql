@@ -1,0 +1,23 @@
+CREATE TABLE `customer_auto_assign_result` (
+  `id` int(11) unsigned NOT NULL AUTO_INCREMENT,
+  `customer_code` varchar(20) NOT NULL COMMENT '线索编码',
+  `admin_user_id` int(11) DEFAULT NULL COMMENT '分配员工id',
+  `assign_status` int(4) NOT NULL COMMENT '0-未分配 1-分配成功',
+  `fail_reason` varchar(128) DEFAULT NULL COMMENT '失败原因 / 未分配原因',
+  `deleted` tinyint(4) NOT NULL DEFAULT '0' COMMENT '是否删除 0 未删除 1 删除 默认是0',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录创建时间，默认当前时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '记录更新时间，默认当前时间',
+  `create_by` int(11) DEFAULT NULL COMMENT '创建人',
+  `update_by` int(11) DEFAULT NULL COMMENT '最后更新人',
+  `business_status` varchar(20) DEFAULT NULL COMMENT '线索业务状态',
+  `rank_num` int(11) DEFAULT NULL COMMENT '员工序号',
+  `active_flag` tinyint(4) DEFAULT NULL COMMENT '是否是主动咨询 0-否 1-是',
+  `pool_id` int(11) DEFAULT NULL COMMENT '线索池Id , 分配成功时有值',
+  `rank_code` varchar(60) DEFAULT NULL COMMENT '队列编码',
+  `lesson_intention_code` varchar(30) DEFAULT NULL COMMENT '课程意向编码',
+  `campus_value` varchar(100) DEFAULT NULL COMMENT '有效校区',
+  `consult_campus_value` varchar(100) DEFAULT NULL COMMENT '线索原始咨询校区',
+  PRIMARY KEY (`id`),
+  KEY `idx_customer_code` (`customer_code`) USING BTREE,
+  KEY `idx_pool_id` (`pool_id`)
+) ENGINE=InnoDB AUTO_INCREMENT=8128 DEFAULT CHARSET=utf8mb4 COMMENT='线索自动分配结果表'

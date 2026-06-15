@@ -1,0 +1,22 @@
+CREATE TABLE `customer_clue_pool` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT '主键id',
+  `customer_code` varchar(20) NOT NULL COMMENT '线索编码',
+  `admin_user_id` bigint(20) NOT NULL COMMENT '员工id(顾问/tmk)',
+  `user_type` tinyint(4) NOT NULL COMMENT '员工类型 0-tmk 1-顾问',
+  `assign_source` int(11) NOT NULL DEFAULT '0' COMMENT '下发来源 0-市场',
+  `enabled` tinyint(4) NOT NULL DEFAULT '1' COMMENT '有效状态 :0-失效 1-正常',
+  `disabled_reason` int(11) DEFAULT NULL COMMENT '失效原因',
+  `deleted` tinyint(4) NOT NULL DEFAULT '0' COMMENT '是否删除 0 未删除 1 删除 默认是0',
+  `create_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录创建时间，默认当前时间',
+  `update_time` timestamp NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '记录更新时间，默认当前时间',
+  `create_by` int(11) DEFAULT NULL COMMENT '创建人',
+  `update_by` int(11) DEFAULT NULL COMMENT '最后更新人',
+  `old_flag` int(11) DEFAULT '0' COMMENT '是否是老数据(历销数据) 0-否 1-是',
+  `crm_id` varchar(15) DEFAULT NULL COMMENT 'CRM系统业务主键',
+  `confirm_flag` tinyint(2) DEFAULT '0' COMMENT '是否确认 0-无需确认 1-未确认 2-已确认',
+  `confirm_time` datetime DEFAULT NULL COMMENT '确认时间',
+  PRIMARY KEY (`id`) USING BTREE,
+  KEY `idx_customer_code` (`customer_code`) USING BTREE,
+  KEY `idx_admin_user_id` (`admin_user_id`) USING BTREE,
+  KEY `idx_create_time` (`create_time`)
+) ENGINE=InnoDB AUTO_INCREMENT=56120 DEFAULT CHARSET=utf8mb4 COMMENT='线索池'

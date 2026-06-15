@@ -1,0 +1,21 @@
+{
+  "id": "crm",
+  "name": "渠道线索",
+  "tables": [
+    "customer_info",
+    "customer_clue_info",
+    "customer_education_info",
+    "customer_intention_info",
+    "customer_clue_pool",
+    "admin_user",
+    "crm_channels",
+    "admin_user_channel",
+    "edu_campus",
+    "admin_department_children",
+    "admin_department",
+    "customer_label_rel",
+    "customer_contact",
+    "customer_auto_assign_result",
+    "customer_label"
+  ]
+}
