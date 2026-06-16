@@ -548,7 +548,10 @@
     {
       "name": "customer_education_info",
       "description": "线索教育信息表",
-      "tags": ["CRM", "教育信息"],
+      "tags": [
+        "CRM",
+        "教育信息"
+      ],
       "related_tables": [
         "customer_info"
       ],
@@ -560,7 +563,10 @@
     {
       "name": "customer_intention_info",
       "description": "线索意向表",
-      "tags": ["CRM", "意向信息"],
+      "tags": [
+        "CRM",
+        "意向信息"
+      ],
       "related_tables": [
         "customer_info"
       ],
@@ -572,7 +578,10 @@
     {
       "name": "customer_clue_pool",
       "description": "线索池",
-      "tags": ["CRM", "线索池"],
+      "tags": [
+        "CRM",
+        "线索池"
+      ],
       "related_tables": [
         "customer_info",
         "admin_user"
@@ -586,7 +595,10 @@
     {
       "name": "crm_channels",
       "description": "CRM渠道表",
-      "tags": ["CRM", "渠道"],
+      "tags": [
+        "CRM",
+        "渠道"
+      ],
       "related_tables": [
         "crm_channels",
         "admin_user",
@@ -606,7 +618,10 @@
     {
       "name": "admin_user_channel",
       "description": "渠道库",
-      "tags": ["CRM", "渠道"],
+      "tags": [
+        "CRM",
+        "渠道"
+      ],
       "related_tables": [
         "admin_user",
         "customer_clue_info"
@@ -617,7 +632,11 @@
     {
       "name": "customer_info",
       "description": "线索主表（CRM核心表）",
-      "tags": ["CRM", "线索", "客户"],
+      "tags": [
+        "CRM",
+        "线索",
+        "客户"
+      ],
       "related_tables": [
         "customer_clue_info",
         "customer_education_info",
@@ -637,7 +656,12 @@
     {
       "name": "customer_clue_info",
       "description": "线索扩展表（CRM核心表，存渠道、状态、跟进等信息）",
-      "tags": ["CRM", "线索", "渠道", "跟进"],
+      "tags": [
+        "CRM",
+        "线索",
+        "渠道",
+        "跟进"
+      ],
       "related_tables": [
         "customer_info",
         "crm_channels",
@@ -656,7 +680,10 @@
     {
       "name": "customer_label_rel",
       "description": "线索标签关系表",
-      "tags": ["CRM", "标签"],
+      "tags": [
+        "CRM",
+        "标签"
+      ],
       "related_tables": [
         "customer_info",
         "customer_label"
@@ -670,7 +697,10 @@
     {
       "name": "customer_contact",
       "description": "线索联系方式表",
-      "tags": ["CRM", "联系方式"],
+      "tags": [
+        "CRM",
+        "联系方式"
+      ],
       "related_tables": [
         "customer_info"
       ],
@@ -684,7 +714,10 @@
     {
       "name": "customer_auto_assign_result",
       "description": "线索自动分配结果表",
-      "tags": ["CRM", "自动分配"],
+      "tags": [
+        "CRM",
+        "自动分配"
+      ],
       "related_tables": [
         "customer_info",
         "admin_user",
@@ -699,7 +732,10 @@
     {
       "name": "customer_label",
       "description": "线索标签表",
-      "tags": ["CRM", "标签"],
+      "tags": [
+        "CRM",
+        "标签"
+      ],
       "related_tables": [
         "customer_label_rel"
       ],
@@ -707,6 +743,28 @@
         "deleted: 查询时需加 deleted = 0 过滤已删除数据",
         "code字段为唯一键"
       ],
+      "business_rules": []
+    },
+    {
+      "name": "keqiao_preschool_examination",
+      "description": "学前考试报名",
+      "tags": [],
+      "related_tables": [
+        "my_user",
+        "edu_campus_school"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_student_info",
+      "description": "学籍信息",
+      "tags": [],
+      "related_tables": [
+        "edu_student",
+        "admin_user"
+      ],
+      "business_constraints": [],
       "business_rules": []
     }
   ]

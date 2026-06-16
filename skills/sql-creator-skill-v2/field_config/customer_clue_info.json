@@ -192,7 +192,7 @@
         "channel_name": "channel_name",
         "channel_type": "channel_type"
       },
-      "business_rule": "常规情况下使用此关联。当 special_channel = 7 时，此关联的渠道名称不生效，改用'关联个人渠道-二级渠道替代'取 admin_user_channel.channel_abbreviation",
+      "business_rule": null,
       "conditions": [
         {
           "when": "customer_clue_info.special_channel = 7",
@@ -207,17 +207,6 @@
           }
         }
       ]
-    },
-    {
-      "name": "关联个人渠道-二级渠道替代",
-      "target_table": "admin_user_channel",
-      "join_condition": "admin_user_channel.id = customer_clue_info.level2_channel_code AND customer_clue_info.special_channel = 7",
-      "type": "many_to_one",
-      "description": "special_channel=7时替换常规二级渠道，渠道名称取channel_abbreviation，渠道类型取type",
-      "fields_mapping": {
-        "id": "level2_channel_code"
-      },
-      "business_rule": "仅当 special_channel = 7 时使用，替代 crm_channels 二级渠道。渠道名称取 admin_user_channel.channel_abbreviation，渠道类型取 admin_user_channel.type（1-机构 2-个人）"
     },
 
     {

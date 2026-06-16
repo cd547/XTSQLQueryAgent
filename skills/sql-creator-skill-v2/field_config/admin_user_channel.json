@@ -2,8 +2,6 @@
   "table_name": "admin_user_channel",
 
   "field_aliases": {
-    "name": ["渠道名称"],
-    "channel_abbreviation": ["渠道简称"],
     "type": ["渠道类型"],
     "category": ["渠道类别"],
     "to_company": ["所在公司"],
@@ -24,9 +22,7 @@
     "third_protocal": ["第三方协议"],
     "id_card": ["身份证"],
     "remark": ["渠道协议重要条款"],
-    "channel_tag": ["渠道标签"],
-    "created_time": ["创建时间"],
-    "update_time": ["更新时间"]
+    "channel_tag": ["渠道标签"]
   },
 
   "field_enums": {
@@ -96,7 +92,6 @@
   "calculated_fields": {},
 
   "business_constraints": {
-    "usage_in_clue": "当customer_clue_info.special_channel != 0时，customer_clue_info.level4_channel_code可能引用本表的id。special_channel=7时渠道简称(channel_abbreviation)替换二级渠道名称"
   },
 
   "business_rules": []
