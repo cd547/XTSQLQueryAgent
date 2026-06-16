@@ -1,9 +1,388 @@
 {
   "table_name": "customer_clue_info",
-  "field_aliases": {},
-  "field_enums": {},
-  "virtual_associations": [],
+
+  "field_aliases": {
+    "customer_code": ["客户编码"],
+    "org": ["组织"],
+    "consult_campus_value": ["咨询校区别名"],
+    "campus_value": ["归属校区别名"],
+    "customer_status": ["客户状态"],
+    "clue_flag": ["线索类型", "名单线索标识"],
+    "remark": ["学生备注"],
+    "charge_person_id": ["顾问ID"],
+    "last_repeat_type": ["最新重复类型"],
+    "first_assign_sale_time": ["首次分配销售时间"],
+    "create_by_dept_id": ["录入人部门ID"],
+    "tmk_next_follow_up_time": ["TMK下次跟进时间"],
+    "tmk_judgment_value_reason": ["TMK判定原因"]
+  },
+
+  "field_enums": {
+    "business_status": {
+      "A": "A-订单",
+      "B": "B-跟进中",
+      "C": "C-公海",
+      "D": "D-新线索"
+    },
+    "clue_flag": {
+      "0": "保存线索",
+      "1": "保存名单",
+      "2": "暂不联系"
+    },
+    "special_channel": {
+      "0": "默认（普通渠道）",
+      "1": "渠道精推-个人渠道",
+      "2": "渠道精推-机构渠道",
+      "3": "渠道数据-个人渠道",
+      "4": "渠道数据-机构渠道",
+      "7": "个人渠道（从admin_user_channel查）"
+    },
+    "quality_audit_status": {
+      "0": "待审核",
+      "1": "审核通过",
+      "2": "已驳回"
+    },
+    "customer_action": {
+      "0": "主动咨询",
+      "1": "购买优惠券",
+      "2": "活动报名",
+      "3": "活动现场",
+      "4": "购买/赠送资料",
+      "5": "合作例子",
+      "6": "小程序注册",
+      "8": "其他"
+    },
+    "judgment_value": {
+      "0": "有效线索",
+      "1": "未有效联系",
+      "2": "有效粉丝",
+      "3": "暂不联系",
+      "4": "无效",
+      "5": "新线索",
+      "6": "已成单"
+    },
+    "tmk_judgment_value_reason":{
+      "101":	"联系不上",
+      "102":	"明确拒绝",
+      "103":	"号码错误",
+      "104":	"渊学通在读",
+      "107":	"已选竞品",
+      "108":	"无匹配方案",
+      "109":	"个人计划变更",
+      "110":	"长期失联",
+      "112":	"其他"
+    },
+    "current_process":{
+      "0":	"DEAD",
+      "1":	"联系不上",
+      "2":	"咨询意向",
+      "3":	"LP",
+      "4":	"HP",
+      "5":	"DEAL",
+      "6":	"MP"
+    },
+    "customer_type":{
+      "1":"待判定",
+      "2":"2021秋招",
+      "3":"2021春招",
+      "4":"2022秋招",
+      "5":"2022春招",
+      "6":"2023秋招",
+      "7":"2023春招",
+      "8":"2024秋招",
+      "9":"2024春招",
+      "10":"2025秋招",
+      "11":"2025春招",
+      "12":"2026秋招",
+      "13":"2026春招",
+      "14":"国际高中在读",
+      "30":"2027以后 / 一周可成交",
+      "31":"三个月可成交",
+      "32":"2027春招",
+      "33":"2027秋招",
+      "34":"26年小学插班",
+      "35":"27年小学插班",
+      "36":"26年初中插班",
+      "37":"27年初中插班",
+      "38":"外籍",
+      "39":"其他"
+    },
+    "customer_status":{
+      "100":	"D-新线索",
+      "102":	"D-待分配tmk",
+      "103":	"D-tmk跟进中",
+      "104":	"D-tmk放弃",
+      "108":	"D-市场放弃",
+      "109":	"D-待自动分配",
+      "110":	"D-自动分配中",
+      "201":	"B-顾问跟进中",
+      "202":	"B-已转学员",
+      "300":	"顾问放弃(废弃)",
+      "301":	"C-顾问主管置入公海",
+      "302":	"C-顾问置入公海",
+      "303":	"C-顾问30天未跟进抽回",
+      "304":	"C-待分配顾问",
+      "305":	"C-待自动分配",
+      "306":	"C-待分配tmk",
+      "307":	"C-tmk跟进中",
+      "308":	"C-tmk置入公海",
+      "309":	"C-自动分配中",
+      "403":	"试听课订单",
+      "404":	"正式课订单"
+    },
+    "customer_source":{
+      "1":	"电话呼入",
+      "2":	"新媒体运营",
+      "3":	"招生平台",
+      "4":	"渠道精推",
+      "5":	"转介绍",
+      "6":	"上门咨询",
+      "7":	"网络推广",
+      "8":	"微信咨询",
+      "9":	"渠道数据",
+      "10":	"联考",
+      "11":	"准确信息",
+      "12":	"名单客户",
+      "13":	"精准推荐"
+    },
+    "follow_up_status":{
+      "0":	"未接通",
+      "1":	"跟进中",
+      "2":	"已加微信",
+      "3":	"预约",
+      "4":	"到访",
+      "5":	"未到访",
+      "6":	"无效"
+    }
+  },
+
+  "virtual_associations": [
+    {
+      "name": "关联客户主表",
+      "target_table": "customer_info",
+      "join_condition": "customer_info.code = customer_clue_info.customer_code",
+      "type": "one_to_one",
+      "description": "1条线索扩展信息对应1个客户（STRAIGHT_JOIN强制关联）",
+      "fields_mapping": {
+        "code": "customer_code"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联一级渠道",
+      "target_table": "crm_channels",
+      "join_condition": "crm_channels.channel_code = customer_clue_info.level1_channel_code",
+      "type": "many_to_one",
+      "description": "多条线索可归属同一一级渠道",
+      "fields_mapping": {
+        "channel_code": "level1_channel_code"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联二级渠道",
+      "target_table": "crm_channels",
+      "join_condition": "crm_channels.channel_code = customer_clue_info.level2_channel_code",
+      "type": "conditional_many_to_one",
+      "description": "多条线索可归属同一二级渠道",
+      "fields_mapping": {
+        "channel_code": "level2_channel_code"
+      },
+      "fields": {
+        "channel_name": "channel_name",
+        "channel_type": "channel_type"
+      },
+      "business_rule": "常规情况下使用此关联。当 special_channel = 7 时，此关联的渠道名称不生效，改用'关联个人渠道-二级渠道替代'取 admin_user_channel.channel_abbreviation",
+      "conditions": [
+        {
+          "when": "customer_clue_info.special_channel = 7",
+          "target_table": "admin_user_channel",
+          "join_condition": "admin_user_channel.id = customer_clue_info.level2_channel_code AND customer_clue_info.special_channel = 7",
+          "fields_mapping": {
+            "id": "level2_channel_code"
+          },
+          "fields": {
+            "channel_name": "name",
+            "channel_type": "type"
+          }
+        }
+      ]
+    },
+    {
+      "name": "关联个人渠道-二级渠道替代",
+      "target_table": "admin_user_channel",
+      "join_condition": "admin_user_channel.id = customer_clue_info.level2_channel_code AND customer_clue_info.special_channel = 7",
+      "type": "many_to_one",
+      "description": "special_channel=7时替换常规二级渠道，渠道名称取channel_abbreviation，渠道类型取type",
+      "fields_mapping": {
+        "id": "level2_channel_code"
+      },
+      "business_rule": "仅当 special_channel = 7 时使用，替代 crm_channels 二级渠道。渠道名称取 admin_user_channel.channel_abbreviation，渠道类型取 admin_user_channel.type（1-机构 2-个人）"
+    },
+
+    {
+      "name": "关联三级渠道",
+      "target_table": "crm_channels",
+      "join_condition": "crm_channels.channel_code = customer_clue_info.level3_channel_code",
+      "type": "many_to_one",
+      "description": "多条线索可归属同一三级渠道",
+      "fields_mapping": {
+        "channel_code": "level3_channel_code"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联四级渠道",
+      "target_table": "crm_channels",
+      "join_condition": "crm_channels.channel_code = customer_clue_info.level4_channel_code",
+      "type": "many_to_one",
+      "description": "多条线索可归属同一四级渠道",
+      "fields_mapping": {
+        "channel_code": "level4_channel_code"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联五级渠道",
+      "target_table": "crm_channels",
+      "join_condition": "crm_channels.channel_code = customer_clue_info.level5_channel_code",
+      "type": "many_to_one",
+      "description": "多条线索可归属同一五级渠道",
+      "fields_mapping": {
+        "channel_code": "level5_channel_code"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联负责顾问",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = customer_clue_info.charge_person_id",
+      "type": "many_to_one",
+      "description": "多条线索可由同一顾问负责",
+      "fields_mapping": {
+        "id": "charge_person_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联前负责人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = customer_clue_info.before_charge_person_id",
+      "type": "many_to_one",
+      "description": "多条线索可有相同的前负责人",
+      "fields_mapping": {
+        "id": "before_charge_person_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联TMK人员",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = customer_clue_info.tmk_user_id",
+      "type": "many_to_one",
+      "description": "多条线索可由同一TMK跟进",
+      "fields_mapping": {
+        "id": "tmk_user_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联当前销售",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = customer_clue_info.sale_user_id",
+      "type": "many_to_one",
+      "description": "多条线索可分配给同一销售",
+      "fields_mapping": {
+        "id": "sale_user_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联创建人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = customer_clue_info.create_by",
+      "type": "many_to_one",
+      "description": "多条线索可由同一后台用户录入",
+      "fields_mapping": {
+        "id": "create_by"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联TMK递交人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = customer_clue_info.submitter_id",
+      "type": "many_to_one",
+      "description": "多条线索可由同一TMK递交",
+      "fields_mapping": {
+        "id": "submitter_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联预负责人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = customer_clue_info.pre_sale_id",
+      "type": "many_to_one",
+      "description": "多条线索可有相同的预负责人（科桥/克勒）",
+      "fields_mapping": {
+        "id": "pre_sale_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联首次创建人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = customer_clue_info.first_create_by",
+      "type": "many_to_one",
+      "description": "多条线索可有相同的首次创建人",
+      "fields_mapping": {
+        "id": "first_create_by"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联咨询校区",
+      "target_table": "edu_campus",
+      "join_condition": "edu_campus.simple = customer_clue_info.consult_campus_value AND edu_campus.del = 0",
+      "type": "many_to_one",
+      "description": "多条线索可属于同一咨询校区",
+      "fields_mapping": {
+        "simple": "consult_campus_value"
+      },
+      "business_rule": "通过campus.simple（校区别名）关联。campus.manager_id可进一步关联admin_user获取校区负责人"
+    },
+    {
+      "name": "关联归属校区",
+      "target_table": "edu_campus",
+      "join_condition": "edu_campus.simple = customer_clue_info.campus_value AND edu_campus.del = 0",
+      "type": "many_to_one",
+      "description": "多条线索可属于同一归属校区",
+      "fields_mapping": {
+        "simple": "campus_value"
+      },
+      "business_rule": "通过campus.simple（校区别名）关联"
+    },
+    {
+      "name": "关联录入人部门",
+      "target_table": "admin_department_children",
+      "join_condition": "admin_department_children.id = customer_clue_info.create_by_dept_id",
+      "type": "many_to_one",
+      "description": "多条线索的录入人可属于同一子部门",
+      "fields_mapping": {
+        "id": "create_by_dept_id"
+      },
+      "business_rule": "admin_department_children可进一步关联admin_department（一级部门）"
+    }
+  ],
+
   "calculated_fields": {},
-  "business_constraints": {},
+
+  "business_constraints": {
+    "deleted": "查询时需加 deleted = 0 过滤已删除数据",
+    "org": "org字段区分事业部：0-渊学通 1-科桥 2-克勒 3-择校圈",
+    "data_permission": "查询时有数据权限控制：非白名单用户需限制create_by或渠道维护人或校区负责人"
+  },
+
   "business_rules": []
 }

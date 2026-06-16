@@ -1,9 +1,82 @@
 {
   "table_name": "customer_intention_info",
-  "field_aliases": {},
-  "field_enums": {},
-  "virtual_associations": [],
+
+  "field_aliases": {
+    "customer_code": ["客户编码"],
+    "lesson_intention": ["课程意向编码"]
+  },
+
+  "field_enums": {
+    "consult_intention": {
+      "1": "学通培训",
+      "2": "留学",
+      "3": "学通备考",
+      "5": "全日制",
+      "6": "双轨制",
+      "7": "科桥",
+      "8": "52择校",
+      "10": "克勒",
+      "11": "豆豆贝单词",
+      "100": "码趣"
+    },
+    "lesson_intention": {
+      "1": "ALEVEL",
+      "2": "IB",
+      "3": "IGCSE",
+      "4": "美高",
+      "5": "竞赛",
+      "6": "标化考试",
+      "7": "附加考试",
+      "8": "其他",
+      "9": "留学",
+      "10": "学通备考",
+      "12": "全日制",
+      "13": "双轨制",
+      "14": "科桥",
+      "15": "52择校",
+      "16": "克勒",
+      "17": "AP",
+      "18": "豆豆贝单词",
+      "19": "码趣"
+    },
+    "class_style_intention": {
+      "1": "1v1",
+      "2": "线下班课",
+      "3": "在线班课",
+      "4": "不确定",
+      "5": "全日制",
+      "6": "双轨制"
+    },
+    "country_intention": {
+      "1": "英国",
+      "2": "美国",
+      "3": "澳洲",
+      "4": "加拿大",
+      "5": "新加坡",
+      "6": "日本",
+      "7": "其他"
+    }
+  },
+
+  "virtual_associations": [
+    {
+      "name": "关联客户主表",
+      "target_table": "customer_info",
+      "join_condition": "customer_info.code = customer_intention_info.customer_code",
+      "type": "many_to_one",
+      "description": "多条意向记录属于不同客户（实际业务中1个客户只有1条意向信息）",
+      "fields_mapping": {
+        "code": "customer_code"
+      },
+      "business_rule": ""
+    }
+  ],
+
   "calculated_fields": {},
-  "business_constraints": {},
+
+  "business_constraints": {
+    "deleted": "查询时需加 deleted = 0 过滤已删除数据"
+  },
+
   "business_rules": []
 }

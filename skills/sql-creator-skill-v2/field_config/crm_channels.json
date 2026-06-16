@@ -1,9 +1,68 @@
 {
   "table_name": "crm_channels",
-  "field_aliases": {},
-  "field_enums": {},
-  "virtual_associations": [],
+
+  "field_aliases": {
+    "channel_code": ["渠道编码", "渠道代码"],
+    "channel_name": ["渠道名称"],
+    "channel_status": ["渠道状态"],
+    "channel_parent_id": ["父级渠道ID"],
+    "channel_type": ["渠道类型", "渠道级别"],
+    "channel_create_user_id": ["渠道创建人ID"],
+    "channel_update_user_id": ["渠道更新人ID"],
+    "org": ["所属事业部", "组织"],
+    "sort_num": ["排序字段"],
+    "version": ["版本号"]
+  },
+
+  "field_enums": {
+    "channel_status": {
+      "0": "上线",
+      "1": "下线"
+    },
+    "channel_type": {
+      "1": "一级渠道",
+      "2": "二级渠道",
+      "3": "三级渠道",
+      "4": "四级渠道",
+      "5": "五级渠道"
+    }
+  },
+
+  "virtual_associations": [
+    {
+      "name": "关联父级渠道",
+      "target_table": "crm_channels",
+      "join_condition": "crm_channels_parent.channel_code = crm_channels.channel_parent_id",
+      "type": "many_to_one",
+      "description": "多条子渠道归属于同一父级渠道（渠道层级树形结构）",
+      "fields_mapping": {
+        "channel_code": "channel_parent_id"
+      },
+      "business_rule": "自关联表，通过channel_parent_id建立五级渠道层级关系。引用时需使用别名（如crm_channels_parent）"
+    },
+    {
+      "name": "关联渠道创建人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = crm_channels.channel_create_user_id",
+      "type": "many_to_one",
+      "description": "多条渠道可由同一后台用户创建",
+      "fields_mapping": {
+        "id": "channel_create_user_id"
+      },
+      "business_rule": ""
+    }
+  ],
+
   "calculated_fields": {},
-  "business_constraints": {},
-  "business_rules": []
+
+  "business_constraints": {
+    "unique_channel_code": "channel_code为唯一键，同一渠道编码可被多条线索的level1~level5引用"
+  },
+
+  "business_rules": [
+    {
+      "rule": "五级渠道结构",
+      "description": "渠道通过channel_parent_id形成五级树形结构。customer_clue_info中level1~level5_channel_code分别对应不同级别的channel_code。查询时需用不同别名（channels1~channels5）区分"
+    }
+  ]
 }

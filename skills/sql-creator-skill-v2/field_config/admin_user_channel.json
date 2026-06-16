@@ -1,9 +1,103 @@
 {
   "table_name": "admin_user_channel",
-  "field_aliases": {},
-  "field_enums": {},
-  "virtual_associations": [],
+
+  "field_aliases": {
+    "name": ["渠道名称"],
+    "channel_abbreviation": ["渠道简称"],
+    "type": ["渠道类型"],
+    "category": ["渠道类别"],
+    "to_company": ["所在公司"],
+    "to_post": ["所在岗位"],
+    "admin_user_id": ["创建人用户ID"],
+    "responsible_admin_user_id": ["协作人用户ID"],
+    "maintainer_id": ["维护人ID"],
+    "protocol_version": ["协议版本"],
+    "protocol": ["签署协议"],
+    "settlement": ["结算方式"],
+    "collection_name": ["收款账户名"],
+    "back_account": ["银行账号"],
+    "back_name": ["开户行"],
+    "my_contract_company": ["我方签约公司"],
+    "contract_time": ["签约日期"],
+    "mobile": ["手机号"],
+    "channel_phone": ["渠道联系方式"],
+    "third_protocal": ["第三方协议"],
+    "id_card": ["身份证"],
+    "remark": ["渠道协议重要条款"],
+    "channel_tag": ["渠道标签"],
+    "created_time": ["创建时间"],
+    "update_time": ["更新时间"]
+  },
+
+  "field_enums": {
+    "type": {
+      "1": "机构渠道",
+      "2": "个人渠道"
+    },
+    "protocol": {
+      "1": "已签署",
+      "2": "未签署"
+    },
+    "settlement": {
+      "1": "公对公",
+      "2": "第三方"
+    },
+    "third_protocal": {
+      "1": "是",
+      "2": "否"
+    },
+    "protocol_version": {
+      "1": "其他",
+      "2": "22年通用",
+      "3": "24年通用"
+    },
+    "channel_tag": {
+      "1": "公司分配",
+      "2": "个人拓展"
+    }
+  },
+
+  "virtual_associations": [
+    {
+      "name": "关联创建人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = admin_user_channel.admin_user_id",
+      "type": "many_to_one",
+      "description": "多条渠道可由同一后台用户创建",
+      "fields_mapping": {
+        "id": "admin_user_id"
+      },
+      "business_rule": "DDL中存在真实外键: FOREIGN KEY (admin_user_id) REFERENCES admin_user(id)"
+    },
+    {
+      "name": "关联协作人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = admin_user_channel.responsible_admin_user_id",
+      "type": "many_to_one",
+      "description": "多条渠道可有同一协作人",
+      "fields_mapping": {
+        "id": "responsible_admin_user_id"
+      },
+      "business_rule": "DDL中存在真实外键: FOREIGN KEY (responsible_admin_user_id) REFERENCES admin_user(id)"
+    },
+    {
+      "name": "关联维护人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = admin_user_channel.maintainer_id",
+      "type": "many_to_one",
+      "description": "多条渠道可由同一维护人管理",
+      "fields_mapping": {
+        "id": "maintainer_id"
+      },
+      "business_rule": ""
+    }
+  ],
+
   "calculated_fields": {},
-  "business_constraints": {},
+
+  "business_constraints": {
+    "usage_in_clue": "当customer_clue_info.special_channel != 0时，customer_clue_info.level4_channel_code可能引用本表的id。special_channel=7时渠道简称(channel_abbreviation)替换二级渠道名称"
+  },
+
   "business_rules": []
 }
