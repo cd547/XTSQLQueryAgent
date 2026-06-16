@@ -4,6 +4,8 @@
   "tables": [
     "admin_user",
     "admin_character",
-    "admin_user_campus"
+    "admin_user_campus",
+    "admin_department_manage",
+    "admin_department_type"
   ]
 }

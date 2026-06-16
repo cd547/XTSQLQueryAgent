@@ -127,7 +127,10 @@ export function loadSkillMd() {
 
 function removeEmptyProperties(obj) {
   if (obj === null || obj === undefined) return undefined;
-  if (typeof obj !== 'object') return obj;
+  if (typeof obj !== 'object') {
+    if (typeof obj === 'string' && obj.trim() === '') return undefined;
+    return obj;
+  }
   
   if (Array.isArray(obj)) {
     if (obj.length === 0) return undefined;
@@ -178,7 +181,22 @@ function simplifyDDL(ddlContent) {
     if (!trimmed) continue;
     if (skipPatterns.some(p => p.test(trimmed))) continue;
 
-    filtered.push(trimmed);
+    // 精简字段行：只保留 字段名 + 类型 + COMMENT
+    const nameMatch = trimmed.match(/`\w+`/);
+    const typeMatch = trimmed.match(/`\w+`\s+(\w+(?:\([^)]*\))?)/);
+    const commentMatch = trimmed.match(/(COMMENT\s+'[^']*(?:''[^']*)*')/);
+    if (nameMatch && typeMatch) {
+      let simplified = nameMatch[0] + ' ' + typeMatch[1];
+      if (commentMatch) {
+        simplified += ' ' + commentMatch[1];
+      }
+      if (/,\s*$/.test(trimmed)) {
+        simplified += ',';
+      }
+      filtered.push(simplified);
+    } else {
+      filtered.push(trimmed);
+    }
   }
 
   if (filtered.length > 0) {
@@ -236,14 +254,22 @@ function formatTableInfo(tables) {
     if (t.business_constraints?.length) {
       info += `\n  业务约束:`;
       t.business_constraints.forEach(c => {
-        info += `\n    - ${c.name}: ${c.description}`;
+        if (typeof c === 'string') {
+          info += `\n    - ${c}`;
+        } else {
+          info += `\n    - ${c.name}: ${c.description}`;
+        }
       });
     }
     if (t.business_rules?.length) {
       info += `\n  业务规则:`;
       t.business_rules.forEach(r => {
-        info += `\n    - ${r.rule || r.description}: ${r.description}`;
-        if (r.query) info += `\n      示例: ${r.query}`;
+        if (typeof r === 'string') {
+          info += `\n    - ${r}`;
+        } else {
+          info += `\n    - ${r.rule || r.description}: ${r.description}`;
+          if (r.query) info += `\n      示例: ${r.query}`;
+        }
       });
     }
     return info;
@@ -270,14 +296,22 @@ export const tools = [
         if (t.business_constraints?.length) {
           info += `\n  业务约束:`;
           t.business_constraints.forEach(c => {
-            info += `\n    - ${c.name}: ${c.description}`;
+            if (typeof c === 'string') {
+              info += `\n    - ${c}`;
+            } else {
+              info += `\n    - ${c.name}: ${c.description}`;
+            }
           });
         }
         if (t.business_rules?.length) {
           info += `\n  业务规则:`;
           t.business_rules.forEach(r => {
-            info += `\n    - ${r.rule || r.description}: ${r.description}`;
-            if (r.query) info += `\n      示例: ${r.query}`;
+            if (typeof r === 'string') {
+              info += `\n    - ${r}`;
+            } else {
+              info += `\n    - ${r.rule || r.description}: ${r.description}`;
+              if (r.query) info += `\n      示例: ${r.query}`;
+            }
           });
         }
         return info;

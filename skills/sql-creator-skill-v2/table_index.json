@@ -213,7 +213,8 @@
         "edu_student_type",
         "edu_student_status",
         "edu_student_type_project",
-        "edu_student_certificates_type"
+        "edu_student_certificates_type",
+        "customer_clue_info"
       ]
     },
     {
