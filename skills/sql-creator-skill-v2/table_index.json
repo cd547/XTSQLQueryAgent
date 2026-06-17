@@ -767,6 +767,25 @@
       ],
       "business_constraints": [],
       "business_rules": []
+    },
+    {
+      "name": "edu_student_certificates_type",
+      "description": "证件类型名称\\n",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_teacher",
+      "description": "老师",
+      "tags": [],
+      "related_tables": [
+        "admin_user",
+        "admin_teacher_scheme"
+      ],
+      "business_constraints": [],
+      "business_rules": []
     }
   ]
 }

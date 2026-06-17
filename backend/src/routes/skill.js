@@ -376,13 +376,42 @@ router.post('/create-table-files', (req, res) => {
   }
 
   try {
-    const relatedTables = extractRelatedTables(ddl);
-    const tableComment = extractTableComment(ddl) || description || tableName;
-
     const tableIndex = loadTableIndex();
     if (!tableIndex) {
       return res.status(500).json({ success: false, message: 'table_index.json 不存在' });
     }
+
+    // 检查表是否已存在：已存在则仅覆盖 DDL 文件，不动 table_index 和 field_config
+    const existingTable = tableIndex.tables.find(t => t.name === tableName);
+    if (existingTable) {
+      const ddlPath = path.join(SKILL_V2_PATH, 'ddl', `${tableName}.sql`);
+      fs.writeFileSync(ddlPath, ddl, 'utf-8');
+
+      const db = getDb();
+      const stmt = db.prepare(`
+        INSERT INTO skill_logs (operation, file_path, backup_path, old_content, new_content, status, error_message)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      stmt.run(
+        'overwrite_ddl',
+        `ddl/${tableName}.sql`,
+        null,
+        '',
+        JSON.stringify({ tableName, ddl }),
+        'success',
+        null
+      );
+
+      logger.info('Table already exists, only DDL overwritten', { tableName });
+      return res.json({
+        success: true,
+        files: [`ddl/${tableName}.sql`],
+        existed: true
+      });
+    }
+
+    const relatedTables = extractRelatedTables(ddl);
+    const tableComment = extractTableComment(ddl) || description || tableName;
 
     const newTableEntry = {
       name: tableName,

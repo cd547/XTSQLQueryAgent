@@ -825,7 +825,7 @@ const exportToExcel = async (data, cols) => {
     try {
       const data = await createTableFiles(addTableName.trim(), addTableDDL, addTableDescription);
       if (data.success) {
-        message.success('表格文件创建成功');
+        message.success(data.existed ? 'DDL文件已覆盖' : '表格文件创建成功');
         setAddTableModalOpen(false);
         loadSkillsList();
         resetAddTableForm();
@@ -1637,7 +1637,7 @@ children: currentResults.length > 0 ? (
           {addTableStep === 1.5 && (
             <div>
               <div style={{ marginBottom: 16, padding: 16, background: '#fff7e6', border: '1px solid #faad14', borderRadius: 4 }}>
-                表 <strong>{addTableName}</strong> 已存在于 table_index.json 中，是否仍要继续？（可能覆盖已有信息）
+                表 <strong>{addTableName}</strong> 已存在，继续则仅覆盖 DDL 文件，table_index 和 field_config 不会修改
               </div>
               <div style={{ textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <Button onClick={handleAddTableModalClose}>取消</Button>
@@ -1670,9 +1670,13 @@ children: currentResults.length > 0 ? (
             <div>
               <div style={{ marginBottom: 16 }}>
                 <div style={{ marginBottom: 8, fontWeight: 500 }}>表名: {addTableName}</div>
-                <div style={{ marginBottom: 8 }}>描述: <Input value={addTableDescription} onChange={e => setAddTableDescription(e.target.value)} placeholder="请输入表描述（可选）" /></div>
-                {addTableRelatedTables.length > 0 && (
-                  <div style={{ marginBottom: 8 }}>关联表: {addTableRelatedTables.join(', ')}</div>
+                {!addTableExists && (
+                  <>
+                    <div style={{ marginBottom: 8 }}>描述: <Input value={addTableDescription} onChange={e => setAddTableDescription(e.target.value)} placeholder="请输入表描述（可选）" /></div>
+                    {addTableRelatedTables.length > 0 && (
+                      <div style={{ marginBottom: 8 }}>关联表: {addTableRelatedTables.join(', ')}</div>
+                    )}
+                  </>
                 )}
               </div>
               <div style={{ marginBottom: 16, maxHeight: 200, overflow: 'auto', background: '#f5f5f5', padding: 8, borderRadius: 4, fontSize: 11 }}>
@@ -1680,7 +1684,9 @@ children: currentResults.length > 0 ? (
               </div>
               <div style={{ textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <Button onClick={() => setAddTableStep(2)} disabled={addTableCreating}>上一步</Button>
-                <Button type="primary" onClick={handleAddTableStep3} loading={addTableCreating}>生成文件</Button>
+                <Button type="primary" onClick={handleAddTableStep3} loading={addTableCreating}>
+                  {addTableExists ? '覆盖DDL' : '生成文件'}
+                </Button>
               </div>
             </div>
           )}
