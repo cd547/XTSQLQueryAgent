@@ -2,8 +2,12 @@ import { Router } from 'express';
 import { getDb } from '../db/sqlite.js';
 import { logger } from '../logger.js';
 import { getAgentConfig, updateAgentConfig, getTokenWarningLevel } from '../services/config.js';
+import { authRequired } from '../services/auth.js';
 
 const router = Router();
+
+// 配置接口要求登录
+router.use(authRequired);
 
 router.post('/test', async (req, res) => {
   try {

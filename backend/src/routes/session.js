@@ -1,19 +1,32 @@
 import { Router } from 'express';
 import { getDb } from '../db/sqlite.js';
 import { getLlmConfig } from '../services/config.js';
+import { clearSessionRegistry } from '../services/llm.js';
+import { authRequired, sessionBelongsToUser } from '../services/auth.js';
 import { logger } from '../logger.js';
 
 const router = Router();
+
+// 所有会话接口都要求登录
+router.use(authRequired);
 
 // 获取所有会话
 router.get('/', (req, res) => {
   try {
     const db = getDb();
+    // #PERF-06：把相关子查询改成 LEFT JOIN + GROUP BY。
+    // 旧写法依赖 SQLite 优化器把子查询"展开"为 join；
+    // 显式 JOIN 后总是 1 次扫描 messages 表（可走 idx_messages_session_role 索引），
+    // 避免 N+1 风险（每个 session 一次 SUM 扫描）。
     const sessions = db.prepare(`
       SELECT s.id, s.name, s.sort_order, s.created_at,
-             COALESCE((SELECT SUM(total_tokens) FROM messages WHERE session_id = s.id AND role = 'usage'), 0) as total_tokens
-      FROM sessions s ORDER BY s.id DESC
-    `).all();
+             COALESCE(SUM(CASE WHEN m.role = 'usage' THEN m.total_tokens END), 0) AS total_tokens
+      FROM sessions s
+      LEFT JOIN messages m ON m.session_id = s.id
+      WHERE s.user_id = ?
+      GROUP BY s.id
+      ORDER BY s.id DESC
+    `).all(req.user.id);
     res.json({ sessions });
   } catch (error) {
     res.json({ error: error.message, sessions: [] });
@@ -23,6 +36,9 @@ router.get('/', (req, res) => {
 // 获取会话的 token 统计
 router.get('/:id/tokens', (req, res) => {
   try {
+    if (!sessionBelongsToUser(req.params.id, req.user.id)) {
+      return res.json({ error: '会话不存在', total_tokens: 0 });
+    }
     const db = getDb();
     const result = db.prepare('SELECT COALESCE(SUM(total_tokens), 0) as total_tokens FROM messages WHERE session_id = ? AND role = ?').get(req.params.id, 'usage');
     res.json({ total_tokens: result?.total_tokens || 0 });
@@ -36,11 +52,11 @@ router.post('/', (req, res) => {
   try {
     const db = getDb();
     const { name } = req.body || {};
-    // 获取当前最大的 sort_order
-    const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM sessions').get();
+    // 获取当前用户会话中的最大 sort_order
+    const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM sessions WHERE user_id = ?').get(req.user.id);
     const newOrder = (maxOrder?.max || 0) + 1;
     const sessionName = name || `新对话#${newOrder}`;
-    const result = db.prepare('INSERT INTO sessions (name, sort_order) VALUES (?, ?)').run(sessionName, newOrder);
+    const result = db.prepare('INSERT INTO sessions (name, sort_order, user_id) VALUES (?, ?, ?)').run(sessionName, newOrder, req.user.id);
     res.json({ id: result.lastInsertRowid, name: sessionName, sort_order: newOrder });
   } catch (error) {
     res.json({ error: error.message });
@@ -50,6 +66,9 @@ router.post('/', (req, res) => {
 // 获取会话消息
 router.get('/:id/messages', (req, res) => {
   try {
+    if (!sessionBelongsToUser(req.params.id, req.user.id)) {
+      return res.json({ error: '会话不存在', messages: [] });
+    }
     const db = getDb();
     const messages = db.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC').all(req.params.id);
     res.json({ messages });
@@ -61,6 +80,9 @@ router.get('/:id/messages', (req, res) => {
 // 保存消息
 router.post('/:id/messages', (req, res) => {
   try {
+    if (!sessionBelongsToUser(req.params.id, req.user.id)) {
+      return res.status(403).json({ error: '无权访问此会话' });
+    }
     const db = getDb();
     const { role, content, sql, results } = req.body;
     db.prepare('INSERT INTO messages (session_id, role, content, sql, results) VALUES (?, ?, ?, ?, ?)')
@@ -74,6 +96,9 @@ router.post('/:id/messages', (req, res) => {
 // 更新会话名称
 router.put('/:id', (req, res) => {
   try {
+    if (!sessionBelongsToUser(req.params.id, req.user.id)) {
+      return res.status(403).json({ error: '无权访问此会话' });
+    }
     const db = getDb();
     const { name } = req.body;
     db.prepare('UPDATE sessions SET name = ? WHERE id = ?').run(name, req.params.id);
@@ -86,6 +111,9 @@ router.put('/:id', (req, res) => {
 // 删除会话
 router.delete('/:id', (req, res) => {
   try {
+    if (!sessionBelongsToUser(req.params.id, req.user.id)) {
+      return res.status(403).json({ error: '无权访问此会话' });
+    }
     const db = getDb();
     // 先删除 llm_messages 表中相关记录（有外键约束）
     db.prepare('DELETE FROM llm_messages WHERE session_id = ?').run(req.params.id);
@@ -93,6 +121,8 @@ router.delete('/:id', (req, res) => {
     db.prepare('DELETE FROM messages WHERE session_id = ?').run(req.params.id);
     // 最后删除会话记录
     db.prepare('DELETE FROM sessions WHERE id = ?').run(req.params.id);
+    // 释放工具调用注册表
+    clearSessionRegistry(req.params.id);
     res.json({ success: true });
   } catch (error) {
     res.json({ error: error.message });
@@ -102,8 +132,11 @@ router.delete('/:id', (req, res) => {
 // 总结会话
 router.post('/:id/summarize', async (req, res) => {
   const sessionId = req.params.id;
-  
+
   try {
+    if (!sessionBelongsToUser(sessionId, req.user.id)) {
+      return res.status(403).json({ error: '无权访问此会话' });
+    }
     const db = getDb();
     
     // 获取会话消息

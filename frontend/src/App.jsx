@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Layout, Input, Button, Table, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, InputNumber, Modal, Steps, Space, Dropdown } from 'antd';
+import { Layout, Input, Button, Table, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, InputNumber, Modal, Steps, Space, Dropdown, Avatar, Tooltip, Form } from 'antd';
 import 'react-resizable/css/styles.css';
 import './App.css';
 const { Panel } = Collapse;
@@ -8,8 +8,10 @@ import ConfirmDialog from './components/ConfirmDialog';
 import ResizableTitle from './components/ResizableTitle';
 import ChatMessage from './components/ChatMessage';
 import ConfigPanel from './components/ConfigPanel';
+import LoginPage from './components/LoginPage';
+import { useAuth } from './context/AuthContext.jsx';
 import * as api from './api/index.js';
-import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined, RobotOutlined, MoreOutlined, DeleteOutlined, LoadingOutlined } from '@ant-design/icons';
+import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined, RobotOutlined, MoreOutlined, DeleteOutlined, LoadingOutlined, LogoutOutlined, UserOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
@@ -20,6 +22,25 @@ const { TextArea } = Input;
 const { Sider, Content } = Layout;
 
 function App() {
+  const { isAuthenticated, bootstrapping, user, logout } = useAuth();
+
+  // 未登录：渲染登录页（带启动校验 loading 态）
+  if (bootstrapping) {
+    return (
+      <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Spin size="large" tip="正在校验登录状态..." />
+      </div>
+    );
+  }
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+
+  return <AuthenticatedApp user={user} logout={logout} />;
+}
+
+// 鉴权通过后的主体组件，保持原 App 业务逻辑不变
+function AuthenticatedApp({ user, logout }) {
   const [sessions, setSessions] = useState([]);
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -28,6 +49,7 @@ function App() {
   const [schemaMode, setSchemaMode] = useState('stream');
   const [isStreaming, setIsStreaming] = useState(false);
   const [results, setResults] = useState([]);
+  const [changePwdOpen, setChangePwdOpen] = useState(false);
   const [rowCount, setRowCount] = useState(0);
   const [queryTime, setQueryTime] = useState(0);
   const [showResults, setShowResults] = useState(false);
@@ -131,16 +153,15 @@ function App() {
   }, []);
 
   const loadCurrentModel = async () => {
-    if (loadCurrentModel.loading) return;
-    loadCurrentModel.loading = true;
+    if (loadingRef.current.model) return;
+    loadingRef.current.model = true;
     try {
       const data = await api.getLlMConfig();
       setCurrentModel(data.model || '');
     } catch (e) {} finally {
-      loadCurrentModel.loading = false;
+      loadingRef.current.model = false;
     }
   };
-  loadCurrentModel.loading = false;
 
   const loadAgentConfig = async () => {
     try {
@@ -825,7 +846,7 @@ const exportToExcel = async (data, cols) => {
     try {
       const data = await createTableFiles(addTableName.trim(), addTableDDL, addTableDescription);
       if (data.success) {
-        message.success('表格文件创建成功');
+        message.success(data.existed ? 'DDL文件已覆盖' : '表格文件创建成功');
         setAddTableModalOpen(false);
         loadSkillsList();
         resetAddTableForm();
@@ -971,9 +992,44 @@ const explainColumns = useMemo(() => explainResults.length > 0
                 Skill
               </Button>
             </div>
+            <div style={{ padding: '6px 10px', borderTop: '1px solid #e8e8e8', display: 'flex', alignItems: 'center', gap: 8, background: '#fafafa' }}>
+              <Avatar size={26} style={{ backgroundColor: '#1677ff' }} icon={<UserOutlined />} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user?.display_name || user?.username || '用户'}
+                </div>
+                <div style={{ fontSize: 10, color: '#999', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user?.role === 'admin' ? '管理员' : '普通用户'} · {user?.username}
+                </div>
+              </div>
+              <Tooltip title="修改密码">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<LockOutlined />}
+                  onClick={() => setChangePwdOpen(true)}
+                />
+              </Tooltip>
+              <Tooltip title="退出登录">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<LogoutOutlined />}
+                  onClick={() => {
+                    Modal.confirm({
+                      title: '确认退出登录？',
+                      content: '退出后需要重新登录才能使用。',
+                      okText: '退出',
+                      cancelText: '取消',
+                      onOk: () => logout()
+                    });
+                  }}
+                />
+              </Tooltip>
+            </div>
           </div>
         </Sider>
-        
+
         <Layout>
           <Content style={{ display: 'flex', flexDirection: 'column', padding: 0 }}>
 <div style={{ padding: '8px 16px 0', borderBottom: '1px solid #e8e8e8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
@@ -1637,7 +1693,7 @@ children: currentResults.length > 0 ? (
           {addTableStep === 1.5 && (
             <div>
               <div style={{ marginBottom: 16, padding: 16, background: '#fff7e6', border: '1px solid #faad14', borderRadius: 4 }}>
-                表 <strong>{addTableName}</strong> 已存在于 table_index.json 中，是否仍要继续？（可能覆盖已有信息）
+                表 <strong>{addTableName}</strong> 已存在，继续则仅覆盖 DDL 文件，table_index 和 field_config 不会修改
               </div>
               <div style={{ textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <Button onClick={handleAddTableModalClose}>取消</Button>
@@ -1670,9 +1726,13 @@ children: currentResults.length > 0 ? (
             <div>
               <div style={{ marginBottom: 16 }}>
                 <div style={{ marginBottom: 8, fontWeight: 500 }}>表名: {addTableName}</div>
-                <div style={{ marginBottom: 8 }}>描述: <Input value={addTableDescription} onChange={e => setAddTableDescription(e.target.value)} placeholder="请输入表描述（可选）" /></div>
-                {addTableRelatedTables.length > 0 && (
-                  <div style={{ marginBottom: 8 }}>关联表: {addTableRelatedTables.join(', ')}</div>
+                {!addTableExists && (
+                  <>
+                    <div style={{ marginBottom: 8 }}>描述: <Input value={addTableDescription} onChange={e => setAddTableDescription(e.target.value)} placeholder="请输入表描述（可选）" /></div>
+                    {addTableRelatedTables.length > 0 && (
+                      <div style={{ marginBottom: 8 }}>关联表: {addTableRelatedTables.join(', ')}</div>
+                    )}
+                  </>
                 )}
               </div>
               <div style={{ marginBottom: 16, maxHeight: 200, overflow: 'auto', background: '#f5f5f5', padding: 8, borderRadius: 4, fontSize: 11 }}>
@@ -1680,11 +1740,15 @@ children: currentResults.length > 0 ? (
               </div>
               <div style={{ textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <Button onClick={() => setAddTableStep(2)} disabled={addTableCreating}>上一步</Button>
-                <Button type="primary" onClick={handleAddTableStep3} loading={addTableCreating}>生成文件</Button>
+                <Button type="primary" onClick={handleAddTableStep3} loading={addTableCreating}>
+                  {addTableExists ? '覆盖DDL' : '生成文件'}
+                </Button>
               </div>
             </div>
           )}
         </Modal>
+
+        <ChangePasswordModal open={changePwdOpen} onClose={() => setChangePwdOpen(false)} onChanged={() => { setChangePwdOpen(false); logout(); }} />
         
         <Modal
           title="AI 分析 EXPLAIN 结果"
@@ -1722,6 +1786,91 @@ children: currentResults.length > 0 ? (
         </Modal>
       </Layout>
     </ConfigProvider>
+  );
+}
+
+// 修改密码弹窗
+function ChangePasswordModal({ open, onClose, onChanged }) {
+  const [form] = Form.useForm();
+  const [submitting, setSubmitting] = useState(false);
+
+  // 关闭时清空表单
+  useEffect(() => {
+    if (!open) form.resetFields();
+  }, [open, form]);
+
+  const handleOk = async () => {
+    try {
+      const values = await form.validateFields();
+      setSubmitting(true);
+      await api.changePasswordApi({
+        oldPassword: values.oldPassword,
+        newPassword: values.newPassword
+      });
+      message.success('密码已修改，请重新登录');
+      // 改密会吊销 token_version，前端必须退出登录态
+      onChanged && onChanged();
+    } catch (e) {
+      if (e?.errorFields) {
+        // antd 表单校验失败，不报错
+        return;
+      }
+      const msg = e?.response?.data?.error || e?.message || '修改失败';
+      message.error(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="修改密码"
+      open={open}
+      onOk={handleOk}
+      onCancel={onClose}
+      confirmLoading={submitting}
+      okText="确认修改"
+      cancelText="取消"
+      destroyOnClose
+    >
+      <Form form={form} layout="vertical" autoComplete="off">
+        <Form.Item
+          name="oldPassword"
+          label="当前密码"
+          rules={[{ required: true, message: '请输入当前密码' }]}
+        >
+          <Input.Password prefix={<LockOutlined />} placeholder="请输入当前密码" autoComplete="current-password" />
+        </Form.Item>
+        <Form.Item
+          name="newPassword"
+          label="新密码"
+          rules={[
+            { required: true, message: '请输入新密码' },
+            { min: 6, message: '新密码长度不能少于 6 位' }
+          ]}
+          hasFeedback
+        >
+          <Input.Password prefix={<LockOutlined />} placeholder="新密码（至少 6 位）" autoComplete="new-password" />
+        </Form.Item>
+        <Form.Item
+          name="confirmPassword"
+          label="确认新密码"
+          dependencies={['newPassword']}
+          hasFeedback
+          rules={[
+            { required: true, message: '请再次输入新密码' },
+            ({ getFieldValue }) => ({
+              validator(_, value) {
+                if (!value || getFieldValue('newPassword') === value) return Promise.resolve();
+                return Promise.reject(new Error('两次输入的密码不一致'));
+              }
+            })
+          ]}
+        >
+          <Input.Password prefix={<LockOutlined />} placeholder="再次输入新密码" autoComplete="new-password" />
+        </Form.Item>
+      </Form>
+    </Modal>
   );
 }
 

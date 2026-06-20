@@ -1,5 +1,73 @@
 # 更新日志
 
+## 2026-06-20
+
+### 代码审查与 P0/P1 修复
+
+#### 审查报告
+- 新增 [CODE_REVIEW_2026-06-20.md](CODE_REVIEW_2026-06-20.md)，全量审查 `backend/`、`frontend/`、`electron/`，发现 35 个问题
+- 分类：🔴 P0 高危 5 / 🟠 P1 11 / 🟡 P2 19
+
+#### P0 安全 / 性能
+- **#SEC-01 SQL 注入**：`/api/skills/fetch-ddl` 拼接 `tableName`，增加三层防御（白名单正则 + 类型检查 + 反引号兜底）
+  - 改前：`SHOW CREATE TABLE \`${tableName}\`` 完全不校验
+  - 改后：`/^[a-zA-Z0-9_.]{1,64}$/` 白名单 + 透传安全值 + 不再透传 `e.message` 给前端
+  - 验证：8 个注入用例全部拒绝
+- **#PERF-01 MySQL 连接池**：新增 [`backend/src/services/mysqlPool.js`](backend/src/services/mysqlPool.js)
+  - 单例 pool（connectionLimit: 10、idleTimeout 10min、TCP keepalive）
+  - 配置变更自动重建 pool；进程退出优雅关闭
+  - 改造 `/execute` / `/explain` / `/fetch-ddl` 三个热路径
+  - 效果：单次查询省 50-200ms TCP 握手，并发 10 路不排队
+- **#BUG-01 并发漏洞**：`App.jsx` `loadCurrentModel` 用函数属性做锁，组件 render 时被重置；改用 `loadingRef.current.model` 统一模式
+- **#BUG-02 try/catch 缺失**：`/api/query/generate` 异常在 SSE 头已发时调用 `res.json` 抛错；改为根据 `res.headersSent` 分流到 SSE error 事件或 JSON
+- **#BUG-03 静默截断**：`/execute` 自动追加 `LIMIT 1000` 破坏含 LIMIT / UNION 复杂查询；改为应用层 `slice(0, 1000)` + 响应增加 `truncated` / `returned` / `rowCount` 字段
+
+#### P1 / P2 改进
+- **#LOG-03 启动未 await**：`index.js` 重构启动序列，DB 初始化失败时 `process.exit(1)` 避免带病 listen
+- **#PERF-02 bpeEncode 预分配**：UTF-8 字节拆分改用 `new Array(Buffer.byteLength(text, 'utf8'))` 预分配 + 索引器，避免 V8 多次扩容
+- **#PERF-06 N+1 查询**：`GET /api/sessions` 把相关子查询改为 `LEFT JOIN messages + GROUP BY`，EXPLAIN QUERY PLAN 验证走 `idx_sessions_user_id` + `idx_messages_session_id` 索引
+
+---
+
+## 2026-06-15
+
+### 多用户认证系统 (新增)
+
+#### 功能
+- 完整的多用户登录/注册/改密/退出流程
+- 聊天记录按用户隔离，会话归属校验
+- 默认账号 `admin` / `admin123`，首次登录后必须修改密码
+
+#### 安全机制
+- **HttpOnly + SameSite Cookie** 存储 JWT，防止 XSS 窃取
+- **Token Version 机制**：`users.token_version` 字段，密码变更/退出时自增，旧 token 全部失效
+- **Rate Limiting**：`/login` `/register` `/change-password` 限流 10 次/小时/IP
+- **bcrypt 异步化**：从 `bcrypt.hashSync` 改为 `bcrypt.hash` 异步实现，不阻塞事件循环
+- **路径遍历防御**：`/api/skills/read` `/save` 等校验 `path.resolve` 是否在白名单 skills 目录内
+- **跨用户数据泄露防御**：所有会话接口走 `sessionBelongsToUser` 校验
+
+#### 前端
+- 新增 [frontend/src/components/LoginPage.jsx](frontend/src/components/LoginPage.jsx)
+- 401 自动跳登录页；fetch `credentials: 'include'` 携带 cookie
+- `AuthContext` 状态管理 + axios/fetch 拦截器
+
+#### 后端
+- 新增 [`backend/src/middleware/rateLimit.js`](backend/src/middleware/rateLimit.js)
+- 新增 [`backend/src/db/sqlite.js`](backend/src/db/sqlite.js) 中 `users` / `users.token_version` / `sessions.user_id` 字段
+- 新增 [`backend/src/services/auth.js`](backend/src/services/auth.js) JWT 签发/校验、密码哈希、cookie 设置
+- 新增 [`backend/src/routes/auth.js`](backend/src/routes/auth.js) 5 个接口
+
+#### Schema 升级
+- 引入 `addColumnIfMissing` 工具函数（[`backend/src/db/sqlite.js`](backend/src/db/sqlite.js)），结构化迁移 + 详细日志
+- 不再吞掉 `catch` 异常，错误显式上报
+- 测试覆盖：[`backend/test-schema-migration.mjs`](backend/test-schema-migration.mjs)
+
+#### LLM 工具调用去重
+- 新增 session 级 `sessionToolRegistries`（[`backend/src/services/llm.js`](backend/src/services/llm.js)）
+- 防止 `get_tables` / `get_domain_index` 等在多轮对话中重复调用，节省 token
+
+---
+
 ## 2026-05-09
 
 ### 消息历史查看按钮优化

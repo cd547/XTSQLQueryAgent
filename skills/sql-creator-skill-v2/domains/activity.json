@@ -1,0 +1,12 @@
+{
+  "id": "activity",
+  "name": "活动",
+  "tables": [
+    "cms_article",
+    "cms_apply",
+    "cms_article_event",
+    "cms_section",
+    "cms_session_records",
+    "cms_article_sessions"
+  ]
+}

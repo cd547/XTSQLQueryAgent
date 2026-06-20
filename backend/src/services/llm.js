@@ -30,10 +30,221 @@ function flushLogs() {
   writeLlmLog(content);
 }
 
+// 进程级全局缓存：记录最近一次 LLM 调用的完整 messages 数组。
+// 当前仅供开发期调试接口 GET /api/query/messages 使用（前端未调用）。
+// 注意：此处没有按 userId 区分，任何调用方都会拿到最后一个提问者的内容。
 let lastMessages = null;
 
 export function getLastMessages() {
   return lastMessages;
+}
+
+// ============================================================
+// 工具调用注册表（用于程序化拦截重复调用，规则 10）
+// ============================================================
+// 会话级状态：跟踪已调用过的工具及其关键参数，避免 LLM 重复获取
+// 已有信息（schema/ddl/get_tables/tag 确认/域路由）。跨多次 invoke 持久，
+// 会话删除或 llm_messages 清空时通过 clearSessionRegistry 释放。
+const sessionToolRegistries = new Map();
+
+function getOrCreateRegistry(sessionId) {
+  if (!sessionId) return null;
+  if (!sessionToolRegistries.has(sessionId)) {
+    sessionToolRegistries.set(sessionId, {
+      getTablesCalled: false,
+      getDomainIndexCalled: false,
+      slicedDomains: new Set(),       // 已通过 get_sliced_index 加载过的域 ID
+      tableSchema: new Set(),
+      tableDdl: new Set(),
+      termConfirmed: new Set(),
+    });
+  }
+  return sessionToolRegistries.get(sessionId);
+}
+
+function normalizeTableNames(arr) {
+  if (!Array.isArray(arr)) return [];
+  return [...new Set(arr.filter(n => typeof n === 'string' && n.trim()))].sort();
+}
+
+function buildChecklist(reg) {
+  if (!reg) return '（空）';
+  const domainIndexFlag = reg.getDomainIndexCalled ? '已调用' : '未调用';
+  const slicedDomainsList = [...reg.slicedDomains].sort().join(', ') || '无';
+  const schemaList = [...reg.tableSchema].sort().join(', ') || '无';
+  const ddlList = [...reg.tableDdl].sort().join(', ') || '无';
+  const tablesFlag = reg.getTablesCalled ? '已调用' : '未调用';
+  return [
+    `- get_domain_index: ${domainIndexFlag}`,
+    `- get_sliced_index 已覆盖的域: ${slicedDomainsList}`,
+    `- get_tables: ${tablesFlag}`,
+    `- 已获取 field_config 的表: ${schemaList}`,
+    `- 已获取 DDL 的表: ${ddlList}`,
+  ].join('\n');
+}
+
+/**
+ * 检查工具调用是否重复，并对部分重复的参数进行过滤。
+ * @returns {{block: boolean, args: object, message?: string, notice?: string}}
+ *   - block=true: 整次调用被拦截，message 为返回给 LLM 的提示
+ *   - block=false: 允许调用；args 为（可能过滤后的）参数；notice 为可选的附加提示
+ */
+function checkAndFilterDuplicateCall(toolName, args, sessionId) {
+  const reg = getOrCreateRegistry(sessionId);
+  if (!reg) return { block: false, args };
+
+  if (toolName === 'get_tables') {
+    if (reg.getTablesCalled) {
+      return {
+        block: true,
+        message:
+          `⚠️ 【重复调用已被程序拦截】get_tables 在本会话中已被调用过一次，table_index 数据已存在于你的上下文中。\n\n` +
+          `📋 已有信息清单:\n${buildChecklist(reg)}\n\n` +
+          `请直接复用已有信息，禁止再次调用 get_tables。`
+      };
+    }
+    return { block: false, args };
+  }
+
+  if (toolName === 'get_domain_index') {
+    if (reg.getDomainIndexCalled) {
+      return {
+        block: true,
+        message:
+          `⚠️ 【重复调用已被程序拦截】get_domain_index 在本会话中已被调用过一次，业务域列表已存在于你的上下文中。\n\n` +
+          `📋 已有信息清单:\n${buildChecklist(reg)}\n\n` +
+          `请直接复用已有域列表，禁止再次调用 get_domain_index。`
+      };
+    }
+    return { block: false, args };
+  }
+
+  if (toolName === 'get_sliced_index') {
+    const requestedDomains = normalizeTableNames(args.domain_ids);
+    if (requestedDomains.length === 0) return { block: false, args };
+    const dupes = requestedDomains.filter(d => reg.slicedDomains.has(d));
+    const fresh = requestedDomains.filter(d => !reg.slicedDomains.has(d));
+
+    if (dupes.length === requestedDomains.length) {
+      return {
+        block: true,
+        message:
+          `⚠️ 【重复调用已被程序拦截】get_sliced_index 中所有域在本会话中都已被加载过: ${dupes.join(', ')}。\n\n` +
+          `📋 已有信息清单:\n${buildChecklist(reg)}\n\n` +
+          `请直接复用已有信息，禁止重复加载相同域。\n` +
+          `如需加载尚未覆盖的域，请重新传入只包含新域的 domain_ids 参数。`
+      };
+    }
+    if (dupes.length > 0) {
+      return {
+        block: false,
+        args: { ...args, domain_ids: fresh },
+        notice:
+          `ℹ️ 自动过滤已加载域: ${dupes.join(', ')}。仅对 [${fresh.join(', ')}] 执行 get_sliced_index。\n` +
+          `📋 已有信息清单:\n${buildChecklist(reg)}`
+      };
+    }
+    return { block: false, args };
+  }
+
+  if (toolName === 'get_table_schema' || toolName === 'get_table_ddl') {
+    const requested = normalizeTableNames(args.table_names);
+    if (requested.length === 0) return { block: false, args };
+    const target = toolName === 'get_table_schema' ? reg.tableSchema : reg.tableDdl;
+    const dupes = requested.filter(n => target.has(n));
+    const fresh = requested.filter(n => !target.has(n));
+
+    if (dupes.length === requested.length) {
+      return {
+        block: true,
+        message:
+          `⚠️ 【重复调用已被程序拦截】工具 ${toolName} 中的所有表在本会话中都已被获取过: ${dupes.join(', ')}。\n\n` +
+          `📋 已有信息清单:\n${buildChecklist(reg)}\n\n` +
+          `请直接复用已有信息，禁止重复调用 ${toolName}。\n` +
+          `如需获取尚未在清单中的表，请重新传入只包含新表的 table_names 参数。`
+      };
+    }
+    if (dupes.length > 0) {
+      return {
+        block: false,
+        args: { ...args, table_names: fresh },
+        notice:
+          `ℹ️ 自动过滤重复表（已在清单中）: ${dupes.join(', ')}。仅对 [${fresh.join(', ')}] 执行 ${toolName}。\n` +
+          `📋 已有信息清单:\n${buildChecklist(reg)}`
+      };
+    }
+    return { block: false, args };
+  }
+
+  if (toolName === 'request_tag_confirmation') {
+    const termsRaw = args.term;
+    const terms = Array.isArray(termsRaw) ? termsRaw : (termsRaw ? [termsRaw] : []);
+    const table = args.table || '';
+    const dupes = terms.filter(t => reg.termConfirmed.has(`${t}::${table}`));
+    const fresh = terms.filter(t => !reg.termConfirmed.has(`${t}::${table}`));
+    if (terms.length === 0) return { block: false, args };
+
+    if (dupes.length === terms.length) {
+      return {
+        block: true,
+        message:
+          `⚠️ 【重复调用已被程序拦截】request_tag_confirmation 中所有术语（table=${table}）在本会话中都已请求过确认: ${terms.join(', ')}。\n` +
+          `请勿重复请求。`
+      };
+    }
+    if (dupes.length > 0) {
+      return {
+        block: false,
+        args: { ...args, term: fresh },
+        notice: `ℹ️ 自动过滤已确认术语（table=${table}）: ${dupes.join(', ')}。仅对新术语 [${fresh.join(', ')}] 执行。`
+      };
+    }
+    return { block: false, args };
+  }
+
+  return { block: false, args };
+}
+
+/**
+ * 记录一次成功执行的工具调用。必须在工具真正执行成功后调用。
+ */
+function recordToolCall(toolName, args, sessionId) {
+  const reg = getOrCreateRegistry(sessionId);
+  if (!reg) return;
+  if (toolName === 'get_tables') {
+    reg.getTablesCalled = true;
+  } else if (toolName === 'get_domain_index') {
+    reg.getDomainIndexCalled = true;
+  } else if (toolName === 'get_sliced_index') {
+    normalizeTableNames(args.domain_ids).forEach(d => reg.slicedDomains.add(d));
+  } else if (toolName === 'get_table_schema') {
+    normalizeTableNames(args.table_names).forEach(n => reg.tableSchema.add(n));
+  } else if (toolName === 'get_table_ddl') {
+    normalizeTableNames(args.table_names).forEach(n => reg.tableDdl.add(n));
+  } else if (toolName === 'request_tag_confirmation') {
+    const termsRaw = args.term;
+    const terms = Array.isArray(termsRaw) ? termsRaw : (termsRaw ? [termsRaw] : []);
+    const table = args.table || '';
+    terms.forEach(t => reg.termConfirmed.add(`${t}::${table}`));
+  }
+}
+
+/**
+ * 清除会话的工具调用注册表。在会话删除或 LLM 消息清空时调用。
+ */
+export function clearSessionRegistry(sessionId) {
+  if (!sessionId) return;
+  sessionToolRegistries.delete(sessionId);
+  logger.info('Cleared tool call registry for session', { sessionId });
+}
+
+/**
+ * 导出当前会话的信息清单快照（供调试或日志）。
+ */
+export function getSessionChecklist(sessionId) {
+  const reg = getOrCreateRegistry(sessionId);
+  if (!reg) return '（无 sessionId）';
+  return buildChecklist(reg);
 }
 
 function queueLog(content, immediate = false) {
@@ -342,6 +553,7 @@ while (true) {
         }));
       }
       messages.push(assistantMsg);
+      // 同步一份到全局缓存（仅供开发期 GET /api/query/messages 调试接口使用）
       lastMessages = JSON.parse(JSON.stringify(messages));
       
       // 保存到数据库（如果有 sessionId）
@@ -356,32 +568,55 @@ while (true) {
           const toolCallId = toolCall.id || `call_${Date.now()}_${validToolCalls.indexOf(toolCall)}`;
 
           const tool = toolsMap.get(toolName);
-          if (tool) {
-            try {
-              // 尝试解析参数，如果失败则使用空对象
-              let parsedArgs = {};
-              try {
-                parsedArgs = JSON.parse(toolArgs);
-              } catch (e) {
-                console.warn(`工具 ${toolName} 参数解析失败: ${e.message}, 参数: ${toolArgs}`);
-              }
-              const paramValue = parsedArgs.table_name || parsedArgs[Object.keys(parsedArgs)[0]] || '';
-              const toolResult = tool.func(parsedArgs);
+          if (!tool) continue;
 
-              yield { type: 'tool_return', log: `📋 工具 ${toolName} 返回:\n${toolResult}` };
+          // 尝试解析参数，如果失败则使用空对象
+          let parsedArgs = {};
+          try {
+            parsedArgs = JSON.parse(toolArgs);
+          } catch (e) {
+            console.warn(`工具 ${toolName} 参数解析失败: ${e.message}, 参数: ${toolArgs}`);
+          }
 
-              messages.push({
-                role: 'tool',
-                tool_call_id: toolCallId,
-                content: toolResult
-              });
-            } catch (e) {
-              messages.push({
-                role: 'tool',
-                tool_call_id: toolCallId,
-                content: `Error: ${e.message}`
-              });
-            }
+          // 规则 10：程序化去重检查（会话级）
+          const dupCheck = checkAndFilterDuplicateCall(toolName, parsedArgs, sessionId);
+          if (dupCheck.block) {
+            queueLog(`🚫 拦截重复调用: ${toolName} sessionId=${sessionId} args=${toolArgs}`, true);
+            yield { type: 'tool_return', log: `🚫 拦截重复调用: ${toolName}\n参数: ${toolArgs}\n${dupCheck.message}` };
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCallId,
+              content: dupCheck.message
+            });
+            continue; // 不执行工具函数，也不登记
+          }
+
+          // 使用过滤后的参数（部分重复时已被剥除重复表/术语）
+          const effectiveArgs = dupCheck.args;
+          const notice = dupCheck.notice;
+
+          try {
+            const paramValue = effectiveArgs.table_name || effectiveArgs[Object.keys(effectiveArgs)[0]] || '';
+            const rawResult = tool.func(effectiveArgs);
+
+            // 真正执行成功后才登记到会话注册表
+            recordToolCall(toolName, effectiveArgs, sessionId);
+
+            const resultContent = notice ? `${notice}\n\n${rawResult}` : rawResult;
+
+            yield { type: 'tool_return', log: `📋 工具 ${toolName} 返回:\n${resultContent}` };
+
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCallId,
+              content: resultContent
+            });
+          } catch (e) {
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCallId,
+              content: `Error: ${e.message}`
+            });
           }
         }
 

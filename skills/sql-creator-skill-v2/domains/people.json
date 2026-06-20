@@ -1,0 +1,17 @@
+{
+  "id": "people",
+  "name": "人员",
+  "tables": [
+    "admin_user",
+    "edu_student",
+    "edu_student_parent",
+    "edu_student_type",
+    "edu_student_status",
+    "edu_student_type_project",
+    "edu_student_personnel",
+    "my_user",
+    "edu_student_info",
+    "edu_student_certificates_type",
+    "edu_teacher"
+  ]
+}

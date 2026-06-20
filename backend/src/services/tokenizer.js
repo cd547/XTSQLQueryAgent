@@ -72,20 +72,26 @@ function bpeEncode(text) {
 
   // 将文本转换为字符数组作为初始 tokens
   let tokens = Array.from(text);
-  
-  // 对不在 vocab 中的字符进行字节拆分
-  const newTokens = [];
-  for (const char of tokens) {
+
+  // #PERF-02：对不在 vocab 中的字符做字节拆分时，预分配数组避免 V8 多次扩容
+  // UTF-8 单字符最多 4 字节，所以拆分后的 token 数 ≤ 文本的 UTF-8 字节数
+  // 直接用 Buffer.byteLength(text, 'utf8') 预分配上限，再按实际写入截断
+  const maxBytes = Buffer.byteLength(text, 'utf8');
+  const newTokens = new Array(maxBytes);
+  let newIdx = 0;
+  for (let i = 0; i < tokens.length; i++) {
+    const char = tokens[i];
     if (vocab[char] !== undefined) {
-      newTokens.push(char);
+      newTokens[newIdx++] = char;
     } else {
       // 字符不在 vocab 中，拆分为 UTF-8 字节
       const utf8 = Buffer.from(char, 'utf8');
-      for (const byte of utf8) {
-        newTokens.push(String.fromCharCode(byte));
+      for (let j = 0; j < utf8.length; j++) {
+        newTokens[newIdx++] = String.fromCharCode(utf8[j]);
       }
     }
   }
+  newTokens.length = newIdx;  // 截断到实际写入位置
   tokens = newTokens;
 
   // 应用 BPE 合并（限制最大迭代次数防止无限循环）

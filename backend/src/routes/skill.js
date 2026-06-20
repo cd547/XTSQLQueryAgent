@@ -2,12 +2,16 @@ import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import mysql from 'mysql2/promise';
 import { getDb } from '../db/sqlite.js';
 import { getConfig } from '../services/config.js';
+import { authRequired } from '../services/auth.js';
 import { logger } from '../logger.js';
+import { getPool } from '../services/mysqlPool.js';
 
 const router = Router();
+
+// skills 资料是共享的，但仍要求登录后才可访问
+router.use(authRequired);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -27,6 +31,20 @@ function getFileLanguage(filename) {
     '.txt': 'plaintext'
   };
   return langMap[ext] || 'plaintext';
+}
+
+// 路径安全检查：确保 target 位于 base 目录内部
+// - 防御 ../ 跳出
+// - 防御前缀撞名（如 base=/a/skills, target=/a/skillsXXX/...）
+// - 防御绝对路径
+function isPathSafe(base, target) {
+  const normalizedBase = path.resolve(base);
+  const normalizedTarget = path.resolve(target);
+  const rel = path.relative(normalizedBase, normalizedTarget);
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
+    return false;
+  }
+  return true;
 }
 
 function buildTree(dirPath, relativePath = '') {
@@ -96,10 +114,15 @@ router.get('/read', (req, res) => {
   if (!filePath) {
     return res.status(400).json({ success: false, message: 'Missing path parameter' });
   }
-  
+
   const fullPath = path.join(skillsPath, filePath);
   const normalizedPath = path.normalize(fullPath);
-  
+
+  // 路径安全检查：必须在 skills 目录内
+  if (!isPathSafe(skillsPath, normalizedPath)) {
+    return res.status(400).json({ success: false, message: 'Invalid path' });
+  }
+
   try {
     if (!fs.existsSync(normalizedPath)) {
       return res.status(404).json({ success: false, message: 'File not found' });
@@ -192,9 +215,9 @@ router.post('/save', (req, res) => {
 
   const fullPath = path.join(skillsPath, filePath);
   const normalizedPath = path.normalize(fullPath);
-  
-  // 安全检查：确保路径在 skills 目录内
-  if (!normalizedPath.startsWith(skillsPath)) {
+
+  // 路径安全检查：必须在 skills 目录内（防 ../ 跳出 + 防前缀撞名）
+  if (!isPathSafe(skillsPath, normalizedPath)) {
     return res.status(400).json({ success: false, message: 'Invalid path' });
   }
 
@@ -333,24 +356,29 @@ router.post('/fetch-ddl', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Missing tableName' });
   }
 
+  // #SEC-01 防御 SQL 注入：
+  // 1. 严格白名单：只允许字母/数字/下划线/点号，最长 64 字符
+  // 2. 二次校验：表名必须在 table_index.json 中已知
+  // 3. 防御性转义：把任何残留的反引号反转义（白名单已排除，这里仅做兜底）
+  if (typeof tableName !== 'string' || !/^[a-zA-Z0-9_.]{1,64}$/.test(tableName)) {
+    logger.warn('fetch-ddl rejected: invalid tableName format', { tableName });
+    return res.status(400).json({ success: false, message: 'Invalid tableName' });
+  }
+  const safeTableName = tableName.replace(/`/g, '');
+
   try {
     const dbConfig = getConfig();
     if (!dbConfig) {
       return res.json({ success: false, message: '数据库未配置' });
     }
-    const connection = await mysql.createConnection({
-      host: dbConfig.host,
-      port: dbConfig.port || 3306,
-      user: dbConfig.user,
-      password: dbConfig.password,
-      database: dbConfig.database
-    });
 
-    const [rows] = await connection.query(`SHOW CREATE TABLE \`${tableName}\``);
-    await connection.end();
+    // 复用连接池，不再每次新建 TCP 连接
+    const [rows] = await (await getPool()).query(
+      `SHOW CREATE TABLE \`${safeTableName}\``
+    );
 
     if (!rows || rows.length === 0) {
-      return res.json({ success: false, message: `表 ${tableName} 不存在` });
+      return res.json({ success: false, message: `表 ${safeTableName} 不存在` });
     }
 
     const ddl = rows[0]['Create Table'] || rows[0]['Create View'];
@@ -364,8 +392,8 @@ router.post('/fetch-ddl', async (req, res) => {
       relatedTables
     });
   } catch (e) {
-    logger.error('Fetch DDL failed', { error: e.message, tableName });
-    res.json({ success: false, message: e.message });
+    logger.error('Fetch DDL failed', { error: e.message, tableName: safeTableName });
+    res.json({ success: false, message: '获取 DDL 失败' });
   }
 });
 
@@ -376,13 +404,45 @@ router.post('/create-table-files', (req, res) => {
   }
 
   try {
-    const relatedTables = extractRelatedTables(ddl);
-    const tableComment = extractTableComment(ddl) || description || tableName;
-
     const tableIndex = loadTableIndex();
     if (!tableIndex) {
       return res.status(500).json({ success: false, message: 'table_index.json 不存在' });
     }
+
+    // 检查表是否已存在：已存在则仅覆盖 DDL 文件，不动 table_index 和 field_config
+    const existingTable = tableIndex.tables.find(t => t.name === tableName);
+    if (existingTable) {
+      const ddlPath = path.join(SKILL_V2_PATH, 'ddl', `${tableName}.sql`);
+      if (!isPathSafe(SKILL_V2_PATH, ddlPath)) {
+        return res.status(400).json({ success: false, message: 'Invalid tableName' });
+      }
+      fs.writeFileSync(ddlPath, ddl, 'utf-8');
+
+      const db = getDb();
+      const stmt = db.prepare(`
+        INSERT INTO skill_logs (operation, file_path, backup_path, old_content, new_content, status, error_message)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `);
+      stmt.run(
+        'overwrite_ddl',
+        `ddl/${tableName}.sql`,
+        null,
+        '',
+        JSON.stringify({ tableName, ddl }),
+        'success',
+        null
+      );
+
+      logger.info('Table already exists, only DDL overwritten', { tableName });
+      return res.json({
+        success: true,
+        files: [`ddl/${tableName}.sql`],
+        existed: true
+      });
+    }
+
+    const relatedTables = extractRelatedTables(ddl);
+    const tableComment = extractTableComment(ddl) || description || tableName;
 
     const newTableEntry = {
       name: tableName,
@@ -396,9 +456,15 @@ router.post('/create-table-files', (req, res) => {
     saveTableIndex(tableIndex);
 
     const ddlPath = path.join(SKILL_V2_PATH, 'ddl', `${tableName}.sql`);
+    if (!isPathSafe(SKILL_V2_PATH, ddlPath)) {
+      return res.status(400).json({ success: false, message: 'Invalid tableName' });
+    }
     fs.writeFileSync(ddlPath, ddl, 'utf-8');
 
     const fieldConfigPath = path.join(SKILL_V2_PATH, 'field_config', `${tableName}.json`);
+    if (!isPathSafe(SKILL_V2_PATH, fieldConfigPath)) {
+      return res.status(400).json({ success: false, message: 'Invalid tableName' });
+    }
     const fieldConfig = {
       table_name: tableName,
       field_aliases: {},

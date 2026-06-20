@@ -1,0 +1,78 @@
+{
+  "table_name": "customer_auto_assign_result",
+
+  "field_aliases": {
+    "customer_code": ["线索编码", "客户编码"],
+    "admin_user_id": ["分配员工ID"],
+    "assign_status": ["分配状态"],
+    "fail_reason": ["失败原因", "未分配原因"],
+    "business_status": ["线索业务状态"],
+    "rank_num": ["员工序号"],
+    "active_flag": ["主动咨询标识"],
+    "pool_id": ["线索池ID"],
+    "rank_code": ["队列编码"],
+    "lesson_intention_code": ["课程意向编码"],
+    "campus_value": ["有效校区"],
+    "consult_campus_value": ["原始咨询校区"]
+  },
+
+  "field_enums": {
+    "assign_status": {
+      "0": "未分配",
+      "1": "分配成功"
+    },
+    "active_flag": {
+      "0": "否",
+      "1": "是"
+    }
+  },
+
+  "virtual_associations": [
+    {
+      "name": "关联客户主表",
+      "target_table": "customer_info",
+      "join_condition": "customer_info.code = customer_auto_assign_result.customer_code",
+      "type": "many_to_one",
+      "description": "多条自动分配结果记录可属于同一客户",
+      "fields_mapping": {
+        "code": "customer_code"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联分配员工",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = customer_auto_assign_result.admin_user_id",
+      "type": "many_to_one",
+      "description": "多条分配记录可分配给同一员工",
+      "fields_mapping": {
+        "id": "admin_user_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联线索池",
+      "target_table": "customer_clue_pool",
+      "join_condition": "customer_clue_pool.id = customer_auto_assign_result.pool_id",
+      "type": "many_to_one",
+      "description": "多条分配结果记录可关联同一线索池记录",
+      "fields_mapping": {
+        "id": "pool_id"
+      },
+      "business_rule": "仅分配成功(assign_status=1)时有值"
+    }
+  ],
+
+  "calculated_fields": {},
+
+  "business_constraints": {
+    "deleted": "查询时需加 deleted = 0 过滤已删除数据"
+  },
+
+  "business_rules": [
+    {
+      "rule": "批量查询自动分配结果",
+      "description": "Java层通过getSucessAutoAssignCustomerCodes()批量查询成功自动分配(assign_status=1)的线索编码，用于前端标记isAutoAssignStr"
+    }
+  ]
+}

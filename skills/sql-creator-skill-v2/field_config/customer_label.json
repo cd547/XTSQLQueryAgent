@@ -1,0 +1,45 @@
+{
+  "table_name": "customer_label",
+
+  "field_aliases": {
+    "code": ["标签编码", "标签code"],
+    "name": ["标签名称", "标签名"],
+    "org": ["组织", "归属事业部"]
+  },
+
+  "field_enums": {
+    "org": {
+      "0": "渊学通",
+      "1": "科桥",
+      "2": "克勒"
+    }
+  },
+
+  "virtual_associations": [
+    {
+      "name": "关联线索标签关系",
+      "target_table": "customer_label_rel",
+      "join_condition": "customer_label_rel.label_code = customer_label.code AND customer_label_rel.deleted = 0",
+      "type": "one_to_many",
+      "description": "1个标签可被打在多个客户上",
+      "fields_mapping": {
+        "label_code": "code"
+      },
+      "business_rule": ""
+    }
+  ],
+
+  "calculated_fields": {},
+
+  "business_constraints": {
+    "deleted": "查询时需加 deleted = 0 过滤已删除数据",
+    "unique_code": "code字段为唯一键，同一标签编码全局唯一"
+  },
+
+  "business_rules": [
+    {
+      "rule": "标签查询",
+      "description": "通常与customer_label_rel联合使用。Java层通过customerCommonComponent.getCustomerLabelListMap()批量查询客户标签"
+    }
+  ]
+}

@@ -103,13 +103,19 @@
       "tags": [
         "管理员",
         "用户",
-        "工作人员"
+        "工作人员",
+        "CRM"
       ],
       "related_tables": [
         "admin_character",
         "admin_department_children",
         "admin_user",
-        "admin_user_campus"
+        "admin_user_campus",
+        "customer_info",
+        "customer_clue_info",
+        "customer_clue_pool",
+        "admin_user_channel",
+        "customer_auto_assign_result"
       ]
     },
     {
@@ -121,7 +127,8 @@
         "二级部门"
       ],
       "related_tables": [
-        "admin_department"
+        "admin_department",
+        "customer_clue_info"
       ]
     },
     {
@@ -130,6 +137,10 @@
       "tags": [
         "部门",
         "一级部门"
+      ],
+      "related_tables": [
+        "admin_department_children",
+        "customer_clue_info"
       ]
     },
     {
@@ -166,7 +177,8 @@
         "一级校区"
       ],
       "related_tables": [
-        "admin_user_campus"
+        "admin_user_campus",
+        "customer_clue_info"
       ]
     },
     {
@@ -201,7 +213,8 @@
         "edu_student_type",
         "edu_student_status",
         "edu_student_type_project",
-        "edu_student_certificates_type"
+        "edu_student_certificates_type",
+        "customer_clue_info"
       ]
     },
     {
@@ -530,6 +543,257 @@
       "description": "公司名称",
       "tags": [],
       "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "customer_education_info",
+      "description": "线索教育信息表",
+      "tags": [
+        "CRM",
+        "教育信息"
+      ],
+      "related_tables": [
+        "customer_info"
+      ],
+      "business_constraints": [
+        "deleted: 查询时需加 deleted = 0 过滤已删除数据"
+      ],
+      "business_rules": []
+    },
+    {
+      "name": "customer_intention_info",
+      "description": "线索意向表",
+      "tags": [
+        "CRM",
+        "意向信息"
+      ],
+      "related_tables": [
+        "customer_info"
+      ],
+      "business_constraints": [
+        "deleted: 查询时需加 deleted = 0 过滤已删除数据"
+      ],
+      "business_rules": []
+    },
+    {
+      "name": "customer_clue_pool",
+      "description": "线索池",
+      "tags": [
+        "CRM",
+        "线索池"
+      ],
+      "related_tables": [
+        "customer_info",
+        "admin_user"
+      ],
+      "business_constraints": [
+        "deleted: 查询时需加 deleted = 0 过滤已删除数据",
+        "列表查询常加 user_type = 1 AND enabled = 1（顾问类型、启用状态）"
+      ],
+      "business_rules": []
+    },
+    {
+      "name": "crm_channels",
+      "description": "CRM渠道表",
+      "tags": [
+        "CRM",
+        "渠道"
+      ],
+      "related_tables": [
+        "crm_channels",
+        "admin_user",
+        "customer_clue_info"
+      ],
+      "business_constraints": [
+        "deleted: 查询时需加 deleted = 0 过滤已删除数据",
+        "channel_code为唯一键，同一渠道编码可被多条线索的level1~level5引用"
+      ],
+      "business_rules": [
+        {
+          "rule": "五级渠道结构",
+          "description": "渠道通过channel_parent_id形成五级树形结构。customer_clue_info中level1~level5_channel_code分别对应不同级别的channel_code。查询时需用不同别名（channels1~channels5）"
+        }
+      ]
+    },
+    {
+      "name": "admin_user_channel",
+      "description": "渠道库",
+      "tags": [
+        "CRM",
+        "渠道"
+      ],
+      "related_tables": [
+        "admin_user",
+        "customer_clue_info"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "customer_info",
+      "description": "线索主表（CRM核心表）",
+      "tags": [
+        "CRM",
+        "线索",
+        "客户"
+      ],
+      "related_tables": [
+        "customer_clue_info",
+        "customer_education_info",
+        "customer_intention_info",
+        "customer_clue_pool",
+        "admin_user",
+        "customer_label_rel",
+        "customer_contact",
+        "customer_auto_assign_result"
+      ],
+      "business_constraints": [
+        "deleted: 查询时需加 deleted = 0 过滤已删除数据",
+        "该表为CRM线索驱动表，大多数CRM查询从此表FROM开始"
+      ],
+      "business_rules": []
+    },
+    {
+      "name": "customer_clue_info",
+      "description": "线索扩展表（CRM核心表，存渠道、状态、跟进等信息）",
+      "tags": [
+        "CRM",
+        "线索",
+        "渠道",
+        "跟进"
+      ],
+      "related_tables": [
+        "customer_info",
+        "crm_channels",
+        "admin_user",
+        "admin_user_channel",
+        "edu_campus",
+        "admin_department_children"
+      ],
+      "business_constraints": [
+        "deleted: 查询时需加 deleted = 0 过滤已删除数据",
+        "org字段区分事业部：0-渊学通 1-科桥 2-克勒 3-择校圈",
+        "与customer_info为STRAIGHT_JOIN强制关联（customer_code）"
+      ],
+      "business_rules": []
+    },
+    {
+      "name": "customer_label_rel",
+      "description": "线索标签关系表",
+      "tags": [
+        "CRM",
+        "标签"
+      ],
+      "related_tables": [
+        "customer_info",
+        "customer_label"
+      ],
+      "business_constraints": [
+        "deleted: 查询时需加 deleted = 0 过滤已删除数据",
+        "通常在查询customer_info时通过EXISTS子查询使用"
+      ],
+      "business_rules": []
+    },
+    {
+      "name": "customer_contact",
+      "description": "线索联系方式表",
+      "tags": [
+        "CRM",
+        "联系方式"
+      ],
+      "related_tables": [
+        "customer_info"
+      ],
+      "business_constraints": [
+        "deleted: 查询时需加 deleted = 0 过滤已删除数据",
+        "concat_type: 0-手机号 1-微信号 2-邮箱",
+        "通常在查询customer_info时通过EXISTS子查询按联系方式类型过滤"
+      ],
+      "business_rules": []
+    },
+    {
+      "name": "customer_auto_assign_result",
+      "description": "线索自动分配结果表",
+      "tags": [
+        "CRM",
+        "自动分配"
+      ],
+      "related_tables": [
+        "customer_info",
+        "admin_user",
+        "customer_clue_pool"
+      ],
+      "business_constraints": [
+        "deleted: 查询时需加 deleted = 0 过滤已删除数据",
+        "assign_status: 0-未分配 1-分配成功"
+      ],
+      "business_rules": []
+    },
+    {
+      "name": "customer_label",
+      "description": "线索标签表",
+      "tags": [
+        "CRM",
+        "标签"
+      ],
+      "related_tables": [
+        "customer_label_rel"
+      ],
+      "business_constraints": [
+        "deleted: 查询时需加 deleted = 0 过滤已删除数据",
+        "code字段为唯一键"
+      ],
+      "business_rules": []
+    },
+    {
+      "name": "keqiao_preschool_examination",
+      "description": "学前考试报名",
+      "tags": [],
+      "related_tables": [
+        "my_user",
+        "edu_campus_school"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_student_info",
+      "description": "学籍信息",
+      "tags": [],
+      "related_tables": [
+        "edu_student",
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_student_certificates_type",
+      "description": "证件类型名称\\n",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_teacher",
+      "description": "老师",
+      "tags": [],
+      "related_tables": [
+        "admin_user",
+        "admin_teacher_scheme"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_campus_school_class",
+      "description": "教室",
+      "tags": [],
+      "related_tables": [
+        "edu_campus_school"
+      ],
       "business_constraints": [],
       "business_rules": []
     }

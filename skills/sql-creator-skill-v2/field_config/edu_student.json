@@ -2,7 +2,19 @@
   "table_name": "edu_student",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联线索",
+      "target_table": "customer_clue_info",
+      "join_condition": "customer_clue_info.customer_code = edu_student.student_code",
+      "type": "one_to_one",
+      "description": "一个学生一条线索",
+      "fields_mapping": {
+        "customer_code": "student_code"
+      }
+     
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": []

@@ -50,5 +50,5 @@
   
   "business_constraints": {},
   
-  "business_rules": []
+  "business_rules": ["查询用户名是指user字段，非nick_name字段"]
 }

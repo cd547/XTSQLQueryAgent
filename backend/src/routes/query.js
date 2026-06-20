@@ -3,23 +3,34 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
-import mysql from 'mysql2/promise';
 import { getDb } from '../db/sqlite.js';
 import { getConfig, getLlmConfig } from '../services/config.js';
+import { authRequired, sessionBelongsToUser } from '../services/auth.js';
 import { logger } from '../logger.js';
-import { generateSQLWithLangChainStreamGen_BAK, loadSkillMd, getLastMessages, loadMessagesFromDb } from '../services/llm.js';
+import { generateSQLWithLangChainStreamGen_BAK, loadSkillMd, getLastMessages, loadMessagesFromDb, clearSessionRegistry } from '../services/llm.js';
+import { validateReadOnlySql } from '../services/sqlValidator.js';
+import { getPool } from '../services/mysqlPool.js';
 
-function ensureSession() {
+// /execute 端点：只允许查询，不允许 EXPLAIN
+const EXECUTE_SQL_OPTIONS = { allowedPrefixes: ['SELECT', 'WITH'] };
+// /explain 端点：允许查询 + EXPLAIN
+const EXPLAIN_SQL_OPTIONS = { allowedPrefixes: ['SELECT', 'WITH', 'EXPLAIN'] };
+
+const router = Router();
+
+// 所有查询接口都要求登录
+router.use(authRequired);
+
+function ensureSession(userId) {
   const db = getDb();
-  const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM sessions').get();
+  const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM sessions WHERE user_id = ?').get(userId);
   const newOrder = (maxOrder?.max || 0) + 1;
   const sessionName = `新对话#${newOrder}`;
-  const result = db.prepare('INSERT INTO sessions (name, sort_order) VALUES (?, ?)').run(sessionName, newOrder);
+  const result = db.prepare('INSERT INTO sessions (name, sort_order, user_id) VALUES (?, ?, ?)').run(sessionName, newOrder, userId);
   return result.lastInsertRowid;
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const router = Router();
 
 const projectRoot = process.env.PROJECT_ROOT || path.resolve(__dirname, '../../../');
 const SKILL_V2_PATH = path.join(process.env.SKILL_PATH || path.join(projectRoot, 'skills'), 'sql-creator-skill-v2');
@@ -196,16 +207,19 @@ router.get('/version', async (req, res) => {
   });
 });
 
+// 注意：此接口前端未调用（前端统一通过 /query/messages/:sessionId 获取消息历史）。
+// 保留仅作开发调试用途；返回的是 getLastMessages() 的进程级全局缓存，
+// 任何登录用户调用都可能拿到最后一个提问者的消息内容，请勿在生产环境对外开放。
 router.get('/messages', async (req, res) => {
   const messages = getLastMessages();
   if (messages) {
-    res.json({ 
-      success: true, 
-      messages, 
-      count: messages.length 
+    res.json({
+      success: true,
+      messages,
+      count: messages.length
     });
   } else {
-    res.json({ 
+    res.json({
       success: false, 
       message: '暂无消息数据，请先执行一次 SQL 生成请求' 
     });
@@ -215,27 +229,30 @@ router.get('/messages', async (req, res) => {
 router.get('/messages/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
   try {
+    if (!sessionBelongsToUser(sessionId, req.user.id)) {
+      return res.status(403).json({ success: false, message: '无权访问此会话' });
+    }
     const result = loadMessagesFromDb(sessionId);
     if (result) {
-      res.json({ 
-        success: true, 
-        messages: result.messages, 
+      res.json({
+        success: true,
+        messages: result.messages,
         count: result.messages.length,
         messageTokens: result.messageTokens,
-        sessionId 
+        sessionId
       });
     } else {
-      res.json({ 
-        success: false, 
+      res.json({
+        success: false,
         message: `会话 ${sessionId} 暂无消息历史`,
-        sessionId 
+        sessionId
       });
     }
   } catch (e) {
     logger.error('Failed to load messages from database', { error: e.message });
-    res.json({ 
-      success: false, 
-      message: '加载消息历史失败: ' + e.message 
+    res.json({
+      success: false,
+      message: '加载消息历史失败: ' + e.message
     });
   }
 });
@@ -243,25 +260,30 @@ router.get('/messages/:sessionId', async (req, res) => {
 router.delete('/messages/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
   try {
+    if (!sessionBelongsToUser(sessionId, req.user.id)) {
+      return res.status(403).json({ success: false, message: '无权访问此会话' });
+    }
     const db = getDb();
     const result = db.prepare('DELETE FROM llm_messages WHERE session_id = ?').run(sessionId);
+    // 清空工具调用注册表，避免后续请求仍按旧清单拦截
+    clearSessionRegistry(sessionId);
     if (result.changes > 0) {
-      res.json({ 
-        success: true, 
+      res.json({
+        success: true,
         message: `已清除会话 ${sessionId} 的消息历史`,
-        deletedRows: result.changes 
+        deletedRows: result.changes
       });
     } else {
-      res.json({ 
-        success: false, 
-        message: `会话 ${sessionId} 没有消息历史可清除` 
+      res.json({
+        success: false,
+        message: `会话 ${sessionId} 没有消息历史可清除`
       });
     }
   } catch (e) {
     logger.error('Failed to delete messages from database', { error: e.message });
-    res.json({ 
-      success: false, 
-      message: '清除消息历史失败: ' + e.message 
+    res.json({
+      success: false,
+      message: '清除消息历史失败: ' + e.message
     });
   }
 });
@@ -269,10 +291,15 @@ router.delete('/messages/:sessionId', async (req, res) => {
 router.post('/generate', async (req, res) => {
   let { question, sessionId, schemaMode } = req.body;
 
-  // 如果没有sessionId，自动创建
+  // 如果没有sessionId，自动创建（归属当前用户）
   if (!sessionId) {
-    sessionId = ensureSession();
-    logger.info('Auto-created session', { sessionId });
+    sessionId = ensureSession(req.user.id);
+    logger.info('Auto-created session', { sessionId, userId: req.user.id });
+  } else {
+    // 显式传入了 sessionId，必须校验归属
+    if (!sessionBelongsToUser(sessionId, req.user.id)) {
+      return res.status(403).json({ error: '无权访问此会话' });
+    }
   }
 
   try {
@@ -455,8 +482,16 @@ logger.info('Stream done, sending final result', { sql: sql?.substring(0, 50), m
       return;
     } 
   } catch (error) {
-    logger.error('SQL generation failed', { error: error.message });
-    res.json({ error: error.message, sql: '' });
+    logger.error('SQL generation failed', { error: error.message, stack: error.stack });
+    // 关键：SSE 头可能已经发出（res.flushHeaders），此时不能再用 res.json
+    if (res.headersSent) {
+      try {
+        res.write(`data: ${JSON.stringify({ type: 'error', content: '生成失败：' + error.message })}\n\n`);
+        res.end();
+      } catch (_) { /* 客户端已断开 */ }
+    } else {
+      res.json({ error: error.message, sql: '' });
+    }
   }
 });
 
@@ -543,23 +578,15 @@ router.post('/execute', async (req, res) => {
     return res.json({ error: 'SQL不能为空', rowCount: 0, queryTime: 0 });
   }
 
-  const upper = sql.toUpperCase().trim();
-  
-  // 去除SQL中的所有注释（-- 和 /* */）
-  let cleanSql = upper
-    .replace(/--[^\n]*/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .trim();
-  
-  // 先检查是否以SELECT或WITH开头（最准确的检测方法）
-  if (!cleanSql.startsWith('SELECT') && !cleanSql.toUpperCase().startsWith('WITH')) {
-    const forbidden = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE'];
-    for (const word of forbidden) {
-      if (cleanSql.includes(word)) {
-        return res.json({ error: `不允许执行 ${word} 操作`, rowCount: 0, queryTime: 0 });
-      }
-    }
-    return res.json({ error: '只允许SELECT查询', rowCount: 0, queryTime: 0 });
+  // 若传入了 sessionId，需要校验归属
+  if (sessionId && !sessionBelongsToUser(sessionId, req.user.id)) {
+    return res.status(403).json({ error: '无权访问此会话', rowCount: 0, queryTime: 0 });
+  }
+
+  // 统一 SQL 校验：剥离注释、前缀白名单、危险函数黑名单、多语句检测
+  const sqlCheck = validateReadOnlySql(sql, EXECUTE_SQL_OPTIONS);
+  if (!sqlCheck.valid) {
+    return res.json({ error: sqlCheck.message, code: sqlCheck.code, rowCount: 0, queryTime: 0 });
   }
 
   try {
@@ -567,33 +594,44 @@ router.post('/execute', async (req, res) => {
     if (!config) {
       return res.json({ error: '数据库未配置', rowCount: 0, queryTime: 0 });
     }
-    const connection = await mysql.createConnection(config);
+    // 复用 sqlValidator 已清理过的 SQL（注释、末尾分号已剥离）
+    // 不再静默追加 LIMIT 1000：会破坏含 LIMIT 的复杂查询、UNION 也不会被正确处理。
+    // 改为在应用层做显示上限，超过则截断并标记 truncated。
+    const execSql = sqlCheck.cleaned;
+    const [allRows] = await (await getPool()).query(execSql);
 
-    // 去除SQL末尾的分号，避免拼接LIMIT出错
-    // 使用之前已清理注释的SQL（转为小写保持原始大小写）
-    const execSql = sql
-      .replace(/--[^\n]*/g, '')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/;$/, '')
-      .trim();
-    const finalSql = execSql.includes('LIMIT') ? execSql : execSql + ' LIMIT 1000';
-    const [rows] = await connection.query(finalSql);
-    await connection.end();
+    // 应用层显示上限：默认 1000 行（保留与旧实现一致的默认值）
+    const MAX_DISPLAY_ROWS = 1000;
+    const truncated = allRows.length > MAX_DISPLAY_ROWS;
+    const rows = truncated ? allRows.slice(0, MAX_DISPLAY_ROWS) : allRows;
+    if (truncated) {
+      logger.warn('Query result exceeded display limit', {
+        total: allRows.length,
+        returned: rows.length,
+        sql: execSql.substring(0, 200)
+      });
+    }
 
     if (sessionId) {
       const db = getDb();
       db.prepare(`
         INSERT INTO messages (session_id, role, sql, results)
         VALUES (?, 'user', ?, ?)
-      `).run(sessionId, sql, JSON.stringify(rows));
+      `).run(sessionId, sql, JSON.stringify(allRows));
       db.prepare(`
         INSERT INTO messages (session_id, role, results)
         VALUES (?, 'assistant', ?)
-      `).run(sessionId, JSON.stringify({ rowCount: rows.length }));
+      `).run(sessionId, JSON.stringify({ rowCount: allRows.length, truncated }));
     }
 
     const queryTime = Date.now() - startTime;
-    res.json({ results: rows, rowCount: rows.length, queryTime });
+    res.json({
+      results: rows,
+      rowCount: allRows.length,        // 实际行数（包含被截断的）
+      returned: rows.length,           // 返回给前端的行数
+      truncated,                       // 是否被截断
+      queryTime
+    });
   } catch (error) {
     logger.error('SQL execution failed', { error: error.message, sql });
     res.json({ error: error.message, rowCount: 0, queryTime: Date.now() - startTime });
@@ -607,38 +645,19 @@ router.post('/explain', async (req, res) => {
     return res.json({ error: '请提供 SQL 语句', rowCount: 0 });
   }
   
-  // 提取有效 SQL（去除注释，只保留 SQL 语句）
-  // 先去除所有注释，再处理行
-  let cleanSql = sql
-    .replace(/\/\*[\s\S]*?\*\//g, '')  // 去除 /* */ 注释
-    .replace(/--[^\n]*/g, '');           // 去除 -- 注释
-  
-  // 按行分割，过滤空行
-  const lines = cleanSql.split('\n');
-  const validLines = lines.filter(line => line.trim());
-  cleanSql = validLines.join(' ').trim();
-  
-  // 将多个空格合并为单个空格
-  cleanSql = cleanSql.replace(/\s+/g, ' ').trim();
-  
-  if (!cleanSql.toUpperCase().startsWith('SELECT') && !cleanSql.toUpperCase().startsWith('EXPLAIN') && !cleanSql.toUpperCase().startsWith('WITH')) {
-    const forbidden = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE'];
-    const upperSql = cleanSql.toUpperCase();
-    for (const word of forbidden) {
-      if (upperSql.includes(word)) {
-        return res.json({ error: `不允许执行 ${word} 操作`, rowCount: 0 });
-      }
-    }
-    return res.json({ error: '只允许 SELECT/EXPLAIN 查询', rowCount: 0 });
+  // 统一 SQL 校验：剥离注释、前缀白名单、危险函数黑名单、多语句检测
+  const sqlCheck = validateReadOnlySql(sql, EXPLAIN_SQL_OPTIONS);
+  if (!sqlCheck.valid) {
+    return res.json({ error: sqlCheck.message, code: sqlCheck.code, rowCount: 0 });
   }
+  const cleanSql = sqlCheck.cleaned;
 
   try {
     const config = getConfig();
     if (!config) {
       return res.json({ error: '数据库未配置', rowCount: 0 });
     }
-const connection = await mysql.createConnection(config);
-    
+
     // 对于普通SELECT查询，使用标准EXPLAIN格式（不是JSON）
     const isSelectOrWith = cleanSql.toUpperCase().startsWith('SELECT') || cleanSql.toUpperCase().startsWith('WITH');
     const explainSql = cleanSql.toUpperCase().startsWith('EXPLAIN') 
@@ -647,9 +666,8 @@ const connection = await mysql.createConnection(config);
         ? `EXPLAIN ${cleanSql}`  // 使用标准表格格式
         : `EXPLAIN ${cleanSql}`;
     logger.info('EXPLAIN executing', { cleanSql, explainSql });
-    const [rows] = await connection.query(explainSql);
-    await connection.end();
-    
+    const [rows] = await (await getPool()).query(explainSql);
+
     res.json({ results: rows, rowCount: rows.length });
   } catch (error) {
     logger.error('EXPLAIN execution failed', { error: error.message, sql });

@@ -1,0 +1,17 @@
+{
+  "id": "finance",
+  "name": "财务",
+  "tables": [
+    "order_student",
+    "order_type",
+    "order_list",
+    "order_contract",
+    "order_contract_template",
+    "order_student_class",
+    "order_student_refund",
+    "order_student_received",
+    "order_student_received_settlement",
+    "order_student_received_settlement_log",
+    "order_student_received_approvalsettlement"
+  ]
+}

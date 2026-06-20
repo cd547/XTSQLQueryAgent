@@ -2,7 +2,18 @@
   "table_name": "edu_student_type_project",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联学生类型",
+      "target_table": "edu_student_type",
+      "join_condition": "edu_student_type.id = edu_student_type_project.edu_student_type_id",
+      "type": "one_to_one",
+      "description": "",
+      "fields_mapping": {
+        "id": "edu_student_type_id"
+      }
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": []
