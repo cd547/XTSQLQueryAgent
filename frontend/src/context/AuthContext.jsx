@@ -1,36 +1,28 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { getToken, setToken, getStoredUser, setStoredUser, loginApi, registerApi, getMeApi } from '../api/index.js';
+import { getToken, setToken, getStoredUser, setStoredUser, loginApi, registerApi, getMeApi, logoutApi } from '../api/index.js';
 
 const AuthContext = createContext(null);
 
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(() => getStoredUser());
-  const [token, setTokenState] = useState(() => getToken());
-  const [bootstrapping, setBootstrapping] = useState(!!getToken());
+  const [bootstrapping, setBootstrapping] = useState(true);
   const [authError, setAuthError] = useState(null);
 
-  // 启动时如有 token，调一次 /auth/me 校验有效性
+  // 启动时调一次 /auth/me 校验 cookie 是否有效
   useEffect(() => {
     let cancelled = false;
     async function bootstrap() {
-      if (!getToken()) {
-        setBootstrapping(false);
-        return;
-      }
       try {
         const data = await getMeApi();
         if (!cancelled) {
           setUser(data.user);
           setStoredUser(data.user);
-          setTokenState(getToken());
         }
       } catch (e) {
+        // 401 / 网络异常都视为未登录
         if (!cancelled) {
-          // token 无效或后端异常都视为未登录
           setUser(null);
-          setToken('');
           setStoredUser(null);
-          setTokenState('');
         }
       } finally {
         if (!cancelled) setBootstrapping(false);
@@ -44,7 +36,7 @@ export function AuthProvider({ children }) {
   useEffect(() => {
     const handler = () => {
       setUser(null);
-      setTokenState('');
+      setStoredUser(null);
     };
     window.addEventListener('xtsql:auth-expired', handler);
     return () => window.removeEventListener('xtsql:auth-expired', handler);
@@ -53,12 +45,10 @@ export function AuthProvider({ children }) {
   const login = useCallback(async (username, password) => {
     setAuthError(null);
     const data = await loginApi({ username, password });
-    if (!data || !data.token) {
+    if (!data || !data.user) {
       throw new Error(data?.error || '登录失败');
     }
-    setToken(data.token);
     setStoredUser(data.user);
-    setTokenState(data.token);
     setUser(data.user);
     return data.user;
   }, []);
@@ -66,29 +56,27 @@ export function AuthProvider({ children }) {
   const register = useCallback(async (payload) => {
     setAuthError(null);
     const data = await registerApi(payload);
-    if (!data || !data.token) {
+    if (!data || !data.user) {
       throw new Error(data?.error || '注册失败');
     }
-    setToken(data.token);
     setStoredUser(data.user);
-    setTokenState(data.token);
     setUser(data.user);
     return data.user;
   }, []);
 
-  const logout = useCallback(() => {
+  const logout = useCallback(async () => {
+    try { await logoutApi(); } catch (e) { /* 即便服务端失败也要清本地 */ }
+    // 把所有可能残留的鉴权信息全部清掉，确保彻底走新流程
     setToken('');
     setStoredUser(null);
     setUser(null);
-    setTokenState('');
   }, []);
 
   const value = {
     user,
-    token,
     bootstrapping,
     authError,
-    isAuthenticated: !!user && !!token,
+    isAuthenticated: !!user,
     login,
     register,
     logout

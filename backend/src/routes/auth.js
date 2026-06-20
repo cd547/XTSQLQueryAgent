@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { getDb } from '../db/sqlite.js';
-import { authRequired, hashPassword, comparePassword, signToken } from '../services/auth.js';
+import { authRequired, hashPassword, comparePassword, signToken, setAuthCookie, clearAuthCookie } from '../services/auth.js';
 import { logger } from '../logger.js';
 
 const router = Router();
@@ -28,18 +28,20 @@ router.post('/register', (req, res) => {
     }
     const passwordHash = hashPassword(password);
     const result = db.prepare(
-      'INSERT INTO users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)'
+      'INSERT INTO users (username, password_hash, display_name, role, token_version) VALUES (?, ?, ?, ?, 0)'
     ).run(username, passwordHash, displayName || username, 'user');
 
     const user = {
       id: result.lastInsertRowid,
       username,
       display_name: displayName || username,
-      role: 'user'
+      role: 'user',
+      token_version: 0
     };
     const token = signToken(user);
+    setAuthCookie(res, token);
     logger.info('用户注册成功', { userId: user.id, username });
-    res.json({ success: true, token, user });
+    res.json({ success: true, user });
   } catch (e) {
     logger.error('注册失败', { error: e.message });
     res.status(500).json({ error: '注册失败: ' + e.message });
@@ -55,7 +57,7 @@ router.post('/login', (req, res) => {
     }
     const db = getDb();
     const user = db.prepare(
-      'SELECT id, username, password_hash, display_name, role FROM users WHERE username = ?'
+      'SELECT id, username, password_hash, display_name, role, token_version FROM users WHERE username = ?'
     ).get(username);
 
     if (!user || !comparePassword(password, user.password_hash)) {
@@ -65,11 +67,13 @@ router.post('/login', (req, res) => {
       id: user.id,
       username: user.username,
       display_name: user.display_name,
-      role: user.role
+      role: user.role,
+      token_version: user.token_version || 0
     };
     const token = signToken(safeUser);
+    setAuthCookie(res, token);
     logger.info('用户登录成功', { userId: safeUser.id, username: safeUser.username });
-    res.json({ success: true, token, user: safeUser });
+    res.json({ success: true, user: safeUser });
   } catch (e) {
     logger.error('登录失败', { error: e.message });
     res.status(500).json({ error: '登录失败: ' + e.message });
@@ -79,6 +83,19 @@ router.post('/login', (req, res) => {
 // GET /api/auth/me  当前登录用户信息
 router.get('/me', authRequired, (req, res) => {
   res.json({ user: req.user });
+});
+
+// POST /api/auth/logout  退出登录（清理 cookie；前端跳转登录页）
+router.post('/logout', authRequired, (req, res) => {
+  try {
+    // 递增 token_version 让当前 token 立刻失效（即便客户端保留旧的也用不了）
+    const nextTv = (req.user.token_version || 0) + 1;
+    getDb().prepare('UPDATE users SET token_version = ? WHERE id = ?').run(nextTv, req.user.id);
+  } catch (e) {
+    logger.warn('logout: 递增 token_version 失败', { error: e.message });
+  }
+  clearAuthCookie(res);
+  res.json({ success: true });
 });
 
 // POST /api/auth/change-password  修改密码（需要登录）
@@ -96,7 +113,10 @@ router.post('/change-password', authRequired, (req, res) => {
     if (!row || !comparePassword(oldPassword, row.password_hash)) {
       return res.status(400).json({ error: '旧密码错误' });
     }
-    db.prepare('UPDATE users SET password_hash = ? WHERE id = ?').run(hashPassword(newPassword), req.user.id);
+    // 改密同时递增 token_version，吊销该用户所有旧 token
+    const nextTv = (req.user.token_version || 0) + 1;
+    db.prepare('UPDATE users SET password_hash = ?, token_version = ? WHERE id = ?')
+      .run(hashPassword(newPassword), nextTv, req.user.id);
     res.json({ success: true });
   } catch (e) {
     logger.error('修改密码失败', { error: e.message });

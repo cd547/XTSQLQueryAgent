@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Layout, Input, Button, Table, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, InputNumber, Modal, Steps, Space, Dropdown, Avatar, Tooltip } from 'antd';
+import { Layout, Input, Button, Table, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, InputNumber, Modal, Steps, Space, Dropdown, Avatar, Tooltip, Form } from 'antd';
 import 'react-resizable/css/styles.css';
 import './App.css';
 const { Panel } = Collapse;
@@ -49,6 +49,7 @@ function AuthenticatedApp({ user, logout }) {
   const [schemaMode, setSchemaMode] = useState('stream');
   const [isStreaming, setIsStreaming] = useState(false);
   const [results, setResults] = useState([]);
+  const [changePwdOpen, setChangePwdOpen] = useState(false);
   const [rowCount, setRowCount] = useState(0);
   const [queryTime, setQueryTime] = useState(0);
   const [showResults, setShowResults] = useState(false);
@@ -1002,6 +1003,14 @@ const explainColumns = useMemo(() => explainResults.length > 0
                   {user?.role === 'admin' ? '管理员' : '普通用户'} · {user?.username}
                 </div>
               </div>
+              <Tooltip title="修改密码">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<LockOutlined />}
+                  onClick={() => setChangePwdOpen(true)}
+                />
+              </Tooltip>
               <Tooltip title="退出登录">
                 <Button
                   type="text"
@@ -1021,7 +1030,7 @@ const explainColumns = useMemo(() => explainResults.length > 0
             </div>
           </div>
         </Sider>
-        
+
         <Layout>
           <Content style={{ display: 'flex', flexDirection: 'column', padding: 0 }}>
 <div style={{ padding: '8px 16px 0', borderBottom: '1px solid #e8e8e8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
@@ -1739,6 +1748,8 @@ children: currentResults.length > 0 ? (
             </div>
           )}
         </Modal>
+
+        <ChangePasswordModal open={changePwdOpen} onClose={() => setChangePwdOpen(false)} onChanged={() => { setChangePwdOpen(false); logout(); }} />
         
         <Modal
           title="AI 分析 EXPLAIN 结果"
@@ -1776,6 +1787,91 @@ children: currentResults.length > 0 ? (
         </Modal>
       </Layout>
     </ConfigProvider>
+  );
+}
+
+// 修改密码弹窗
+function ChangePasswordModal({ open, onClose, onChanged }) {
+  const [form] = Form.useForm();
+  const [submitting, setSubmitting] = useState(false);
+
+  // 关闭时清空表单
+  useEffect(() => {
+    if (!open) form.resetFields();
+  }, [open, form]);
+
+  const handleOk = async () => {
+    try {
+      const values = await form.validateFields();
+      setSubmitting(true);
+      await api.changePasswordApi({
+        oldPassword: values.oldPassword,
+        newPassword: values.newPassword
+      });
+      message.success('密码已修改，请重新登录');
+      // 改密会吊销 token_version，前端必须退出登录态
+      onChanged && onChanged();
+    } catch (e) {
+      if (e?.errorFields) {
+        // antd 表单校验失败，不报错
+        return;
+      }
+      const msg = e?.response?.data?.error || e?.message || '修改失败';
+      message.error(msg);
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <Modal
+      title="修改密码"
+      open={open}
+      onOk={handleOk}
+      onCancel={onClose}
+      confirmLoading={submitting}
+      okText="确认修改"
+      cancelText="取消"
+      destroyOnClose
+    >
+      <Form form={form} layout="vertical" autoComplete="off">
+        <Form.Item
+          name="oldPassword"
+          label="当前密码"
+          rules={[{ required: true, message: '请输入当前密码' }]}
+        >
+          <Input.Password prefix={<LockOutlined />} placeholder="请输入当前密码" autoComplete="current-password" />
+        </Form.Item>
+        <Form.Item
+          name="newPassword"
+          label="新密码"
+          rules={[
+            { required: true, message: '请输入新密码' },
+            { min: 6, message: '新密码长度不能少于 6 位' }
+          ]}
+          hasFeedback
+        >
+          <Input.Password prefix={<LockOutlined />} placeholder="新密码（至少 6 位）" autoComplete="new-password" />
+        </Form.Item>
+        <Form.Item
+          name="confirmPassword"
+          label="确认新密码"
+          dependencies={['newPassword']}
+          hasFeedback
+          rules={[
+            { required: true, message: '请再次输入新密码' },
+            ({ getFieldValue }) => ({
+              validator(_, value) {
+                if (!value || getFieldValue('newPassword') === value) return Promise.resolve();
+                return Promise.reject(new Error('两次输入的密码不一致'));
+              }
+            })
+          ]}
+        >
+          <Input.Password prefix={<LockOutlined />} placeholder="再次输入新密码" autoComplete="new-password" />
+        </Form.Item>
+      </Form>
+    </Modal>
   );
 }
 

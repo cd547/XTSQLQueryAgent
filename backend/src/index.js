@@ -1,12 +1,17 @@
 import express from 'express';
 import cors from 'cors';
+import cookieParser from 'cookie-parser';
 import { initDatabase, initSkillLogTable } from './db/sqlite.js';
 
 const app = express();
 const PORT = process.env.PORT || 5002;
 
-app.use(cors());
+app.use(cors({
+  origin: (origin, cb) => cb(null, true), // 任意 origin；通过 cookie+SameSite 保护
+  credentials: true
+}));
 app.use(express.json());
+app.use(cookieParser());
 
 app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });

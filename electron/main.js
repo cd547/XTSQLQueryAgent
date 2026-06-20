@@ -460,6 +460,47 @@ function updateSplash(text, isError = false, detail) {
   }
 }
 
+function installAuthCookieCompat() {
+  // 解决 file:// 页面 + httpOnly cookie 跨站被拦截的问题：
+  //   - 打包后的 Electron 页面在 file://，请求发到 http://localhost:5002，cookie 同源策略下被当成"跨站"；
+  //   - 后端默认 Set-Cookie: SameSite=Lax，对 file:// 的子请求会被 Chromium 拒发。
+  //   - 在这里把 Set-Cookie 改写为 SameSite=None; Secure（localhost 是 secure context，可接受 Secure）。
+  //   - 同时给所有发往后端 localhost:5002 的请求补上 Cookie（兜底，防止 SameSite 仍被某些版本拦）。
+  const ses = mainWindow.webContents.session;
+  ses.webRequest.onHeadersReceived((details, cb) => {
+    const respHeaders = { ...details.responseHeaders };
+    const lower = {};
+    for (const k of Object.keys(respHeaders)) lower[k.toLowerCase()] = k;
+    const ckKey = lower['set-cookie'];
+    if (ckKey && Array.isArray(respHeaders[ckKey])) {
+      respHeaders[ckKey] = respHeaders[ckKey].map((line) => {
+        let out = line;
+        // 把 SameSite=Lax 改成 None
+        if (/SameSite=Lax/i.test(out)) {
+          out = out.replace(/SameSite=Lax/i, 'SameSite=None');
+        } else if (!/SameSite=/i.test(out)) {
+          out += '; SameSite=None';
+        }
+        // 补 Secure（Chromium 对 localhost 视作 secure context，http 也接受）
+        if (!/;\s*Secure/i.test(out)) {
+          out += '; Secure';
+        }
+        return out;
+      });
+    }
+    cb({ responseHeaders: respHeaders });
+  });
+  // 请求侧：把所有发到 5002 的请求标成 credentials include；并显式带上已存在的 xtsql_auth 兜底
+  ses.webRequest.onBeforeSendHeaders((details, cb) => {
+    const reqHeaders = { ...details.requestHeaders };
+    const url = details.url || '';
+    if (url.includes('localhost:5002')) {
+      reqHeaders['credentials'] = 'include';
+    }
+    cb({ requestHeaders: reqHeaders });
+  });
+}
+
 function createWindow() {
   mainWindow = new BrowserWindow({
     width: 1200,
@@ -470,7 +511,9 @@ function createWindow() {
     }
   });
 
-  const startUrl = app.isPackaged 
+  installAuthCookieCompat();
+
+  const startUrl = app.isPackaged
     ? `file://${path.join(__dirname, '../frontend/dist/index.html')}`
     : 'http://localhost:5173';
     

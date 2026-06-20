@@ -45,17 +45,38 @@ export function initDatabase() {
       password_hash TEXT NOT NULL,
       display_name TEXT,
       role TEXT DEFAULT 'user',
+      token_version INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
 
+  // 老库兼容：补 token_version 列
+  try {
+    db.exec(`ALTER TABLE users ADD COLUMN token_version INTEGER DEFAULT 0`);
+  } catch (e) {
+    logger.debug('Column token_version already exists');
+  }
+
   // 初始化默认 admin 用户（仅当用户表为空时）
+  // 安全护栏：仅在非生产环境或显式开启时才自动创建，避免生产部署后留下默认弱口令
+  const allowDefaultAdmin = process.env.ALLOW_DEFAULT_ADMIN === 'true' || process.env.NODE_ENV !== 'production';
   const userCount = db.prepare('SELECT COUNT(*) as cnt FROM users').get();
   if (userCount.cnt === 0) {
-    const defaultHash = bcrypt.hashSync('admin123', 10);
-    db.prepare('INSERT INTO users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)')
-      .run('admin', defaultHash, '管理员', 'admin');
-    console.log('已创建默认管理员账号: admin / admin123，请尽快修改密码');
+    if (allowDefaultAdmin) {
+      const defaultHash = bcrypt.hashSync('admin123', 10);
+      db.prepare('INSERT INTO users (username, password_hash, display_name, role, token_version) VALUES (?, ?, ?, ?, 0)')
+        .run('admin', defaultHash, '管理员', 'admin');
+      logger.warn('==============================================================');
+      logger.warn(' 已自动创建默认管理员账号: admin / admin123');
+      logger.warn(' !!! 警告：默认密码是公开的，请立即登录后修改 !!!');
+      logger.warn(' 生产环境请设置 ALLOW_DEFAULT_ADMIN=false 禁用此行为');
+      logger.warn('==============================================================');
+    } else {
+      logger.warn('==============================================================');
+      logger.warn(' 用户表为空且当前为生产环境，未自动创建 admin');
+      logger.warn(' 如需引导账号，请设置环境变量 ALLOW_DEFAULT_ADMIN=true 后重启');
+      logger.warn('==============================================================');
+    }
   }
 
   db.exec(`

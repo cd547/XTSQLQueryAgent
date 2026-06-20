@@ -3,21 +3,25 @@ import axios from 'axios';
 const isElectron = window.location.protocol === 'file:';
 const baseURL = isElectron ? 'http://localhost:5002/api' : '/api';
 
+// 鉴权走 httpOnly cookie；axios 必须带 withCredentials 让浏览器自动附加 cookie
 const api = axios.create({
-  baseURL: baseURL
+  baseURL: baseURL,
+  withCredentials: true
 });
 
-// Token 存储键名（localStorage）
-const TOKEN_KEY = 'xtsql_token';
+// localStorage 中只缓存"用户信息展示"用，不放敏感 token。
+// token 现在由后端通过 Set-Cookie 注入，浏览器自动随请求带上，前端 JS 不可读 → 防 XSS 窃取。
 const USER_KEY = 'xtsql_user';
+// 兼容老数据：如有遗留 token 仍可作为 Authorization 头兜底（非 httpOnly 场景）
+const LEGACY_TOKEN_KEY = 'xtsql_token';
 
 export function getToken() {
-  return localStorage.getItem(TOKEN_KEY) || '';
+  return localStorage.getItem(LEGACY_TOKEN_KEY) || '';
 }
 
 export function setToken(token) {
-  if (token) localStorage.setItem(TOKEN_KEY, token);
-  else localStorage.removeItem(TOKEN_KEY);
+  if (token) localStorage.setItem(LEGACY_TOKEN_KEY, token);
+  else localStorage.removeItem(LEGACY_TOKEN_KEY);
 }
 
 export function getStoredUser() {
@@ -34,7 +38,7 @@ export function setStoredUser(user) {
   else localStorage.removeItem(USER_KEY);
 }
 
-// 请求拦截器：自动附带 Authorization 头
+// 请求拦截器：兼容老 token 兜底；新流程无需此头
 api.interceptors.request.use((config) => {
   const token = getToken();
   if (token) {
@@ -44,14 +48,13 @@ api.interceptors.request.use((config) => {
   return config;
 });
 
-// 响应拦截器：401 时清理 token（外层 AuthContext 会监听 logout 事件跳转）
+// 响应拦截器：401 时清理本地用户信息并触发全局事件
 api.interceptors.response.use(
   (resp) => resp,
   (error) => {
     if (error.response && error.response.status === 401) {
       setToken('');
       setStoredUser(null);
-      // 触发全局事件，AuthContext 监听到后会切回登录页
       window.dispatchEvent(new CustomEvent('xtsql:auth-expired'));
     }
     return Promise.reject(error);
@@ -85,12 +88,17 @@ export function queryGenerate(data) {
 export function queryGenerateStream(data, signal) {
   return fetch(baseURL + '/query/generate', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${getToken()}`
-    },
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify(data),
     signal: signal
+  }).then((resp) => {
+    if (resp.status === 401) {
+      // SSE 不走 axios 拦截器，需手动派发事件让前端切回登录页
+      setStoredUser(null);
+      window.dispatchEvent(new CustomEvent('xtsql:auth-expired'));
+    }
+    return resp;
   });
 }
 
@@ -105,11 +113,15 @@ export function explainQuery(data) {
 export function explainAnalyze(sql, explainResults) {
   return fetch(baseURL + '/query/explain-analyze', {
     method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'Authorization': `Bearer ${getToken()}`
-    },
+    credentials: 'include',
+    headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ sql, explainResults })
+  }).then((resp) => {
+    if (resp.status === 401) {
+      setStoredUser(null);
+      window.dispatchEvent(new CustomEvent('xtsql:auth-expired'));
+    }
+    return resp;
   });
 }
 
@@ -200,6 +212,10 @@ export function getMeApi() {
 
 export function changePasswordApi(payload) {
   return api.post('/auth/change-password', payload).then(r => r.data);
+}
+
+export function logoutApi() {
+  return api.post('/auth/logout').then(r => r.data);
 }
 
 export default api;
