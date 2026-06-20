@@ -8,6 +8,7 @@
 
 | 功能 | 说明 |
 |------|------|
+| 多用户登录 | 支持多账号登录/注册/改密/退出，会话按用户隔离 |
 | 自然语言查询 | 输入自然语言描述，自动生成 SQL 并执行 |
 | SQL 执行 | 支持直接输入 SQL 查询，仅限 SELECT 操作 |
 | SQL 预览 | LLM 生成 SQL 后先预览，用户确认后再执行 |
@@ -121,6 +122,16 @@ XTSQLQueryAgent/
 
 ## API 接口
 
+### 认证
+
+| 方法 | 路径 | 说明 |
+|------|------|------|
+| POST | /api/auth/register | 注册新用户（限流 10/h） |
+| POST | /api/auth/login | 登录，设置 HttpOnly cookie（限流 10/h） |
+| GET  | /api/auth/me | 获取当前登录用户信息 |
+| POST | /api/auth/logout | 退出登录，使 token 失效 |
+| POST | /api/auth/change-password | 修改密码，旧 token 全部失效（限流 10/h） |
+
 ### 配置
 
 | 方法 | 路径 | 说明 |
@@ -156,12 +167,22 @@ XTSQLQueryAgent/
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| GET | /api/skills/list | 获取 Skill 列表 |
-| GET | /api/skills/read | 读取文件内容 |
+| GET  | /api/skills/list | 获取 Skill 列表 |
+| GET  | /api/skills/read | 读取文件内容 |
 | POST | /api/skills/save | 保存文件 (带备份) |
 | POST | /api/skills/add-tag | 添加表标签 |
+| POST | /api/skills/fetch-ddl | 从 MySQL 获取表 DDL（tableName 走白名单校验） |
 
 ## 配置说明
+
+### 默认账号
+
+首次启动时会自动创建 admin 账号：
+
+- 用户名：`admin`
+- 密码：`admin123`
+
+> ⚠️ **生产环境必须立即修改密码**，并设置环境变量 `ALLOW_DEFAULT_ADMIN=false` 禁用自动创建。
 
 ### 数据库配置
 
@@ -181,6 +202,15 @@ XTSQLQueryAgent/
 | DeepSeek | https://api.deepseek.com | deepseek-chat |
 | MiniMax | https://api.minimax.chat/v1 | abab6.5s-chat |
 | Ollama | http://localhost:11434 | llama3.2 |
+
+### 环境变量
+
+| 变量 | 说明 | 默认 |
+|------|------|------|
+| `PORT` | 后端 HTTP 端口 | `5002` |
+| `JWT_SECRET` | JWT 签名密钥（生产环境**必须**显式设置） | 自动生成 |
+| `ALLOW_DEFAULT_ADMIN` | 是否允许自动创建 admin 账号 | dev=true / prod=false |
+| `DB_PATH` | SQLite 数据库路径 | `data/app.db` |
 
 ## 使用说明
 

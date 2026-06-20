@@ -3,13 +3,13 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import crypto from 'crypto';
-import mysql from 'mysql2/promise';
 import { getDb } from '../db/sqlite.js';
 import { getConfig, getLlmConfig } from '../services/config.js';
 import { authRequired, sessionBelongsToUser } from '../services/auth.js';
 import { logger } from '../logger.js';
 import { generateSQLWithLangChainStreamGen_BAK, loadSkillMd, getLastMessages, loadMessagesFromDb, clearSessionRegistry } from '../services/llm.js';
 import { validateReadOnlySql } from '../services/sqlValidator.js';
+import { getPool } from '../services/mysqlPool.js';
 
 // /execute 端点：只允许查询，不允许 EXPLAIN
 const EXECUTE_SQL_OPTIONS = { allowedPrefixes: ['SELECT', 'WITH'] };
@@ -482,8 +482,16 @@ logger.info('Stream done, sending final result', { sql: sql?.substring(0, 50), m
       return;
     } 
   } catch (error) {
-    logger.error('SQL generation failed', { error: error.message });
-    res.json({ error: error.message, sql: '' });
+    logger.error('SQL generation failed', { error: error.message, stack: error.stack });
+    // 关键：SSE 头可能已经发出（res.flushHeaders），此时不能再用 res.json
+    if (res.headersSent) {
+      try {
+        res.write(`data: ${JSON.stringify({ type: 'error', content: '生成失败：' + error.message })}\n\n`);
+        res.end();
+      } catch (_) { /* 客户端已断开 */ }
+    } else {
+      res.json({ error: error.message, sql: '' });
+    }
   }
 });
 
@@ -586,29 +594,44 @@ router.post('/execute', async (req, res) => {
     if (!config) {
       return res.json({ error: '数据库未配置', rowCount: 0, queryTime: 0 });
     }
-    // 显式禁用多语句（mysql2 默认值，显式声明防止被覆盖）
-    const connection = await mysql.createConnection({ ...config, multipleStatements: false });
-
     // 复用 sqlValidator 已清理过的 SQL（注释、末尾分号已剥离）
+    // 不再静默追加 LIMIT 1000：会破坏含 LIMIT 的复杂查询、UNION 也不会被正确处理。
+    // 改为在应用层做显示上限，超过则截断并标记 truncated。
     const execSql = sqlCheck.cleaned;
-    const finalSql = execSql.includes('LIMIT') ? execSql : execSql + ' LIMIT 1000';
-    const [rows] = await connection.query(finalSql);
-    await connection.end();
+    const [allRows] = await (await getPool()).query(execSql);
+
+    // 应用层显示上限：默认 1000 行（保留与旧实现一致的默认值）
+    const MAX_DISPLAY_ROWS = 1000;
+    const truncated = allRows.length > MAX_DISPLAY_ROWS;
+    const rows = truncated ? allRows.slice(0, MAX_DISPLAY_ROWS) : allRows;
+    if (truncated) {
+      logger.warn('Query result exceeded display limit', {
+        total: allRows.length,
+        returned: rows.length,
+        sql: execSql.substring(0, 200)
+      });
+    }
 
     if (sessionId) {
       const db = getDb();
       db.prepare(`
         INSERT INTO messages (session_id, role, sql, results)
         VALUES (?, 'user', ?, ?)
-      `).run(sessionId, sql, JSON.stringify(rows));
+      `).run(sessionId, sql, JSON.stringify(allRows));
       db.prepare(`
         INSERT INTO messages (session_id, role, results)
         VALUES (?, 'assistant', ?)
-      `).run(sessionId, JSON.stringify({ rowCount: rows.length }));
+      `).run(sessionId, JSON.stringify({ rowCount: allRows.length, truncated }));
     }
 
     const queryTime = Date.now() - startTime;
-    res.json({ results: rows, rowCount: rows.length, queryTime });
+    res.json({
+      results: rows,
+      rowCount: allRows.length,        // 实际行数（包含被截断的）
+      returned: rows.length,           // 返回给前端的行数
+      truncated,                       // 是否被截断
+      queryTime
+    });
   } catch (error) {
     logger.error('SQL execution failed', { error: error.message, sql });
     res.json({ error: error.message, rowCount: 0, queryTime: Date.now() - startTime });
@@ -634,9 +657,7 @@ router.post('/explain', async (req, res) => {
     if (!config) {
       return res.json({ error: '数据库未配置', rowCount: 0 });
     }
-    // 显式禁用多语句（mysql2 默认值，显式声明防止被覆盖）
-    const connection = await mysql.createConnection({ ...config, multipleStatements: false });
-    
+
     // 对于普通SELECT查询，使用标准EXPLAIN格式（不是JSON）
     const isSelectOrWith = cleanSql.toUpperCase().startsWith('SELECT') || cleanSql.toUpperCase().startsWith('WITH');
     const explainSql = cleanSql.toUpperCase().startsWith('EXPLAIN') 
@@ -645,9 +666,8 @@ router.post('/explain', async (req, res) => {
         ? `EXPLAIN ${cleanSql}`  // 使用标准表格格式
         : `EXPLAIN ${cleanSql}`;
     logger.info('EXPLAIN executing', { cleanSql, explainSql });
-    const [rows] = await connection.query(explainSql);
-    await connection.end();
-    
+    const [rows] = await (await getPool()).query(explainSql);
+
     res.json({ results: rows, rowCount: rows.length });
   } catch (error) {
     logger.error('EXPLAIN execution failed', { error: error.message, sql });

@@ -153,16 +153,15 @@ function AuthenticatedApp({ user, logout }) {
   }, []);
 
   const loadCurrentModel = async () => {
-    if (loadCurrentModel.loading) return;
-    loadCurrentModel.loading = true;
+    if (loadingRef.current.model) return;
+    loadingRef.current.model = true;
     try {
       const data = await api.getLlMConfig();
       setCurrentModel(data.model || '');
     } catch (e) {} finally {
-      loadCurrentModel.loading = false;
+      loadingRef.current.model = false;
     }
   };
-  loadCurrentModel.loading = false;
 
   const loadAgentConfig = async () => {
     try {

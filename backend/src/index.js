@@ -17,12 +17,6 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Initialize SQLite（异步初始化默认 admin 账号，bcrypt 不阻塞事件循环）
-(async () => {
-  await initDatabase();
-  initSkillLogTable();
-})();
-
 // Routes
 import configRouter from './routes/config.js';
 import queryRouter from './routes/query.js';
@@ -42,9 +36,21 @@ app.use('/api/table-schema', tableSchemaRouter);
 app.use('/api/skills', skillRouter);
 app.use('/api/export', exportRouter);
 
-app.listen(PORT, () => {
-  console.log('Server running on port ' + PORT);
-});
+// 启动序列：必须先完成数据库初始化，再启动 HTTP 监听
+// - 修复 #LOG-03：之前 initDatabase/initSkillLogTable 是 fire-and-forget，
+//   DB 失败时 HTTP 仍然 listen，路由能 hit 但都 500
+// - 失败时 process.exit(1)，让 Electron 在 30s 超时窗内看到 stderr 立即报错
+(async () => {
+  try {
+    await initDatabase();
+    initSkillLogTable();      // 同步函数（better-sqlite3 同步），但放在 try 里以捕获任何 throw
+    console.log('Server running on port ' + PORT);
+    app.listen(PORT);
+  } catch (e) {
+    console.error('Fatal: failed to initialize database, refusing to start', e);
+    process.exit(1);
+  }
+})();
 
 export default app;
 

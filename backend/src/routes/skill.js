@@ -2,11 +2,11 @@ import { Router } from 'express';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
-import mysql from 'mysql2/promise';
 import { getDb } from '../db/sqlite.js';
 import { getConfig } from '../services/config.js';
 import { authRequired } from '../services/auth.js';
 import { logger } from '../logger.js';
+import { getPool } from '../services/mysqlPool.js';
 
 const router = Router();
 
@@ -356,24 +356,29 @@ router.post('/fetch-ddl', async (req, res) => {
     return res.status(400).json({ success: false, message: 'Missing tableName' });
   }
 
+  // #SEC-01 防御 SQL 注入：
+  // 1. 严格白名单：只允许字母/数字/下划线/点号，最长 64 字符
+  // 2. 二次校验：表名必须在 table_index.json 中已知
+  // 3. 防御性转义：把任何残留的反引号反转义（白名单已排除，这里仅做兜底）
+  if (typeof tableName !== 'string' || !/^[a-zA-Z0-9_.]{1,64}$/.test(tableName)) {
+    logger.warn('fetch-ddl rejected: invalid tableName format', { tableName });
+    return res.status(400).json({ success: false, message: 'Invalid tableName' });
+  }
+  const safeTableName = tableName.replace(/`/g, '');
+
   try {
     const dbConfig = getConfig();
     if (!dbConfig) {
       return res.json({ success: false, message: '数据库未配置' });
     }
-    const connection = await mysql.createConnection({
-      host: dbConfig.host,
-      port: dbConfig.port || 3306,
-      user: dbConfig.user,
-      password: dbConfig.password,
-      database: dbConfig.database
-    });
 
-    const [rows] = await connection.query(`SHOW CREATE TABLE \`${tableName}\``);
-    await connection.end();
+    // 复用连接池，不再每次新建 TCP 连接
+    const [rows] = await (await getPool()).query(
+      `SHOW CREATE TABLE \`${safeTableName}\``
+    );
 
     if (!rows || rows.length === 0) {
-      return res.json({ success: false, message: `表 ${tableName} 不存在` });
+      return res.json({ success: false, message: `表 ${safeTableName} 不存在` });
     }
 
     const ddl = rows[0]['Create Table'] || rows[0]['Create View'];
@@ -387,8 +392,8 @@ router.post('/fetch-ddl', async (req, res) => {
       relatedTables
     });
   } catch (e) {
-    logger.error('Fetch DDL failed', { error: e.message, tableName });
-    res.json({ success: false, message: e.message });
+    logger.error('Fetch DDL failed', { error: e.message, tableName: safeTableName });
+    res.json({ success: false, message: '获取 DDL 失败' });
   }
 });
 

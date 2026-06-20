@@ -14,11 +14,17 @@ router.use(authRequired);
 router.get('/', (req, res) => {
   try {
     const db = getDb();
+    // #PERF-06：把相关子查询改成 LEFT JOIN + GROUP BY。
+    // 旧写法依赖 SQLite 优化器把子查询"展开"为 join；
+    // 显式 JOIN 后总是 1 次扫描 messages 表（可走 idx_messages_session_role 索引），
+    // 避免 N+1 风险（每个 session 一次 SUM 扫描）。
     const sessions = db.prepare(`
       SELECT s.id, s.name, s.sort_order, s.created_at,
-             COALESCE((SELECT SUM(total_tokens) FROM messages WHERE session_id = s.id AND role = 'usage'), 0) as total_tokens
+             COALESCE(SUM(CASE WHEN m.role = 'usage' THEN m.total_tokens END), 0) AS total_tokens
       FROM sessions s
+      LEFT JOIN messages m ON m.session_id = s.id
       WHERE s.user_id = ?
+      GROUP BY s.id
       ORDER BY s.id DESC
     `).all(req.user.id);
     res.json({ sessions });
