@@ -49,12 +49,13 @@ export function clearAuthCookie(res) {
   res.clearCookie(AUTH_COOKIE, { path: '/' });
 }
 
-export function hashPassword(plain) {
-  return bcrypt.hashSync(plain, 10);
+export async function hashPassword(plain) {
+  // 异步哈希：不阻塞事件循环，避免多用户并发时主进程卡死
+  return await bcrypt.hash(plain, 10);
 }
 
-export function comparePassword(plain, hash) {
-  return bcrypt.compareSync(plain, hash);
+export async function comparePassword(plain, hash) {
+  return await bcrypt.compare(plain, hash);
 }
 
 export function signToken(user) {

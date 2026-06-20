@@ -786,6 +786,16 @@
       ],
       "business_constraints": [],
       "business_rules": []
+    },
+    {
+      "name": "edu_campus_school_class",
+      "description": "教室",
+      "tags": [],
+      "related_tables": [
+        "edu_campus_school"
+      ],
+      "business_constraints": [],
+      "business_rules": []
     }
   ]
 }

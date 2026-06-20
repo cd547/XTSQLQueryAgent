@@ -4,6 +4,7 @@
   "tables": [
     "edu_campus",
     "edu_campus_school",
+    "edu_campus_school_class",
     "admin_category"
   ]
 }

@@ -10,7 +10,7 @@ const router = Router();
 const USERNAME_RE = /^[a-zA-Z0-9_\u4e00-\u9fa5]{2,32}$/;
 
 // POST /api/auth/register  注册
-router.post('/register', authRateLimiter, (req, res) => {
+router.post('/register', authRateLimiter, async (req, res) => {
   try {
     const { username, password, displayName } = req.body || {};
     if (!username || !password) {
@@ -27,7 +27,7 @@ router.post('/register', authRateLimiter, (req, res) => {
     if (exists) {
       return res.status(409).json({ error: '用户名已被占用' });
     }
-    const passwordHash = hashPassword(password);
+    const passwordHash = await hashPassword(password);
     const result = db.prepare(
       'INSERT INTO users (username, password_hash, display_name, role, token_version) VALUES (?, ?, ?, ?, 0)'
     ).run(username, passwordHash, displayName || username, 'user');
@@ -50,7 +50,7 @@ router.post('/register', authRateLimiter, (req, res) => {
 });
 
 // POST /api/auth/login  登录
-router.post('/login', authRateLimiter, (req, res) => {
+router.post('/login', authRateLimiter, async (req, res) => {
   try {
     const { username, password } = req.body || {};
     if (!username || !password) {
@@ -61,7 +61,7 @@ router.post('/login', authRateLimiter, (req, res) => {
       'SELECT id, username, password_hash, display_name, role, token_version FROM users WHERE username = ?'
     ).get(username);
 
-    if (!user || !comparePassword(password, user.password_hash)) {
+    if (!user || !(await comparePassword(password, user.password_hash))) {
       return res.status(401).json({ error: '用户名或密码错误' });
     }
     const safeUser = {
@@ -100,7 +100,7 @@ router.post('/logout', authRequired, (req, res) => {
 });
 
 // POST /api/auth/change-password  修改密码（需要登录）
-router.post('/change-password', authRateLimiter, authRequired, (req, res) => {
+router.post('/change-password', authRateLimiter, authRequired, async (req, res) => {
   try {
     const { oldPassword, newPassword } = req.body || {};
     if (!oldPassword || !newPassword) {
@@ -111,13 +111,13 @@ router.post('/change-password', authRateLimiter, authRequired, (req, res) => {
     }
     const db = getDb();
     const row = db.prepare('SELECT password_hash FROM users WHERE id = ?').get(req.user.id);
-    if (!row || !comparePassword(oldPassword, row.password_hash)) {
+    if (!row || !(await comparePassword(oldPassword, row.password_hash))) {
       return res.status(400).json({ error: '旧密码错误' });
     }
     // 改密同时递增 token_version，吊销该用户所有旧 token
     const nextTv = (req.user.token_version || 0) + 1;
     db.prepare('UPDATE users SET password_hash = ?, token_version = ? WHERE id = ?')
-      .run(hashPassword(newPassword), nextTv, req.user.id);
+      .run(await hashPassword(newPassword), nextTv, req.user.id);
     res.json({ success: true });
   } catch (e) {
     logger.error('修改密码失败', { error: e.message });

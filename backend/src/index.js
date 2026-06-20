@@ -17,9 +17,11 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok' });
 });
 
-// Initialize SQLite
-initDatabase();
-initSkillLogTable();
+// Initialize SQLite（异步初始化默认 admin 账号，bcrypt 不阻塞事件循环）
+(async () => {
+  await initDatabase();
+  initSkillLogTable();
+})();
 
 // Routes
 import configRouter from './routes/config.js';
