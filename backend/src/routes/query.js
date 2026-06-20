@@ -9,6 +9,12 @@ import { getConfig, getLlmConfig } from '../services/config.js';
 import { authRequired, sessionBelongsToUser } from '../services/auth.js';
 import { logger } from '../logger.js';
 import { generateSQLWithLangChainStreamGen_BAK, loadSkillMd, getLastMessages, loadMessagesFromDb, clearSessionRegistry } from '../services/llm.js';
+import { validateReadOnlySql } from '../services/sqlValidator.js';
+
+// /execute 端点：只允许查询，不允许 EXPLAIN
+const EXECUTE_SQL_OPTIONS = { allowedPrefixes: ['SELECT', 'WITH'] };
+// /explain 端点：允许查询 + EXPLAIN
+const EXPLAIN_SQL_OPTIONS = { allowedPrefixes: ['SELECT', 'WITH', 'EXPLAIN'] };
 
 const router = Router();
 
@@ -569,23 +575,10 @@ router.post('/execute', async (req, res) => {
     return res.status(403).json({ error: '无权访问此会话', rowCount: 0, queryTime: 0 });
   }
 
-  const upper = sql.toUpperCase().trim();
-  
-  // 去除SQL中的所有注释（-- 和 /* */）
-  let cleanSql = upper
-    .replace(/--[^\n]*/g, '')
-    .replace(/\/\*[\s\S]*?\*\//g, '')
-    .trim();
-  
-  // 先检查是否以SELECT或WITH开头（最准确的检测方法）
-  if (!cleanSql.startsWith('SELECT') && !cleanSql.toUpperCase().startsWith('WITH')) {
-    const forbidden = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE'];
-    for (const word of forbidden) {
-      if (cleanSql.includes(word)) {
-        return res.json({ error: `不允许执行 ${word} 操作`, rowCount: 0, queryTime: 0 });
-      }
-    }
-    return res.json({ error: '只允许SELECT查询', rowCount: 0, queryTime: 0 });
+  // 统一 SQL 校验：剥离注释、前缀白名单、危险函数黑名单、多语句检测
+  const sqlCheck = validateReadOnlySql(sql, EXECUTE_SQL_OPTIONS);
+  if (!sqlCheck.valid) {
+    return res.json({ error: sqlCheck.message, code: sqlCheck.code, rowCount: 0, queryTime: 0 });
   }
 
   try {
@@ -593,15 +586,11 @@ router.post('/execute', async (req, res) => {
     if (!config) {
       return res.json({ error: '数据库未配置', rowCount: 0, queryTime: 0 });
     }
-    const connection = await mysql.createConnection(config);
+    // 显式禁用多语句（mysql2 默认值，显式声明防止被覆盖）
+    const connection = await mysql.createConnection({ ...config, multipleStatements: false });
 
-    // 去除SQL末尾的分号，避免拼接LIMIT出错
-    // 使用之前已清理注释的SQL（转为小写保持原始大小写）
-    const execSql = sql
-      .replace(/--[^\n]*/g, '')
-      .replace(/\/\*[\s\S]*?\*\//g, '')
-      .replace(/;$/, '')
-      .trim();
+    // 复用 sqlValidator 已清理过的 SQL（注释、末尾分号已剥离）
+    const execSql = sqlCheck.cleaned;
     const finalSql = execSql.includes('LIMIT') ? execSql : execSql + ' LIMIT 1000';
     const [rows] = await connection.query(finalSql);
     await connection.end();
@@ -633,37 +622,20 @@ router.post('/explain', async (req, res) => {
     return res.json({ error: '请提供 SQL 语句', rowCount: 0 });
   }
   
-  // 提取有效 SQL（去除注释，只保留 SQL 语句）
-  // 先去除所有注释，再处理行
-  let cleanSql = sql
-    .replace(/\/\*[\s\S]*?\*\//g, '')  // 去除 /* */ 注释
-    .replace(/--[^\n]*/g, '');           // 去除 -- 注释
-  
-  // 按行分割，过滤空行
-  const lines = cleanSql.split('\n');
-  const validLines = lines.filter(line => line.trim());
-  cleanSql = validLines.join(' ').trim();
-  
-  // 将多个空格合并为单个空格
-  cleanSql = cleanSql.replace(/\s+/g, ' ').trim();
-  
-  if (!cleanSql.toUpperCase().startsWith('SELECT') && !cleanSql.toUpperCase().startsWith('EXPLAIN') && !cleanSql.toUpperCase().startsWith('WITH')) {
-    const forbidden = ['INSERT', 'UPDATE', 'DELETE', 'DROP', 'CREATE', 'ALTER', 'TRUNCATE'];
-    const upperSql = cleanSql.toUpperCase();
-    for (const word of forbidden) {
-      if (upperSql.includes(word)) {
-        return res.json({ error: `不允许执行 ${word} 操作`, rowCount: 0 });
-      }
-    }
-    return res.json({ error: '只允许 SELECT/EXPLAIN 查询', rowCount: 0 });
+  // 统一 SQL 校验：剥离注释、前缀白名单、危险函数黑名单、多语句检测
+  const sqlCheck = validateReadOnlySql(sql, EXPLAIN_SQL_OPTIONS);
+  if (!sqlCheck.valid) {
+    return res.json({ error: sqlCheck.message, code: sqlCheck.code, rowCount: 0 });
   }
+  const cleanSql = sqlCheck.cleaned;
 
   try {
     const config = getConfig();
     if (!config) {
       return res.json({ error: '数据库未配置', rowCount: 0 });
     }
-const connection = await mysql.createConnection(config);
+    // 显式禁用多语句（mysql2 默认值，显式声明防止被覆盖）
+    const connection = await mysql.createConnection({ ...config, multipleStatements: false });
     
     // 对于普通SELECT查询，使用标准EXPLAIN格式（不是JSON）
     const isSelectOrWith = cleanSql.toUpperCase().startsWith('SELECT') || cleanSql.toUpperCase().startsWith('WITH');

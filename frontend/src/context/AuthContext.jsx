@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState, useCallback } from 'react';
-import { getToken, setToken, getStoredUser, setStoredUser, loginApi, registerApi, getMeApi, logoutApi } from '../api/index.js';
+import { getStoredUser, setStoredUser, loginApi, registerApi, getMeApi, logoutApi } from '../api/index.js';
 
 const AuthContext = createContext(null);
 
@@ -66,8 +66,7 @@ export function AuthProvider({ children }) {
 
   const logout = useCallback(async () => {
     try { await logoutApi(); } catch (e) { /* 即便服务端失败也要清本地 */ }
-    // 把所有可能残留的鉴权信息全部清掉，确保彻底走新流程
-    setToken('');
+    // 彻底走新流程：不再操作 localStorage 里的 token（已被 api/index.js 启动时清理）
     setStoredUser(null);
     setUser(null);
   }, []);

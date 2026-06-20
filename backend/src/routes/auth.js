@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { getDb } from '../db/sqlite.js';
 import { authRequired, hashPassword, comparePassword, signToken, setAuthCookie, clearAuthCookie } from '../services/auth.js';
+import { authRateLimiter } from '../middleware/rateLimit.js';
 import { logger } from '../logger.js';
 
 const router = Router();
@@ -9,7 +10,7 @@ const router = Router();
 const USERNAME_RE = /^[a-zA-Z0-9_\u4e00-\u9fa5]{2,32}$/;
 
 // POST /api/auth/register  注册
-router.post('/register', (req, res) => {
+router.post('/register', authRateLimiter, (req, res) => {
   try {
     const { username, password, displayName } = req.body || {};
     if (!username || !password) {
@@ -49,7 +50,7 @@ router.post('/register', (req, res) => {
 });
 
 // POST /api/auth/login  登录
-router.post('/login', (req, res) => {
+router.post('/login', authRateLimiter, (req, res) => {
   try {
     const { username, password } = req.body || {};
     if (!username || !password) {
@@ -99,7 +100,7 @@ router.post('/logout', authRequired, (req, res) => {
 });
 
 // POST /api/auth/change-password  修改密码（需要登录）
-router.post('/change-password', authRequired, (req, res) => {
+router.post('/change-password', authRateLimiter, authRequired, (req, res) => {
   try {
     const { oldPassword, newPassword } = req.body || {};
     if (!oldPassword || !newPassword) {

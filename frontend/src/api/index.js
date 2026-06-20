@@ -12,17 +12,19 @@ const api = axios.create({
 // localStorage 中只缓存"用户信息展示"用，不放敏感 token。
 // token 现在由后端通过 Set-Cookie 注入，浏览器自动随请求带上，前端 JS 不可读 → 防 XSS 窃取。
 const USER_KEY = 'xtsql_user';
-// 兼容老数据：如有遗留 token 仍可作为 Authorization 头兜底（非 httpOnly 场景）
+
+// 老版本把 JWT 存在 localStorage 的 'xtsql_token' 里。
+// 新版本完全使用 httpOnly cookie，XSS 也读不到 token。
+// 为防止残留的老 token 被旧的 Authorization 头兜底利用，迁移时主动清掉。
 const LEGACY_TOKEN_KEY = 'xtsql_token';
-
-export function getToken() {
-  return localStorage.getItem(LEGACY_TOKEN_KEY) || '';
-}
-
-export function setToken(token) {
-  if (token) localStorage.setItem(LEGACY_TOKEN_KEY, token);
-  else localStorage.removeItem(LEGACY_TOKEN_KEY);
-}
+(function cleanupLegacyToken() {
+  try {
+    if (localStorage.getItem(LEGACY_TOKEN_KEY)) {
+      localStorage.removeItem(LEGACY_TOKEN_KEY);
+      console.info('[auth] 已清理遗留的 localStorage token（升级到 httpOnly cookie 流程）');
+    }
+  } catch { /* localStorage 不可用时忽略 */ }
+})();
 
 export function getStoredUser() {
   try {
@@ -38,22 +40,11 @@ export function setStoredUser(user) {
   else localStorage.removeItem(USER_KEY);
 }
 
-// 请求拦截器：兼容老 token 兜底；新流程无需此头
-api.interceptors.request.use((config) => {
-  const token = getToken();
-  if (token) {
-    config.headers = config.headers || {};
-    config.headers.Authorization = `Bearer ${token}`;
-  }
-  return config;
-});
-
 // 响应拦截器：401 时清理本地用户信息并触发全局事件
 api.interceptors.response.use(
   (resp) => resp,
   (error) => {
     if (error.response && error.response.status === 401) {
-      setToken('');
       setStoredUser(null);
       window.dispatchEvent(new CustomEvent('xtsql:auth-expired'));
     }
