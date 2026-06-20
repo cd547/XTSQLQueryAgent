@@ -201,16 +201,19 @@ router.get('/version', async (req, res) => {
   });
 });
 
+// 注意：此接口前端未调用（前端统一通过 /query/messages/:sessionId 获取消息历史）。
+// 保留仅作开发调试用途；返回的是 getLastMessages() 的进程级全局缓存，
+// 任何登录用户调用都可能拿到最后一个提问者的消息内容，请勿在生产环境对外开放。
 router.get('/messages', async (req, res) => {
   const messages = getLastMessages();
   if (messages) {
-    res.json({ 
-      success: true, 
-      messages, 
-      count: messages.length 
+    res.json({
+      success: true,
+      messages,
+      count: messages.length
     });
   } else {
-    res.json({ 
+    res.json({
       success: false, 
       message: '暂无消息数据，请先执行一次 SQL 生成请求' 
     });

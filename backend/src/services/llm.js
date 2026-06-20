@@ -30,6 +30,9 @@ function flushLogs() {
   writeLlmLog(content);
 }
 
+// 进程级全局缓存：记录最近一次 LLM 调用的完整 messages 数组。
+// 当前仅供开发期调试接口 GET /api/query/messages 使用（前端未调用）。
+// 注意：此处没有按 userId 区分，任何调用方都会拿到最后一个提问者的内容。
 let lastMessages = null;
 
 export function getLastMessages() {
@@ -550,6 +553,7 @@ while (true) {
         }));
       }
       messages.push(assistantMsg);
+      // 同步一份到全局缓存（仅供开发期 GET /api/query/messages 调试接口使用）
       lastMessages = JSON.parse(JSON.stringify(messages));
       
       // 保存到数据库（如果有 sessionId）

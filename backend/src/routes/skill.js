@@ -33,6 +33,20 @@ function getFileLanguage(filename) {
   return langMap[ext] || 'plaintext';
 }
 
+// 路径安全检查：确保 target 位于 base 目录内部
+// - 防御 ../ 跳出
+// - 防御前缀撞名（如 base=/a/skills, target=/a/skillsXXX/...）
+// - 防御绝对路径
+function isPathSafe(base, target) {
+  const normalizedBase = path.resolve(base);
+  const normalizedTarget = path.resolve(target);
+  const rel = path.relative(normalizedBase, normalizedTarget);
+  if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
+    return false;
+  }
+  return true;
+}
+
 function buildTree(dirPath, relativePath = '') {
   const items = [];
   try {
@@ -100,10 +114,15 @@ router.get('/read', (req, res) => {
   if (!filePath) {
     return res.status(400).json({ success: false, message: 'Missing path parameter' });
   }
-  
+
   const fullPath = path.join(skillsPath, filePath);
   const normalizedPath = path.normalize(fullPath);
-  
+
+  // 路径安全检查：必须在 skills 目录内
+  if (!isPathSafe(skillsPath, normalizedPath)) {
+    return res.status(400).json({ success: false, message: 'Invalid path' });
+  }
+
   try {
     if (!fs.existsSync(normalizedPath)) {
       return res.status(404).json({ success: false, message: 'File not found' });
@@ -196,9 +215,9 @@ router.post('/save', (req, res) => {
 
   const fullPath = path.join(skillsPath, filePath);
   const normalizedPath = path.normalize(fullPath);
-  
-  // 安全检查：确保路径在 skills 目录内
-  if (!normalizedPath.startsWith(skillsPath)) {
+
+  // 路径安全检查：必须在 skills 目录内（防 ../ 跳出 + 防前缀撞名）
+  if (!isPathSafe(skillsPath, normalizedPath)) {
     return res.status(400).json({ success: false, message: 'Invalid path' });
   }
 
@@ -389,6 +408,9 @@ router.post('/create-table-files', (req, res) => {
     const existingTable = tableIndex.tables.find(t => t.name === tableName);
     if (existingTable) {
       const ddlPath = path.join(SKILL_V2_PATH, 'ddl', `${tableName}.sql`);
+      if (!isPathSafe(SKILL_V2_PATH, ddlPath)) {
+        return res.status(400).json({ success: false, message: 'Invalid tableName' });
+      }
       fs.writeFileSync(ddlPath, ddl, 'utf-8');
 
       const db = getDb();
@@ -429,9 +451,15 @@ router.post('/create-table-files', (req, res) => {
     saveTableIndex(tableIndex);
 
     const ddlPath = path.join(SKILL_V2_PATH, 'ddl', `${tableName}.sql`);
+    if (!isPathSafe(SKILL_V2_PATH, ddlPath)) {
+      return res.status(400).json({ success: false, message: 'Invalid tableName' });
+    }
     fs.writeFileSync(ddlPath, ddl, 'utf-8');
 
     const fieldConfigPath = path.join(SKILL_V2_PATH, 'field_config', `${tableName}.json`);
+    if (!isPathSafe(SKILL_V2_PATH, fieldConfigPath)) {
+      return res.status(400).json({ success: false, message: 'Invalid tableName' });
+    }
     const fieldConfig = {
       table_name: tableName,
       field_aliases: {},
