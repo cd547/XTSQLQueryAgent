@@ -7,6 +7,57 @@ const api = axios.create({
   baseURL: baseURL
 });
 
+// Token 存储键名（localStorage）
+const TOKEN_KEY = 'xtsql_token';
+const USER_KEY = 'xtsql_user';
+
+export function getToken() {
+  return localStorage.getItem(TOKEN_KEY) || '';
+}
+
+export function setToken(token) {
+  if (token) localStorage.setItem(TOKEN_KEY, token);
+  else localStorage.removeItem(TOKEN_KEY);
+}
+
+export function getStoredUser() {
+  try {
+    const raw = localStorage.getItem(USER_KEY);
+    return raw ? JSON.parse(raw) : null;
+  } catch {
+    return null;
+  }
+}
+
+export function setStoredUser(user) {
+  if (user) localStorage.setItem(USER_KEY, JSON.stringify(user));
+  else localStorage.removeItem(USER_KEY);
+}
+
+// 请求拦截器：自动附带 Authorization 头
+api.interceptors.request.use((config) => {
+  const token = getToken();
+  if (token) {
+    config.headers = config.headers || {};
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// 响应拦截器：401 时清理 token（外层 AuthContext 会监听 logout 事件跳转）
+api.interceptors.response.use(
+  (resp) => resp,
+  (error) => {
+    if (error.response && error.response.status === 401) {
+      setToken('');
+      setStoredUser(null);
+      // 触发全局事件，AuthContext 监听到后会切回登录页
+      window.dispatchEvent(new CustomEvent('xtsql:auth-expired'));
+    }
+    return Promise.reject(error);
+  }
+);
+
 export function testConnection(config) {
   return api.post('/config/test', config).then(r => r.data);
 }
@@ -34,7 +85,10 @@ export function queryGenerate(data) {
 export function queryGenerateStream(data, signal) {
   return fetch(baseURL + '/query/generate', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${getToken()}`
+    },
     body: JSON.stringify(data),
     signal: signal
   });
@@ -51,7 +105,10 @@ export function explainQuery(data) {
 export function explainAnalyze(sql, explainResults) {
   return fetch(baseURL + '/query/explain-analyze', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${getToken()}`
+    },
     body: JSON.stringify({ sql, explainResults })
   });
 }
@@ -126,6 +183,23 @@ export function getAgentConfig() {
 
 export function updateAgentConfig(key, value) {
   return api.put(`/config/agent/${key}`, { value }).then(r => r.data);
+}
+
+// 鉴权相关 API
+export function loginApi(payload) {
+  return api.post('/auth/login', payload).then(r => r.data);
+}
+
+export function registerApi(payload) {
+  return api.post('/auth/register', payload).then(r => r.data);
+}
+
+export function getMeApi() {
+  return api.get('/auth/me').then(r => r.data);
+}
+
+export function changePasswordApi(payload) {
+  return api.post('/auth/change-password', payload).then(r => r.data);
 }
 
 export default api;

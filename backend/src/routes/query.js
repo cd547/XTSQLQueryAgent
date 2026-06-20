@@ -6,20 +6,25 @@ import crypto from 'crypto';
 import mysql from 'mysql2/promise';
 import { getDb } from '../db/sqlite.js';
 import { getConfig, getLlmConfig } from '../services/config.js';
+import { authRequired, sessionBelongsToUser } from '../services/auth.js';
 import { logger } from '../logger.js';
 import { generateSQLWithLangChainStreamGen_BAK, loadSkillMd, getLastMessages, loadMessagesFromDb, clearSessionRegistry } from '../services/llm.js';
 
-function ensureSession() {
+const router = Router();
+
+// 所有查询接口都要求登录
+router.use(authRequired);
+
+function ensureSession(userId) {
   const db = getDb();
-  const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM sessions').get();
+  const maxOrder = db.prepare('SELECT MAX(sort_order) as max FROM sessions WHERE user_id = ?').get(userId);
   const newOrder = (maxOrder?.max || 0) + 1;
   const sessionName = `新对话#${newOrder}`;
-  const result = db.prepare('INSERT INTO sessions (name, sort_order) VALUES (?, ?)').run(sessionName, newOrder);
+  const result = db.prepare('INSERT INTO sessions (name, sort_order, user_id) VALUES (?, ?, ?)').run(sessionName, newOrder, userId);
   return result.lastInsertRowid;
 }
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const router = Router();
 
 const projectRoot = process.env.PROJECT_ROOT || path.resolve(__dirname, '../../../');
 const SKILL_V2_PATH = path.join(process.env.SKILL_PATH || path.join(projectRoot, 'skills'), 'sql-creator-skill-v2');
@@ -215,27 +220,30 @@ router.get('/messages', async (req, res) => {
 router.get('/messages/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
   try {
+    if (!sessionBelongsToUser(sessionId, req.user.id)) {
+      return res.status(403).json({ success: false, message: '无权访问此会话' });
+    }
     const result = loadMessagesFromDb(sessionId);
     if (result) {
-      res.json({ 
-        success: true, 
-        messages: result.messages, 
+      res.json({
+        success: true,
+        messages: result.messages,
         count: result.messages.length,
         messageTokens: result.messageTokens,
-        sessionId 
+        sessionId
       });
     } else {
-      res.json({ 
-        success: false, 
+      res.json({
+        success: false,
         message: `会话 ${sessionId} 暂无消息历史`,
-        sessionId 
+        sessionId
       });
     }
   } catch (e) {
     logger.error('Failed to load messages from database', { error: e.message });
-    res.json({ 
-      success: false, 
-      message: '加载消息历史失败: ' + e.message 
+    res.json({
+      success: false,
+      message: '加载消息历史失败: ' + e.message
     });
   }
 });
@@ -243,6 +251,9 @@ router.get('/messages/:sessionId', async (req, res) => {
 router.delete('/messages/:sessionId', async (req, res) => {
   const { sessionId } = req.params;
   try {
+    if (!sessionBelongsToUser(sessionId, req.user.id)) {
+      return res.status(403).json({ success: false, message: '无权访问此会话' });
+    }
     const db = getDb();
     const result = db.prepare('DELETE FROM llm_messages WHERE session_id = ?').run(sessionId);
     // 清空工具调用注册表，避免后续请求仍按旧清单拦截
@@ -271,10 +282,15 @@ router.delete('/messages/:sessionId', async (req, res) => {
 router.post('/generate', async (req, res) => {
   let { question, sessionId, schemaMode } = req.body;
 
-  // 如果没有sessionId，自动创建
+  // 如果没有sessionId，自动创建（归属当前用户）
   if (!sessionId) {
-    sessionId = ensureSession();
-    logger.info('Auto-created session', { sessionId });
+    sessionId = ensureSession(req.user.id);
+    logger.info('Auto-created session', { sessionId, userId: req.user.id });
+  } else {
+    // 显式传入了 sessionId，必须校验归属
+    if (!sessionBelongsToUser(sessionId, req.user.id)) {
+      return res.status(403).json({ error: '无权访问此会话' });
+    }
   }
 
   try {
@@ -543,6 +559,11 @@ router.post('/execute', async (req, res) => {
 
   if (!sql || typeof sql !== 'string') {
     return res.json({ error: 'SQL不能为空', rowCount: 0, queryTime: 0 });
+  }
+
+  // 若传入了 sessionId，需要校验归属
+  if (sessionId && !sessionBelongsToUser(sessionId, req.user.id)) {
+    return res.status(403).json({ error: '无权访问此会话', rowCount: 0, queryTime: 0 });
   }
 
   const upper = sql.toUpperCase().trim();

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Layout, Input, Button, Table, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, InputNumber, Modal, Steps, Space, Dropdown } from 'antd';
+import { Layout, Input, Button, Table, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, InputNumber, Modal, Steps, Space, Dropdown, Avatar, Tooltip } from 'antd';
 import 'react-resizable/css/styles.css';
 import './App.css';
 const { Panel } = Collapse;
@@ -8,8 +8,10 @@ import ConfirmDialog from './components/ConfirmDialog';
 import ResizableTitle from './components/ResizableTitle';
 import ChatMessage from './components/ChatMessage';
 import ConfigPanel from './components/ConfigPanel';
+import LoginPage from './components/LoginPage';
+import { useAuth } from './context/AuthContext.jsx';
 import * as api from './api/index.js';
-import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined, RobotOutlined, MoreOutlined, DeleteOutlined, LoadingOutlined } from '@ant-design/icons';
+import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined, RobotOutlined, MoreOutlined, DeleteOutlined, LoadingOutlined, LogoutOutlined, UserOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
@@ -20,6 +22,25 @@ const { TextArea } = Input;
 const { Sider, Content } = Layout;
 
 function App() {
+  const { isAuthenticated, bootstrapping, user, logout } = useAuth();
+
+  // 未登录：渲染登录页（带启动校验 loading 态）
+  if (bootstrapping) {
+    return (
+      <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        <Spin size="large" tip="正在校验登录状态..." />
+      </div>
+    );
+  }
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
+
+  return <AuthenticatedApp user={user} logout={logout} />;
+}
+
+// 鉴权通过后的主体组件，保持原 App 业务逻辑不变
+function AuthenticatedApp({ user, logout }) {
   const [sessions, setSessions] = useState([]);
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -970,6 +991,33 @@ const explainColumns = useMemo(() => explainResults.length > 0
               <Button icon={<FolderOutlined />} onClick={() => { if (skillTree.length === 0) loadSkillsList(); setSkillOpen(true); }} size="small" style={{ flex: 1 }}>
                 Skill
               </Button>
+            </div>
+            <div style={{ padding: '6px 10px', borderTop: '1px solid #e8e8e8', display: 'flex', alignItems: 'center', gap: 8, background: '#fafafa' }}>
+              <Avatar size={26} style={{ backgroundColor: '#1677ff' }} icon={<UserOutlined />} />
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user?.display_name || user?.username || '用户'}
+                </div>
+                <div style={{ fontSize: 10, color: '#999', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                  {user?.role === 'admin' ? '管理员' : '普通用户'} · {user?.username}
+                </div>
+              </div>
+              <Tooltip title="退出登录">
+                <Button
+                  type="text"
+                  size="small"
+                  icon={<LogoutOutlined />}
+                  onClick={() => {
+                    Modal.confirm({
+                      title: '确认退出登录？',
+                      content: '退出后需要重新登录才能使用。',
+                      okText: '退出',
+                      cancelText: '取消',
+                      onOk: () => logout()
+                    });
+                  }}
+                />
+              </Tooltip>
             </div>
           </div>
         </Sider>

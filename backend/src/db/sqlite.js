@@ -1,4 +1,5 @@
 import Database from 'better-sqlite3';
+import bcrypt from 'bcryptjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { logger } from '../logger.js';
@@ -35,7 +36,28 @@ export function getDb() {
 
 export function initDatabase() {
   const db = getDb();
-  
+
+  // 用户表
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS users (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      username TEXT UNIQUE NOT NULL,
+      password_hash TEXT NOT NULL,
+      display_name TEXT,
+      role TEXT DEFAULT 'user',
+      created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+
+  // 初始化默认 admin 用户（仅当用户表为空时）
+  const userCount = db.prepare('SELECT COUNT(*) as cnt FROM users').get();
+  if (userCount.cnt === 0) {
+    const defaultHash = bcrypt.hashSync('admin123', 10);
+    db.prepare('INSERT INTO users (username, password_hash, display_name, role) VALUES (?, ?, ?, ?)')
+      .run('admin', defaultHash, '管理员', 'admin');
+    console.log('已创建默认管理员账号: admin / admin123，请尽快修改密码');
+  }
+
   db.exec(`
     CREATE TABLE IF NOT EXISTS sessions (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -63,6 +85,23 @@ export function initDatabase() {
     db.exec(`ALTER TABLE sessions ADD COLUMN summary TEXT`);
   } catch (e) {
     logger.debug('Column summary already exists');
+  }
+
+  // user_id 字段（多用户隔离）
+  try {
+    db.exec(`ALTER TABLE sessions ADD COLUMN user_id INTEGER`);
+  } catch (e) {
+    logger.debug('Column user_id already exists');
+  }
+
+  // 给历史未分配 user_id 的会话分配给首个用户（admin）
+  try {
+    const firstUser = db.prepare('SELECT id FROM users ORDER BY id ASC LIMIT 1').get();
+    if (firstUser) {
+      db.prepare('UPDATE sessions SET user_id = ? WHERE user_id IS NULL').run(firstUser.id);
+    }
+  } catch (e) {
+    logger.debug('Backfill user_id failed', { error: e.message });
   }
 
   db.exec(`
@@ -136,6 +175,7 @@ export function initDatabase() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_session_role ON messages(session_id, role)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_sort_order ON sessions(sort_order)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_table_schemas_table_name ON table_schemas(table_name)`);
 
   // 创建 LLM 消息历史表（用于多轮对话恢复）

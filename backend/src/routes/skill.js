@@ -5,9 +5,13 @@ import { fileURLToPath } from 'url';
 import mysql from 'mysql2/promise';
 import { getDb } from '../db/sqlite.js';
 import { getConfig } from '../services/config.js';
+import { authRequired } from '../services/auth.js';
 import { logger } from '../logger.js';
 
 const router = Router();
+
+// skills 资料是共享的，但仍要求登录后才可访问
+router.use(authRequired);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);

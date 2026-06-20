@@ -24,7 +24,9 @@ import sessionRouter from './routes/session.js';
 import tableSchemaRouter from './routes/tableSchema.js';
 import skillRouter from './routes/skill.js';
 import exportRouter from './routes/export.js';
+import authRouter from './routes/auth.js';
 
+app.use('/api/auth', authRouter);
 app.use('/api/config', configRouter);
 app.use('/api/query', queryRouter);
 app.use('/api/tables', tablesRouter);
