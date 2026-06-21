@@ -9,6 +9,8 @@ function ConfigPanel() {
   const [testing, setTesting] = useState(false);
   const [testingLlm, setTestingLlm] = useState(false);
   const [savingAgent, setSavingAgent] = useState(false);
+  const [availableModels, setAvailableModels] = useState([]);
+  const [loadingModels, setLoadingModels] = useState(false);
 
   useEffect(() => {
     api.getAgentConfig().then(data => {
@@ -25,9 +27,33 @@ function ConfigPanel() {
           apiKey: data.apiKey || '',
           model: data.model || ''
         });
+        if (data.hasApiKey) {
+          fetchModels();
+        }
       }
     });
   }, []);
+
+  const fetchModels = async () => {
+    setLoadingModels(true);
+    try {
+      const data = await api.getDeepseekModels();
+      if (data.success && data.models) {
+        setAvailableModels(data.models.map(m => ({ value: m.id, label: m.name })));
+      } else {
+        message.error(data.message || '获取模型列表失败');
+      }
+    } catch (e) {
+      message.error('获取模型列表失败');
+    } finally {
+      setLoadingModels(false);
+    }
+  };
+
+  const handleApiKeyChange = (e) => {
+    const apiKey = e.target.value;
+    setLlmConfig({ ...llmConfig, apiKey, model: '' });
+  };
   
   const testDb = async () => {
     setTesting(true);
@@ -50,8 +76,15 @@ function ConfigPanel() {
   const saveLlm = async () => {
     setTestingLlm(true);
     try {
-      const data = await api.saveLlMConfig(llmConfig);
-      message[data.success ? 'success' : 'error'](data.success ? '保存成功' : '保存失败');
+      const data = await api.saveLlMConfig({ ...llmConfig, provider: 'deepseek' });
+      if (data.success) {
+        message.success('保存成功');
+        if (llmConfig.apiKey) {
+          fetchModels();
+        }
+      } else {
+        message.error('保存失败');
+      }
     } catch (e) { message.error('保存失败'); }
     finally { setTestingLlm(false); }
   };
@@ -99,9 +132,27 @@ function ConfigPanel() {
       
       <h3 style={{ marginTop: 24, marginBottom: 16, fontSize: 14 }}>LLM 配置</h3>
       <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        <Select value={llmConfig.provider} onChange={v => setLlmConfig({...llmConfig, provider: v})} options={[{ value: 'deepseek', label: 'DeepSeek' }, { value: 'openai', label: 'OpenAI' }, { value: 'minimax', label: 'MiniMax' }]} style={{ fontSize: 12 }} />
-        <Input.Password placeholder="API Key" value={llmConfig.apiKey} onChange={e => setLlmConfig({...llmConfig, apiKey: e.target.value})} style={{ fontSize: 12 }} />
-        <Input placeholder="模型名称" value={llmConfig.model} onChange={e => setLlmConfig({...llmConfig, model: e.target.value})} style={{ fontSize: 12 }} />
+        <Space>
+          <span style={{ width: 70 }}>Provider</span>
+          <span style={{ fontSize: 12 }}>DeepSeek</span>
+        </Space>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 70, fontSize: 12 }}>API Key</span>
+          <Input.Password placeholder="API Key" value={llmConfig.apiKey} onChange={handleApiKeyChange} style={{ fontSize: 12, flex: 1 }} />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 70, fontSize: 12 }}>模型</span>
+          <Select
+            value={llmConfig.model || undefined}
+            onChange={v => setLlmConfig({ ...llmConfig, model: v })}
+            options={availableModels}
+            loading={loadingModels}
+            placeholder="请先输入API Key"
+            style={{ fontSize: 12, flex: 1, minWidth: 200 }}
+            showSearch
+            allowClear
+          />
+        </div>
         <Button onClick={saveLlm} loading={testingLlm} style={{ fontSize: 12 }}>保存LLM配置</Button>
       </div>
 

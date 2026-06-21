@@ -74,10 +74,47 @@ router.get('/llm', async (req, res) => {
 
   if (row) {
     const config = JSON.parse(row.value);
+    const hasApiKey = !!config.apiKey;
     delete config.apiKey;
-    res.json(config);
+    res.json({ ...config, hasApiKey });
   } else {
-    res.json({});
+    res.json({ hasApiKey: false });
+  }
+});
+
+router.get('/llm/models', async (req, res) => {
+  const db = getDb();
+  const row = db.prepare('SELECT value FROM configs WHERE key = ?').get('llm_config');
+
+  if (!row) {
+    return res.json({ success: false, message: '请先配置DeepSeek API Key' });
+  }
+
+  const config = JSON.parse(row.value);
+  if (!config.apiKey) {
+    return res.json({ success: false, message: '请先配置DeepSeek API Key' });
+  }
+
+  try {
+    const response = await fetch('https://api.deepseek.com/models', {
+      headers: {
+        'Authorization': `Bearer ${config.apiKey}`,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('DeepSeek models API error', { status: response.status, error: errorText });
+      return res.json({ success: false, message: `API错误: ${response.status}` });
+    }
+
+    const data = await response.json();
+    const models = data.data.map(m => ({ id: m.id, name: m.id }));
+    res.json({ success: true, models });
+  } catch (error) {
+    logger.error('Failed to fetch deepseek models', { error: error.message });
+    res.json({ success: false, message: error.message });
   }
 });
 
