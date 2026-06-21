@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<title>XTSQL Agent - 紧凑型图标候选</title>
+<style>
+  :root { --bg: #f7f8fc; --bg-elev: #fff; --border: #e5e7eb; --text: #1f2937; --sub: #6b7280; }
+  html.dark { --bg: #0f1115; --bg-elev: #1a1d24; --border: #2a2f3a; --text: #e5e7eb; --sub: #9ca3af; }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--text); font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", sans-serif; }
+  h1 { font-size: 22px; margin: 0 0 8px; }
+  .sub { color: var(--sub); margin-bottom: 20px; font-size: 13px; }
+  .toolbar { margin-bottom: 20px; }
+  .toolbar button { padding: 6px 14px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg-elev); color: var(--text); cursor: pointer; font-size: 13px; margin-right: 8px; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px; }
+  .card { background: var(--bg-elev); border: 1px solid var(--border); border-radius: 14px; padding: 18px; display: flex; flex-direction: column; align-items: center; cursor: pointer; transition: transform .18s, box-shadow .18s, border-color .18s; }
+  .card:hover { transform: translateY(-2px); box-shadow: 0 8px 24px rgba(22,119,255,.08); border-color: var(--accent, #1677ff); }
+  .card-id { margin-top: 10px; font-size: 14px; font-weight: 600; }
+  .card-name { color: var(--sub); font-size: 12px; margin-top: 4px; text-align: center; }
+  .preview-row { display: flex; align-items: center; gap: 14px; margin-top: 12px; padding: 10px 12px; background: var(--bg); border-radius: 10px; border: 1px solid var(--border); }
+  .p1 { width: 16px; height: 16px; }
+  .p2 { width: 22px; height: 22px; }
+  .p3 { width: 32px; height: 32px; }
+  .p4 { width: 44px; height: 44px; }
+  .p5 { width: 64px; height: 64px; }
+  .lbl { color: var(--sub); font-size: 10px; }
+  .col { display: flex; flex-direction: column; align-items: center; gap: 2px; }
+  code { background: var(--bg); padding: 1px 5px; border-radius: 3px; font-size: 11px; }
+</style>
+</head>
+<body>
+<h1>🎨 紧凑型图标候选（实心填充）</h1>
+<div class="sub">为 16/32px 小尺寸专门优化。点选后告诉我 ID 即可。</div>
+<div class="toolbar">
+  <button onclick="document.documentElement.classList.toggle('dark')">🌓 切换深/浅色</button>
+</div>
+<div class="grid" id="grid"></div>
+
+<script>
+// 4 个紧凑型图标 SVG，currentColor 适配主题
+const ICONS = {
+  X: { name: '字母 X + 数据库', desc: '蓝紫渐变背景 + 白色大写 X（极简）', svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="gx" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1677ff"/><stop offset="100%" stop-color="#4f46e5"/></linearGradient></defs><rect width="64" height="64" rx="14" fill="url(#gx)"/><path d="M18 18 L32 32 L46 18 M46 46 L32 32 L18 46" stroke="#fff" stroke-width="6" stroke-linecap="round" stroke-linejoin="round" fill="none"/></svg>` },
+
+  Q: { name: 'Q 字母 + AI 光晕', desc: 'Q 字母（Query 的首字母）+ 蓝色渐变 + 光晕', svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><defs><radialGradient id="gq" cx="0.3" cy="0.3" r="0.8"><stop offset="0%" stop-color="#60a5fa"/><stop offset="100%" stop-color="#4338ca"/></radialGradient></defs><rect width="64" height="64" rx="14" fill="url(#gq)"/><text x="32" y="46" text-anchor="middle" font-family="-apple-system,Segoe UI,Arial" font-size="38" font-weight="800" fill="#fff">Q</text><circle cx="48" cy="16" r="4" fill="#fbbf24"/><circle cx="48" cy="16" r="2" fill="#fef3c7"/></svg>` },
+
+  D: { name: '堆叠数据块（实心）', desc: '3 层实心方块 + 高光，撑满容器', svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="gd" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1677ff"/><stop offset="100%" stop-color="#4f46e5"/></linearGradient></defs><rect x="6" y="36" width="52" height="20" rx="4" fill="url(#gd)"/><rect x="10" y="22" width="44" height="14" rx="3" fill="url(#gd)" opacity="0.78"/><rect x="14" y="8" width="36" height="14" rx="3" fill="url(#gd)" opacity="0.55"/><rect x="12" y="42" width="20" height="3" rx="1.5" fill="#fff" opacity="0.9"/><rect x="12" y="48" width="14" height="3" rx="1.5" fill="#fff" opacity="0.7"/><rect x="16" y="28" width="14" height="3" rx="1.5" fill="#fff" opacity="0.85"/></svg>` },
+
+  S: { name: 'S 字母 + 数据库环', desc: 'S 字母（SQL）+ 顶部数据库横线，简洁技术风', svg: `<svg viewBox="0 0 64 64" xmlns="http://www.w3.org/2000/svg"><defs><linearGradient id="gs" x1="0" y1="0" x2="1" y2="1"><stop offset="0%" stop-color="#1677ff"/><stop offset="100%" stop-color="#4f46e5"/></linearGradient></defs><rect width="64" height="64" rx="14" fill="url(#gs)"/><ellipse cx="32" cy="18" rx="14" ry="3" fill="#fff" opacity="0.9"/><path d="M18 18 V26 C18 28 24 30 32 30 C40 30 46 28 46 26 V18" stroke="#fff" stroke-width="2" fill="none" opacity="0.6"/><text x="32" y="54" text-anchor="middle" font-family="-apple-system,Segoe UI,Arial" font-size="28" font-weight="800" fill="#fff">SQL</text></svg>` },
+};
+
+const grid = document.getElementById('grid');
+Object.entries(ICONS).forEach(([id, item]) => {
+  const card = document.createElement('div');
+  card.className = 'card';
+  card.dataset.id = id;
+  card.innerHTML = `
+    <div style="width:80px;height:80px;">${item.svg}</div>
+    <div class="card-id">候选 <code>${id}</code></div>
+    <div class="card-name">${item.name}</div>
+    <div class="card-name" style="font-size:11px;opacity:0.7;">${item.desc}</div>
+    <div class="preview-row">
+      <div class="col"><div class="p1">${item.svg}</div><div class="lbl">16</div></div>
+      <div class="col"><div class="p2">${item.svg}</div><div class="lbl">22</div></div>
+      <div class="col"><div class="p3">${item.svg}</div><div class="lbl">32</div></div>
+      <div class="col"><div class="p4">${item.svg}</div><div class="lbl">44</div></div>
+      <div class="col"><div class="p5">${item.svg}</div><div class="lbl">64</div></div>
+    </div>
+  `;
+  card.onclick = () => {
+    document.querySelectorAll('.card').forEach(c => { c.style.borderColor = ''; c.style.boxShadow = ''; });
+    card.style.borderColor = '#1677ff';
+    card.style.boxShadow = '0 0 0 3px rgba(22,119,255,.18)';
+  };
+  grid.appendChild(card);
+});
+</script>
+</body>
+</html>

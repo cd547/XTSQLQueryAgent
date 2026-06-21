@@ -1,213 +1,126 @@
-/* 自定义滚动条 - 使滚动条更细 */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
+/* ==================== 设计 Token ==================== */
+:root {
+  --xtsql-bg: #f7f8fc;
+  --xtsql-bg-elevated: #ffffff;
+  --xtsql-bg-sider: #ffffff;
+  --xtsql-bg-header: rgba(255, 255, 255, 0.85);
+  --xtsql-bg-input: #ffffff;
+  --xtsql-text: #1f2937;
+  --xtsql-text-secondary: #4b5563;
+  --xtsql-text-tertiary: #9ca3af;
+  --xtsql-border: #e5e7eb;
+  --xtsql-border-strong: #d1d5db;
+  --xtsql-hover: #f3f4f6;
+  --xtsql-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --xtsql-shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.06);
+  --xtsql-shadow-md: 0 8px 24px rgba(15, 23, 42, 0.08);
+  --xtsql-shadow-lg: 0 20px 40px rgba(15, 23, 42, 0.10);
+  --xtsql-radius-sm: 8px;
+  --xtsql-radius-md: 12px;
+  --xtsql-radius-lg: 16px;
+  --xtsql-radius-xl: 20px;
+  --xtsql-radius-pill: 999px;
+  --xtsql-scrollbar-track: transparent;
+  --xtsql-scrollbar-thumb: rgba(0, 0, 0, 0.18);
+  --xtsql-code-bg: #f6f8fa;
+  --xtsql-message-user: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  --xtsql-message-user-text: #ffffff;
+  --xtsql-message-assistant: #ffffff;
+  --xtsql-message-assistant-text: #1f2937;
+  --xtsql-accent: #1677ff;
+  --xtsql-accent-soft: rgba(22, 119, 255, 0.10);
+  --xtsql-accent-glow: 0 4px 14px rgba(22, 119, 255, 0.32);
+  --xtsql-success: #10b981;
+  --xtsql-danger: #ef4444;
+  --xtsql-divider: rgba(0, 0, 0, 0.06);
+  --xtsql-app-bg: radial-gradient(1200px 600px at 0% 0%, rgba(22, 119, 255, 0.06), transparent 60%),
+                  radial-gradient(900px 500px at 100% 100%, rgba(99, 102, 241, 0.05), transparent 60%),
+                  #f7f8fc;
 }
 
-::-webkit-scrollbar-track {
-  background: #f1f1f1;
+/* ==================== 暗色 Token ==================== */
+html.xtsql-dark,
+html.xtsql-dark body {
+  --xtsql-bg: #0f1115;
+  --xtsql-bg-elevated: #1a1d24;
+  --xtsql-bg-sider: #14171d;
+  --xtsql-bg-header: rgba(20, 23, 29, 0.85);
+  --xtsql-bg-input: #1a1d24;
+  --xtsql-text: #e5e7eb;
+  --xtsql-text-secondary: #9ca3af;
+  --xtsql-text-tertiary: #6b7280;
+  --xtsql-border: #2a2f3a;
+  --xtsql-border-strong: #3b4250;
+  --xtsql-hover: #232833;
+  --xtsql-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --xtsql-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --xtsql-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --xtsql-shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.55);
+  --xtsql-scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --xtsql-code-bg: #232833;
+  --xtsql-message-user: linear-gradient(135deg, #1677ff 0%, #4f46e5 100%);
+  --xtsql-message-user-text: #ffffff;
+  --xtsql-message-assistant: #1a1d24;
+  --xtsql-message-assistant-text: #e5e7eb;
+  --xtsql-accent: #4f8cff;
+  --xtsql-accent-soft: rgba(79, 140, 255, 0.16);
+  --xtsql-accent-glow: 0 4px 14px rgba(79, 140, 255, 0.45);
+  --xtsql-divider: rgba(255, 255, 255, 0.06);
+  --xtsql-app-bg: radial-gradient(1200px 600px at 0% 0%, rgba(79, 140, 255, 0.10), transparent 60%),
+                  radial-gradient(900px 500px at 100% 100%, rgba(124, 58, 237, 0.08), transparent 60%),
+                  #0f1115;
 }
 
-::-webkit-scrollbar-thumb {
-  background: #c1c1c1;
-  border-radius: 3px;
+html.xtsql-dark,
+html.xtsql-dark body {
+  background: var(--xtsql-app-bg);
+  color: var(--xtsql-text);
 }
 
-::-webkit-scrollbar-thumb:hover {
-  background: #a1a1a1;
+body, #root {
+  background: var(--xtsql-app-bg);
+  color: var(--xtsql-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
-/* Firefox 滚动条 */
+/* ==================== 全局滚动条 ==================== */
 * {
   scrollbar-width: thin;
-  scrollbar-color: #c1c1c1 #f1f1f1;
+  scrollbar-color: var(--xtsql-scrollbar-thumb) var(--xtsql-scrollbar-track);
 }
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: var(--xtsql-scrollbar-track); }
+*::-webkit-scrollbar-thumb {
+  background: var(--xtsql-scrollbar-thumb);
+  border-radius: var(--xtsql-radius-pill);
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.28); }
+html.xtsql-dark *::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.28); }
 
-/* 禁用 Monaco editor 的所有 hover 提示 */
-.monaco-editor .monaco-hover,
-.monaco-editor .hover-contents,
-.monaco-editor .monaco-hover-widget,
-.monaco-editor .workbench-hover,
-.monaco-editor .workbench-hover-container,
-.monaco-editor .monaco-editor-hover,
-.monaco-editor .find-widget .monaco-tooltip,
-.monaco-editor .find-widget .monaco-tooltip-trigger,
-.monaco-editor .overflowingContentWidget,
-.monaco-editor .monacomousecursorwidget,
-.monaco-editor .monaco-scrollable-element > .scrollbar > .slider {
-  display: none !important;
-  visibility: hidden !important;
-  opacity: 0 !important;
-  height: 0 !important;
-  width: 0 !important;
-  pointer-events: none !important;
-}
-
-/* 修复 find-widget 按钮点击问题 */
-.monaco-editor .find-widget .monaco-action-bar .action-label {
-  opacity: 1 !important;
-  visibility: visible !important;
-}
-
-.monaco-editor .find-widget .monaco-action-bar .action-label:hover {
-  opacity: 1 !important;
-}
-
-.monaco-editor .find-widget .monaco-action-bar .action-label:before,
-.monaco-editor .find-widget .monaco-action-bar .action-label:after {
-  display: none !important;
-}
-
-/* 确保 find-widget 按钮可点击 */
-.monaco-editor .find-widget .monaco-action-bar {
-  pointer-events: auto !important;
-}
-
-/* ===== SQL 结果表表头固定（从 App.jsx useEffect 提取，2026-06-09 阶段性优化）===== */
-/* 表头固定 */
-.sql-result-table .ant-table-thead > tr > th {
-  position: sticky !important;
-  top: 0 !important;
-  z-index: 10 !important;
-  background: white !important;
-}
-/* 表头行固定 */
-.sql-result-table .ant-table-thead {
-  position: sticky !important;
-  top: 0 !important;
-  z-index: 10 !important;
-  background: white !important;
-}
-/* 防止数据穿透 */
-.sql-result-table .ant-table-tbody > tr > td {
-  background: white !important;
-}
-/* 表格内部不滚动 - 让 wrapper 成为唯一的滚动容器，sticky 表头才能粘到 wrapper 顶部 */
-.sql-result-table .ant-table-body {
-  overflow: visible !important;
-}
-.sql-result-table .ant-table-scroll {
-  overflow: visible !important;
-}
-.sql-result-table .ant-table-scroll > .ant-table-body {
-  overflow: visible !important;
-}
-.sql-result-table .ant-table-content {
-  overflow: visible !important;
-}
-/* 列宽调整手柄 */
-.sql-result-table .ant-table-thead > tr > th.react-resizable .react-resizable-handle {
-  position: absolute !important;
-  right: 0 !important;
-  top: 0 !important;
-  height: 100% !important;
-  width: 15px !important;
-  z-index: 20 !important;
-  cursor: col-resize !important;
-}
-/* 确保表格宽度正确 */
-.sql-result-table .ant-table {
-  width: 100% !important;
-  table-layout: fixed !important;
-}
-
-/* ===== 配置面板字体（从 App.jsx useEffect 提取）===== */
-.config-drawer {
-  font-size: 12px !important;
-}
-.config-drawer .ant-input,
-.config-drawer .ant-select-selector,
-.config-drawer .ant-btn,
-.config-drawer .ant-input-number,
-.config-drawer h3,
-.config-drawer label {
-  font-size: 12px !important;
-}
-.config-drawer .ant-input-group-addon {
-  font-size: 12px !important;
-}
-
-/* ===== 隐藏滚动条但可滚动（从 App.jsx useEffect 提取）===== */
-.skill-drawer-scroll::-webkit-scrollbar {
-  display: none;
-}
+/* 隐藏某些区域的滚动条 */
+.skill-drawer-scroll::-webkit-scrollbar { display: none; }
 .skill-drawer-scroll {
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
 
-/* ===== 暗色主题 ===== */
-:root {
-  --xtsql-bg: #f5f5f5;
-  --xtsql-bg-elevated: #ffffff;
-  --xtsql-bg-sider: #ffffff;
-  --xtsql-bg-header: #ffffff;
-  --xtsql-text: rgba(0, 0, 0, 0.88);
-  --xtsql-text-secondary: rgba(0, 0, 0, 0.65);
-  --xtsql-text-tertiary: rgba(0, 0, 0, 0.45);
-  --xtsql-border: #f0f0f0;
-  --xtsql-border-strong: #d9d9d9;
-  --xtsql-hover: #f5f5f5;
-  --xtsql-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
-  --xtsql-scrollbar-track: #f1f1f1;
-  --xtsql-scrollbar-thumb: #c1c1c1;
-  --xtsql-scroll-bg: #ffffff;
-  --xtsql-code-bg: #f6f8fa;
-  --xtsql-message-user: #e6f4ff;
-  --xtsql-message-assistant: #ffffff;
-}
-
-html.xtsql-dark,
-html.xtsql-dark body {
-  --xtsql-bg: #141414;
-  --xtsql-bg-elevated: #1f1f1f;
-  --xtsql-bg-sider: #1f1f1f;
-  --xtsql-bg-header: #1f1f1f;
-  --xtsql-text: rgba(255, 255, 255, 0.88);
-  --xtsql-text-secondary: rgba(255, 255, 255, 0.65);
-  --xtsql-text-tertiary: rgba(255, 255, 255, 0.45);
-  --xtsql-border: #303030;
-  --xtsql-border-strong: #434343;
-  --xtsql-hover: #262626;
-  --xtsql-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
-  --xtsql-scrollbar-track: #1f1f1f;
-  --xtsql-scrollbar-thumb: #434343;
-  --xtsql-scroll-bg: #1f1f1f;
-  --xtsql-code-bg: #262626;
-  --xtsql-message-user: #111b26;
-  --xtsql-message-assistant: #1f1f1f;
-  background: var(--xtsql-bg);
-  color: var(--xtsql-text);
-}
-
-html.xtsql-dark ::-webkit-scrollbar-track {
-  background: var(--xtsql-scrollbar-track);
-}
-html.xtsql-dark ::-webkit-scrollbar-thumb {
-  background: var(--xtsql-scrollbar-thumb);
-}
-html.xtsql-dark * {
-  scrollbar-color: var(--xtsql-scrollbar-thumb) var(--xtsql-scrollbar-track);
-}
-
-/* App 主背景 */
-html.xtsql-dark #root,
+/* ==================== 暗色 antd 主题覆盖 ==================== */
 html.xtsql-dark .ant-layout,
 html.xtsql-dark .ant-layout-content,
 html.xtsql-dark .ant-layout-sider,
 html.xtsql-dark .ant-layout-header {
-  background-color: var(--xtsql-bg) !important;
+  background: transparent !important;
   color: var(--xtsql-text) !important;
 }
-
 html.xtsql-dark .ant-layout-sider,
 html.xtsql-dark .ant-layout-header {
-  background-color: var(--xtsql-bg-sider) !important;
+  background: var(--xtsql-bg-sider) !important;
   border-color: var(--xtsql-border) !important;
 }
-
 html.xtsql-dark .ant-menu {
-  background-color: transparent !important;
+  background: transparent !important;
   color: var(--xtsql-text) !important;
 }
 html.xtsql-dark .ant-menu-item,
@@ -220,11 +133,10 @@ html.xtsql-dark .ant-menu-submenu-title:hover {
   color: var(--xtsql-text) !important;
 }
 html.xtsql-dark .ant-menu-item-selected {
-  background-color: rgba(22, 119, 255, 0.18) !important;
-  color: #91caff !important;
+  background-color: var(--xtsql-accent-soft) !important;
+  color: var(--xtsql-accent) !important;
 }
 
-/* 卡片 / 抽屉 / Modal */
 html.xtsql-dark .ant-card,
 html.xtsql-dark .ant-drawer-content,
 html.xtsql-dark .ant-drawer-header,
@@ -242,7 +154,6 @@ html.xtsql-dark .ant-modal-mask {
   background-color: rgba(0, 0, 0, 0.65) !important;
 }
 
-/* 输入控件 */
 html.xtsql-dark .ant-input,
 html.xtsql-dark .ant-input-affix-wrapper,
 html.xtsql-dark .ant-input-password,
@@ -251,7 +162,7 @@ html.xtsql-dark .ant-select-selector,
 html.xtsql-dark .ant-input-search,
 html.xtsql-dark textarea.ant-input,
 html.xtsql-dark .ant-picker {
-  background-color: var(--xtsql-bg-elevated) !important;
+  background-color: var(--xtsql-bg-input) !important;
   color: var(--xtsql-text) !important;
   border-color: var(--xtsql-border-strong) !important;
 }
@@ -268,7 +179,6 @@ html.xtsql-dark .ant-input-number-handler {
   border-color: var(--xtsql-border-strong) !important;
 }
 
-/* 按钮（非 primary 透明感） */
 html.xtsql-dark .ant-btn {
   background-color: var(--xtsql-bg-elevated) !important;
   color: var(--xtsql-text) !important;
@@ -280,12 +190,11 @@ html.xtsql-dark .ant-btn-link {
   border-color: transparent !important;
 }
 html.xtsql-dark .ant-btn-primary {
-  background: #1668dc !important;
-  border-color: #1668dc !important;
+  background: var(--xtsql-accent) !important;
+  border-color: var(--xtsql-accent) !important;
   color: #fff !important;
 }
 
-/* 表格 */
 html.xtsql-dark .ant-table,
 html.xtsql-dark .ant-table-thead > tr > th,
 html.xtsql-dark .ant-table-tbody > tr > td {
@@ -294,7 +203,7 @@ html.xtsql-dark .ant-table-tbody > tr > td {
   border-color: var(--xtsql-border) !important;
 }
 html.xtsql-dark .ant-table-thead > tr > th {
-  background-color: #262626 !important;
+  background-color: #232833 !important;
 }
 html.xtsql-dark .ant-table-tbody > tr:hover > td {
   background-color: var(--xtsql-hover) !important;
@@ -303,16 +212,13 @@ html.xtsql-dark .ant-table-placeholder:hover > td {
   background: var(--xtsql-bg-elevated) !important;
 }
 
-/* Tabs / Collapse / Tree */
 html.xtsql-dark .ant-tabs-nav,
 html.xtsql-dark .ant-tabs-tab,
 html.xtsql-dark .ant-tabs-tab-active .ant-tabs-tab-btn,
 html.xtsql-dark .ant-tabs-ink-bar {
   color: var(--xtsql-text) !important;
 }
-html.xtsql-dark .ant-tabs-tab:hover {
-  color: #91caff !important;
-}
+html.xtsql-dark .ant-tabs-tab:hover { color: var(--xtsql-accent) !important; }
 html.xtsql-dark .ant-collapse,
 html.xtsql-dark .ant-collapse-item,
 html.xtsql-dark .ant-collapse-header,
@@ -322,28 +228,17 @@ html.xtsql-dark .ant-collapse-content-box {
   color: var(--xtsql-text) !important;
   border-color: var(--xtsql-border) !important;
 }
-html.xtsql-dark .ant-tree {
-  background: transparent !important;
-  color: var(--xtsql-text) !important;
-}
-html.xtsql-dark .ant-tree-node-content-wrapper:hover {
-  background-color: var(--xtsql-hover) !important;
-}
-html.xtsql-dark .ant-tree-node-selected {
-  background-color: rgba(22, 119, 255, 0.2) !important;
-}
+html.xtsql-dark .ant-tree { background: transparent !important; color: var(--xtsql-text) !important; }
+html.xtsql-dark .ant-tree-node-content-wrapper:hover { background-color: var(--xtsql-hover) !important; }
+html.xtsql-dark .ant-tree-node-selected { background-color: var(--xtsql-accent-soft) !important; }
 
-/* 列表 / Empty */
 html.xtsql-dark .ant-list,
 html.xtsql-dark .ant-list-item,
 html.xtsql-dark .ant-empty-description {
   color: var(--xtsql-text-secondary) !important;
 }
-html.xtsql-dark .ant-list-item:hover {
-  background-color: var(--xtsql-hover) !important;
-}
+html.xtsql-dark .ant-list-item:hover { background-color: var(--xtsql-hover) !important; }
 
-/* Spin / message / Tooltip */
 html.xtsql-dark .ant-spin-text,
 html.xtsql-dark .ant-typography,
 html.xtsql-dark .ant-typography-secondary,
@@ -351,58 +246,982 @@ html.xtsql-dark .ant-form-item-label > label,
 html.xtsql-dark .ant-form-item-extra {
   color: var(--xtsql-text) !important;
 }
-html.xtsql-dark .ant-typography-secondary {
-  color: var(--xtsql-text-secondary) !important;
-}
-html.xtsql-dark .ant-tooltip-inner {
-  background-color: #434343 !important;
-  color: #fff !important;
-}
-html.xtsql-dark .ant-tooltip-arrow::before {
-  background: #434343 !important;
+html.xtsql-dark .ant-typography-secondary { color: var(--xtsql-text-secondary) !important; }
+html.xtsql-dark .ant-tooltip-inner { background-color: #434343 !important; color: #fff !important; }
+html.xtsql-dark .ant-tooltip-arrow::before { background: #434343 !important; }
+html.xtsql-dark .ant-tag { border-color: var(--xtsql-border-strong) !important; }
+html.xtsql-dark .ant-divider { border-color: var(--xtsql-divider) !important; }
+html.xtsql-dark { color-scheme: dark; }
+
+/* ==================== 应用主布局 ==================== */
+.xtsql-app-bg {
+  background: var(--xtsql-app-bg);
+  background-attachment: fixed;
+  height: 100vh;
 }
 
-/* Tag / Badge */
-html.xtsql-dark .ant-tag {
-  border-color: var(--xtsql-border-strong) !important;
+/* 顶部 header */
+.xtsql-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background: var(--xtsql-bg-header);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border-bottom: 1px solid var(--xtsql-border);
+  position: relative;
+  z-index: 5;
 }
-
-/* 分割线 */
-html.xtsql-dark .ant-divider {
-  border-color: var(--xtsql-border) !important;
+.xtsql-header-left {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-width: 0;
+  flex: 1;
 }
-
-/* 通用文本 */
-html.xtsql-dark {
-  color-scheme: dark;
-}
-html.xtsql-dark body,
-html.xtsql-dark #root,
-html.xtsql-dark .app-main-text {
+.xtsql-logo {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.2px;
   color: var(--xtsql-text);
+}
+.xtsql-logo-icon {
+  width: 44px;
+  height: 44px;
+  border-radius: 11px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  filter: drop-shadow(0 3px 6px rgba(22, 119, 255, 0.32));
+}
+.xtsql-logo-title {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.15;
+  font-size: 15px;
+  font-weight: 600;
+}
+.xtsql-logo-sub {
+  font-size: 10px;
+  font-weight: 500;
+  color: var(--xtsql-text-tertiary);
+  letter-spacing: 1px;
+  text-transform: uppercase;
+}
+.xtsql-header-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 
 /* 主题切换按钮 */
 .xtsql-theme-toggle {
-  position: fixed;
-  top: 12px;
-  right: 16px;
-  z-index: 1000;
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: var(--xtsql-radius-md);
+  background: var(--xtsql-bg-elevated);
+  border: 1px solid var(--xtsql-border);
+  color: var(--xtsql-text-secondary);
   cursor: pointer;
-  width: 32px;
-  height: 32px;
+  transition: all 0.2s ease;
+  font-size: 16px;
+}
+.xtsql-theme-toggle:hover {
+  background: var(--xtsql-accent-soft);
+  color: var(--xtsql-accent);
+  border-color: var(--xtsql-accent-soft);
+  transform: translateY(-1px);
+}
+
+/* 侧边栏 */
+.xtsql-sider {
+  background: var(--xtsql-bg-sider) !important;
+  border-right: 1px solid var(--xtsql-border) !important;
+}
+.xtsql-sider-inner {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.xtsql-sider-header {
+  padding: 14px 14px 10px;
+  border-bottom: 1px solid var(--xtsql-border);
+}
+.xtsql-new-chat-btn {
+  width: 100%;
+  height: 38px;
+  border-radius: var(--xtsql-radius-md) !important;
+  background: linear-gradient(135deg, #1677ff 0%, #4f46e5 100%) !important;
+  border: none !important;
+  color: #fff !important;
+  font-weight: 500 !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  box-shadow: var(--xtsql-accent-glow);
+  transition: all 0.2s ease;
+}
+.xtsql-new-chat-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.05);
+}
+.xtsql-sider-list {
+  flex: 1;
+  overflow: auto;
+  padding: 10px 8px;
+}
+.xtsql-sider-section {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 1px;
+  text-transform: uppercase;
+  color: var(--xtsql-text-tertiary);
+  padding: 6px 8px 8px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.xtsql-session-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  margin: 2px 0;
+  border-radius: var(--xtsql-radius-md);
+  cursor: pointer;
+  color: var(--xtsql-text-secondary);
+  transition: all 0.18s ease;
+  position: relative;
+}
+.xtsql-session-item:hover {
+  background: var(--xtsql-hover);
+  color: var(--xtsql-text);
+}
+.xtsql-session-item.active {
+  background: var(--xtsql-accent-soft);
+  color: var(--xtsql-accent);
+}
+.xtsql-session-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 8px;
+  bottom: 8px;
+  width: 3px;
+  border-radius: 2px;
+  background: var(--xtsql-accent);
+}
+.xtsql-session-icon {
+  flex-shrink: 0;
+  width: 28px;
+  height: 28px;
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--xtsql-bg-elevated);
+  border: 1px solid var(--xtsql-border);
+  color: var(--xtsql-text-secondary);
+  font-size: 12px;
+}
+.xtsql-session-item.active .xtsql-session-icon {
+  background: var(--xtsql-accent);
+  color: #fff;
+  border-color: var(--xtsql-accent);
+}
+.xtsql-session-meta {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.xtsql-session-name {
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.xtsql-session-desc {
+  font-size: 10px;
+  color: var(--xtsql-text-tertiary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.xtsql-session-actions {
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+.xtsql-session-item:hover .xtsql-session-actions,
+.xtsql-session-item.active .xtsql-session-actions {
+  opacity: 1;
+}
+.xtsql-icon-btn {
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
   border-radius: 6px;
-  color: var(--xtsql-text);
   background: transparent;
   border: none;
-  transition: background 0.2s;
+  color: var(--xtsql-text-tertiary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  font-size: 12px;
 }
-.xtsql-theme-toggle:hover {
+.xtsql-icon-btn:hover {
+  background: var(--xtsql-accent-soft);
+  color: var(--xtsql-accent);
+}
+.xtsql-icon-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.12);
+  color: var(--xtsql-danger);
+}
+
+.xtsql-sider-footer {
+  padding: 10px 12px;
+  border-top: 1px solid var(--xtsql-border);
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--xtsql-bg-sider);
+}
+.xtsql-sider-actions {
+  display: flex;
+  gap: 6px;
+}
+.xtsql-sider-actions .ant-btn {
+  flex: 1;
+  border-radius: var(--xtsql-radius-md) !important;
+  height: 32px;
+  font-size: 12px;
+  background: var(--xtsql-bg-elevated) !important;
+  border: 1px solid var(--xtsql-border) !important;
+  color: var(--xtsql-text-secondary) !important;
+}
+.xtsql-sider-actions .ant-btn:hover {
+  color: var(--xtsql-accent) !important;
+  border-color: var(--xtsql-accent-soft) !important;
+  background: var(--xtsql-accent-soft) !important;
+}
+.xtsql-user-card {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  border-radius: var(--xtsql-radius-md);
   background: var(--xtsql-hover);
 }
-html.xtsql-dark .xtsql-theme-toggle {
-  color: #fadb14;
+.xtsql-user-avatar {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #1677ff 0%, #4f46e5 100%);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 13px;
+  flex-shrink: 0;
+}
+.xtsql-user-info {
+  flex: 1;
+  min-width: 0;
+}
+.xtsql-user-name {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--xtsql-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.xtsql-user-role {
+  font-size: 10px;
+  color: var(--xtsql-text-tertiary);
+}
+
+/* ==================== 主内容区 ==================== */
+.xtsql-content {
+  display: flex;
+  flex-direction: column;
+  background: var(--xtsql-app-bg);
+  background-attachment: fixed;
+}
+.xtsql-content-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 16px 0;
+  border-bottom: 1px solid var(--xtsql-border);
+  background: var(--xtsql-bg-header);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.xtsql-menu-btn {
+  border: none !important;
+  background: transparent !important;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--xtsql-radius-sm);
+  color: var(--xtsql-text-secondary);
+}
+.xtsql-menu-btn:hover {
+  background: var(--xtsql-hover) !important;
+  color: var(--xtsql-text) !important;
+}
+
+.xtsql-chat-area {
+  flex: 1;
+  overflow: auto;
+  padding: 28px 24px 24px;
+  background: transparent;
+  scroll-behavior: smooth;
+}
+.xtsql-chat-inner {
+  max-width: 880px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.xtsql-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  text-align: center;
+  color: var(--xtsql-text-tertiary);
+}
+.xtsql-empty-icon {
+  width: 112px;
+  height: 112px;
+  border-radius: 26px;
+  background: linear-gradient(135deg, rgba(22, 119, 255, 0.15) 0%, rgba(79, 70, 229, 0.15) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 56px;
+  color: var(--xtsql-accent);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.xtsql-empty-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--xtsql-text);
+  margin-bottom: 6px;
+}
+.xtsql-empty-desc {
+  font-size: 13px;
+  color: var(--xtsql-text-tertiary);
+  margin-bottom: 20px;
+}
+.xtsql-suggestion-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  max-width: 600px;
+}
+.xtsql-suggestion {
+  padding: 8px 14px;
+  border-radius: var(--xtsql-radius-pill);
+  background: var(--xtsql-bg-elevated);
+  border: 1px solid var(--xtsql-border);
+  color: var(--xtsql-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.18s ease;
+}
+.xtsql-suggestion:hover {
+  background: var(--xtsql-accent-soft);
+  color: var(--xtsql-accent);
+  border-color: var(--xtsql-accent-soft);
+  transform: translateY(-1px);
+}
+
+/* ==================== 消息气泡 ==================== */
+.xtsql-msg {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  animation: xtsql-msg-in 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes xtsql-msg-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.xtsql-msg.user {
+  flex-direction: row-reverse;
+}
+.xtsql-msg-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+  box-shadow: var(--xtsql-shadow-xs);
+  overflow: hidden;
+  background: transparent;
+  border: none;
+}
+.xtsql-msg-avatar.user {
+  background: linear-gradient(135deg, #1677ff 0%, #4f46e5 100%);
+  color: #fff;
+  font-weight: 600;
+}
+}
+.xtsql-msg-avatar.assistant {
+  background: var(--xtsql-bg-elevated);
+  color: var(--xtsql-accent);
+  border: 1px solid var(--xtsql-border);
+}
+.xtsql-msg-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: calc(100% - 220px);
+  min-width: 80px;
+}
+.xtsql-msg.user .xtsql-msg-body {
+  align-items: flex-end;
+}
+.xtsql-msg-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--xtsql-text-tertiary);
+  padding: 0 4px;
+}
+.xtsql-msg.user .xtsql-msg-meta { flex-direction: row-reverse; }
+.xtsql-msg-bubble {
+  padding: 11px 15px;
+  border-radius: var(--xtsql-radius-lg);
+  font-size: 13px;
+  line-height: 1.65;
+  word-break: break-word;
+  white-space: pre-wrap;
+  box-shadow: var(--xtsql-shadow-sm);
+  border: 1px solid var(--xtsql-border);
+  position: relative;
+}
+.xtsql-msg.user .xtsql-msg-bubble {
+  background: var(--xtsql-message-user);
+  color: var(--xtsql-message-user-text);
+  border: none;
+  border-top-right-radius: 4px;
+  box-shadow: var(--xtsql-accent-glow);
+}
+.xtsql-msg.assistant .xtsql-msg-bubble {
+  background: var(--xtsql-message-assistant);
+  color: var(--xtsql-message-assistant-text);
+  border-top-left-radius: 4px;
+}
+.xtsql-msg-bubble code {
+  background: rgba(0, 0, 0, 0.08);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+}
+.xtsql-msg.user .xtsql-msg-bubble code {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+.xtsql-msg-bubble pre {
+  background: rgba(0, 0, 0, 0.04);
+  padding: 10px 12px;
+  border-radius: var(--xtsql-radius-sm);
+  overflow: auto;
+  font-size: 12px;
+  margin: 8px 0;
+}
+.xtsql-msg.user .xtsql-msg-bubble pre {
+  background: rgba(255, 255, 255, 0.15);
+}
+.xtsql-msg-bubble pre code {
+  background: transparent;
+  padding: 0;
+  color: inherit;
+}
+.xtsql-msg-bubble table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+  font-size: 12px;
+  border: 1px solid var(--xtsql-border);
+  border-radius: var(--xtsql-radius-sm);
+  overflow: hidden;
+}
+.xtsql-msg-bubble th,
+.xtsql-msg-bubble td {
+  border: 1px solid var(--xtsql-border);
+  padding: 6px 10px;
+  text-align: left;
+}
+.xtsql-msg-bubble th {
+  background: var(--xtsql-hover);
+  font-weight: 600;
+}
+
+/* 工具日志消息 */
+.xtsql-log {
+  display: flex;
+  justify-content: flex-start;
+  margin-left: 44px;
+  animation: xtsql-msg-in 0.24s ease;
+}
+.xtsql-log-card {
+  max-width: 75%;
+  border-radius: var(--xtsql-radius-md);
+  font-size: 11px;
+  border: 1px dashed var(--xtsql-border-strong);
+  background: var(--xtsql-bg-elevated);
+  overflow: hidden;
+}
+.xtsql-log-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 10px;
+  color: var(--xtsql-text-tertiary);
+  transition: background 0.15s;
+}
+.xtsql-log-header:hover { background: var(--xtsql-hover); }
+.xtsql-log-tag {
+  padding: 1px 6px;
+  border-radius: var(--xtsql-radius-pill);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.xtsql-log-tag.llm { background: rgba(22, 119, 255, 0.12); color: var(--xtsql-accent); }
+.xtsql-log-tag.call { background: rgba(99, 102, 241, 0.12); color: #6366f1; }
+.xtsql-log-tag.return { background: rgba(245, 158, 11, 0.14); color: #d97706; }
+html.xtsql-dark .xtsql-log-tag.return { color: #fbbf24; }
+.xtsql-log-body {
+  padding: 8px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 10.5px;
+  max-height: 240px;
+  overflow-y: auto;
+  border-top: 1px dashed var(--xtsql-border);
+  color: var(--xtsql-text-secondary);
+}
+
+/* 消息操作按钮 */
+.xtsql-msg-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  justify-content: flex-end;
+}
+.xtsql-action-btn {
+  height: 28px;
+  padding: 0 12px !important;
+  font-size: 11px !important;
+  border-radius: var(--xtsql-radius-pill) !important;
+  display: flex !important;
+  align-items: center;
+  gap: 4px;
+  background: var(--xtsql-bg-elevated) !important;
+  border: 1px solid var(--xtsql-border) !important;
+  color: var(--xtsql-text-secondary) !important;
+  transition: all 0.18s ease;
+}
+.xtsql-action-btn:hover {
+  background: var(--xtsql-accent-soft) !important;
+  color: var(--xtsql-accent) !important;
+  border-color: var(--xtsql-accent-soft) !important;
+  transform: translateY(-1px);
+}
+.xtsql-action-btn.primary {
+  background: var(--xtsql-accent) !important;
+  border-color: var(--xtsql-accent) !important;
+  color: #fff !important;
+  box-shadow: var(--xtsql-accent-glow);
+}
+.xtsql-action-btn.primary:hover {
+  filter: brightness(1.05);
+}
+
+/* ==================== 输入区 ==================== */
+.xtsql-input-wrap {
+  padding: 0 24px 16px;
+  background: transparent;
+}
+.xtsql-input-inner {
+  max-width: 880px;
+  margin: 0 auto;
+  position: relative;
+  background: var(--xtsql-bg-elevated);
+  border-radius: var(--xtsql-radius-xl);
+  border: 1px solid var(--xtsql-border);
+  box-shadow: var(--xtsql-shadow-md);
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+.xtsql-input-inner:focus-within {
+  border-color: var(--xtsql-accent);
+  box-shadow: 0 0 0 4px var(--xtsql-accent-soft), var(--xtsql-shadow-md);
+}
+.xtsql-input-textarea {
+  width: 100%;
+  border: none !important;
+  outline: none !important;
+  resize: none;
+  padding: 14px 18px 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  background: transparent !important;
+  color: var(--xtsql-text) !important;
+  box-shadow: none !important;
+}
+.xtsql-input-textarea::placeholder { color: var(--xtsql-text-tertiary); }
+.xtsql-input-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px 8px 18px;
+  gap: 10px;
+}
+.xtsql-input-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--xtsql-text-tertiary);
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+.xtsql-input-model-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: var(--xtsql-radius-pill);
+  background: var(--xtsql-accent-soft);
+  color: var(--xtsql-accent);
+  font-weight: 500;
+  font-size: 10.5px;
+}
+.xtsql-token-bar {
+  width: 60px;
+  height: 6px;
+  background: var(--xtsql-hover);
+  border-radius: var(--xtsql-radius-pill);
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid var(--xtsql-border);
+}
+.xtsql-token-bar-fill {
+  height: 100%;
+  border-radius: var(--xtsql-radius-pill);
+  transition: width 0.3s ease, background 0.3s;
+}
+.xtsql-send-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50% !important;
+  background: linear-gradient(135deg, #1677ff 0%, #4f46e5 100%) !important;
+  border: none !important;
+  color: #fff !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--xtsql-accent-glow);
+  transition: all 0.18s ease;
+  flex-shrink: 0;
+}
+.xtsql-send-btn:hover:not(:disabled) {
+  transform: scale(1.06);
+  filter: brightness(1.08);
+}
+.xtsql-send-btn:disabled {
+  background: var(--xtsql-border-strong) !important;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+.xtsql-send-btn.danger {
+  background: var(--xtsql-danger) !important;
+}
+.xtsql-input-resizer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  z-index: 5;
+}
+.xtsql-input-grip {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 32px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--xtsql-border-strong);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.xtsql-input-inner:hover .xtsql-input-grip { opacity: 0.7; }
+
+/* ==================== Tabs 美化 ==================== */
+.ant-tabs.xtsql-tabs .ant-tabs-tab {
+  padding: 8px 14px !important;
+  font-size: 12px !important;
+  border-radius: var(--xtsql-radius-sm) var(--xtsql-radius-sm) 0 0 !important;
+  transition: all 0.15s ease;
+}
+.ant-tabs.xtsql-tabs .ant-tabs-tab:hover {
+  background: var(--xtsql-hover);
+}
+.ant-tabs.xtsql-tabs .ant-tabs-tab-active {
+  background: var(--xtsql-bg) !important;
+}
+.ant-tabs.xtsql-tabs > .ant-tabs-nav .ant-tabs-ink-bar {
+  height: 2px;
+  background: var(--xtsql-accent) !important;
+}
+
+/* ==================== 抽屉美化 ==================== */
+.xtsql-drawer .ant-drawer-header {
+  border-bottom: 1px solid var(--xtsql-border);
+  padding: 16px 20px;
+}
+.xtsql-drawer .ant-drawer-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.xtsql-drawer .ant-drawer-body {
+  padding: 16px 20px;
+}
+
+/* ==================== 登录页现代化 ==================== */
+.xtsql-login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--xtsql-app-bg);
+  background-attachment: fixed;
+  position: relative;
+  overflow: hidden;
+}
+.xtsql-login-page::before,
+.xtsql-login-page::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  z-index: 0;
+}
+.xtsql-login-page::before {
+  width: 380px;
+  height: 380px;
+  background: rgba(22, 119, 255, 0.18);
+  top: -100px;
+  left: -100px;
+}
+.xtsql-login-page::after {
+  width: 320px;
+  height: 320px;
+  background: rgba(124, 58, 237, 0.16);
+  bottom: -80px;
+  right: -80px;
+}
+.xtsql-login-card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 400px;
+  background: var(--xtsql-bg-elevated);
+  border-radius: var(--xtsql-radius-xl);
+  padding: 36px 32px;
+  box-shadow: var(--xtsql-shadow-lg);
+  border: 1px solid var(--xtsql-border);
+}
+.xtsql-login-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.xtsql-login-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #1677ff 0%, #4f46e5 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 26px;
+  box-shadow: var(--xtsql-accent-glow);
+  margin-bottom: 8px;
+}
+.xtsql-login-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--xtsql-text);
+  letter-spacing: 0.4px;
+}
+.xtsql-login-sub {
+  font-size: 12px;
+  color: var(--xtsql-text-tertiary);
+}
+.xtsql-login-form .ant-form-item-label > label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--xtsql-text-secondary);
+}
+.xtsql-login-input.ant-input,
+.xtsql-login-input.ant-input-affix-wrapper {
+  height: 40px;
+  border-radius: var(--xtsql-radius-md) !important;
+  background: var(--xtsql-bg) !important;
+  border: 1px solid var(--xtsql-border) !important;
+  transition: all 0.2s ease;
+}
+.xtsql-login-input.ant-input-affix-wrapper:focus,
+.xtsql-login-input.ant-input-affix-wrapper:focus-within,
+.xtsql-login-input.ant-input:focus {
+  border-color: var(--xtsql-accent) !important;
+  box-shadow: 0 0 0 3px var(--xtsql-accent-soft) !important;
+}
+.xtsql-login-submit.ant-btn {
+  height: 42px !important;
+  width: 100%;
+  border-radius: var(--xtsql-radius-md) !important;
+  background: linear-gradient(135deg, #1677ff 0%, #4f46e5 100%) !important;
+  border: none !important;
+  color: #fff !important;
+  font-weight: 500 !important;
+  font-size: 14px !important;
+  box-shadow: var(--xtsql-accent-glow);
+  margin-top: 4px;
+}
+.xtsql-login-submit.ant-btn:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+.xtsql-login-tabs .ant-tabs-tab {
+  font-size: 13px;
+}
+
+/* SQL/Result 区域 */
+.xtsql-sql-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.xtsql-sql-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 8px;
+}
+.xtsql-sql-editor {
+  border: 1px solid var(--xtsql-border) !important;
+  border-radius: var(--xtsql-radius-md) !important;
+  overflow: hidden;
+  background: var(--xtsql-bg-elevated);
+  box-shadow: var(--xtsql-shadow-xs);
+}
+.xtsql-exec-btn.ant-btn-primary {
+  background: var(--xtsql-accent) !important;
+  border-color: var(--xtsql-accent) !important;
+  box-shadow: var(--xtsql-accent-glow);
+  border-radius: var(--xtsql-radius-md) !important;
+  height: 30px;
+}
+.xtsql-explain-btn {
+  border-radius: var(--xtsql-radius-md) !important;
+  height: 30px;
+  background: var(--xtsql-bg-elevated) !important;
+  border: 1px solid var(--xtsql-border) !important;
+  color: var(--xtsql-text-secondary) !important;
+}
+.xtsql-explain-btn:hover {
+  color: var(--xtsql-accent) !important;
+  border-color: var(--xtsql-accent-soft) !important;
+}
+
+/* ==================== Skill 树区域 ==================== */
+.xtsql-skill-section {
+  margin-bottom: 12px;
+  background: var(--xtsql-bg-elevated);
+  border: 1px solid var(--xtsql-border);
+  border-radius: var(--xtsql-radius-md);
+  padding: 12px;
+}
+.xtsql-skill-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--xtsql-text);
+}
+.xtsql-skill-tree {
+  height: 200px;
+  overflow: auto;
+  border: 1px solid var(--xtsql-border);
+  border-radius: var(--xtsql-radius-md);
+  padding: 8px;
+  background: var(--xtsql-bg);
+}
+
+/* 通用动画 */
+@keyframes xtsql-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+@keyframes xtsql-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.xtsql-pulse { animation: xtsql-pulse 1.4s ease-in-out infinite; }
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .xtsql-msg-body { max-width: calc(100% - 60px); }
+  .xtsql-chat-area { padding: 16px 12px; }
+  .xtsql-input-wrap { padding: 0 12px 12px; }
+  .xtsql-sider { width: 240px !important; }
 }

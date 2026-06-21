@@ -1,6 +1,8 @@
 {
   "name": "xt-sql-query-agent",
   "version": "1.0.0",
+  "description": "基于 LLM 的智能 SQL 查询分析 Agent",
+  "author": "XTSQL Team",
   "main": "electron/main.js",
   "private": true,
   "scripts": {
@@ -26,7 +28,10 @@
       "electron/**/*",
       "frontend/dist/**/*"
     ],
-    "asar": true
+    "asar": true,
+    "win": {
+      "artifactName": "${productName}-${version}-${arch}.${ext}"
+    }
   },
   "devDependencies": {
     "concurrently": "^8.2.0",

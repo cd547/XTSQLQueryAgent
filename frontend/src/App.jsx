@@ -9,10 +9,11 @@ import ResizableTitle from './components/ResizableTitle';
 import ChatMessage from './components/ChatMessage';
 import ConfigPanel from './components/ConfigPanel';
 import LoginPage from './components/LoginPage';
+import AppIcon from './components/AppIcon.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { useTheme } from './context/ThemeContext.jsx';
 import * as api from './api/index.js';
-import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined, RobotOutlined, MoreOutlined, DeleteOutlined, LoadingOutlined, LogoutOutlined, UserOutlined, BulbOutlined, BulbFilled } from '@ant-design/icons';
+import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined, MoreOutlined, DeleteOutlined, LoadingOutlined, LogoutOutlined, UserOutlined, BulbOutlined, BulbFilled } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
@@ -921,63 +922,70 @@ const explainColumns = useMemo(() => explainResults.length > 0
   }, [currentSessionId]);
   
   return (
-    <ConfigProvider theme={{ algorithm: theme === 'dark' ? darkAlgorithm : defaultAlgorithm }}>
-      <Tooltip title={theme === 'dark' ? '切换为亮色主题' : '切换为暗色主题'}>
-        <button
-          className="xtsql-theme-toggle"
-          onClick={toggleTheme}
-          aria-label="toggle theme"
-        >
-          {theme === 'dark' ? <BulbFilled style={{ fontSize: 18 }} /> : <BulbOutlined style={{ fontSize: 18 }} />}
-        </button>
-      </Tooltip>
-      <Layout style={{ height: '100vh', background: 'var(--xtsql-bg)', overflow: 'hidden' }}>
-        <Sider
-          width={260}
-          style={{ background: 'var(--xtsql-bg-sider)', borderRight: '1px solid var(--xtsql-border)' }}
-          collapsed={siderCollapsed}
-          collapsible
-          collapsedWidth={0}
-          trigger={null}
-        >
-          <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: 8, borderBottom: '1px solid var(--xtsql-border)' }}>
-              <Button type="primary" icon={<PlusOutlined />} onClick={handleNewSession} size="small" style={{ width: '100%' }}>
-                新对话
+    <ConfigProvider theme={{ algorithm: theme === 'dark' ? darkAlgorithm : defaultAlgorithm, token: { borderRadius: 10, colorPrimary: '#1677ff' } }}>
+      <div className="xtsql-app-bg" style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
+        <div className="xtsql-header">
+          <div className="xtsql-header-left">
+            <Button
+              type="text"
+              className="xtsql-menu-btn"
+              icon={<MenuOutlined />}
+              onClick={() => setSiderCollapsed(!siderCollapsed)}
+              title={siderCollapsed ? '显示侧边栏' : '隐藏侧边栏'}
+            />
+            <div className="xtsql-logo">
+              <div className="xtsql-logo-icon"><AppIcon size={44} /></div>
+              <div className="xtsql-logo-title">
+                <span>XTSQL Query Agent</span>
+                <span className="xtsql-logo-sub">智能数据分析</span>
+              </div>
+            </div>
+          </div>
+          <div className="xtsql-header-right">
+            <Tooltip title={theme === 'dark' ? '切换为亮色主题' : '切换为暗色主题'}>
+              <button className="xtsql-theme-toggle" onClick={toggleTheme} aria-label="toggle theme">
+                {theme === 'dark' ? <BulbFilled /> : <BulbOutlined />}
+              </button>
+            </Tooltip>
+          </div>
+        </div>
+        <Layout style={{ flex: 1, background: 'transparent', overflow: 'hidden' }}>
+          <Sider
+            width={260}
+            className="xtsql-sider"
+            style={{ background: 'var(--xtsql-bg-sider)', borderRight: '1px solid var(--xtsql-border)' }}
+            collapsed={siderCollapsed}
+            collapsible
+            collapsedWidth={0}
+            trigger={null}
+          >
+          <div className="xtsql-sider-inner">
+            <div className="xtsql-sider-header">
+              <Button className="xtsql-new-chat-btn" icon={<PlusOutlined />} onClick={handleNewSession}>
+                新建对话
               </Button>
             </div>
-            <div style={{ flex: 1, overflow: 'auto' }}>
-              <List
-                dataSource={sessions}
-                renderItem={item => (
-                  <List.Item
+            <div className="xtsql-sider-list">
+              <div className="xtsql-sider-section">
+                <span>最近对话</span>
+                <span style={{ color: 'var(--xtsql-text-tertiary)' }}>{sessions.length}</span>
+              </div>
+              {sessions.length === 0 ? (
+                <div style={{ padding: '24px 8px', textAlign: 'center', fontSize: 12, color: 'var(--xtsql-text-tertiary)' }}>
+                  暂无对话
+                </div>
+              ) : (
+                sessions.map(item => (
+                  <div
                     key={item.id}
-                    style={{ padding: '4px 8px', cursor: 'pointer', background: currentSessionId === item.id ? '#e6f7ff' : 'transparent', borderLeft: currentSessionId === item.id ? '3px solid #1890ff' : '3px solid transparent' }}
+                    className={`xtsql-session-item ${currentSessionId === item.id ? 'active' : ''}`}
                     onClick={() => handleSessionClick(item)}
-                    actions={[
-                      <Dropdown
-                        key="more"
-                        menu={{
-                          items: [
-                            { key: 'summarize', label: '总结聊天', icon: <FileTextOutlined style={{ fontSize: 14 }} />, onClick: () => handleSummarizeSession(item.id) },
-                            { key: 'rename', label: '重命名', icon: <EditOutlined style={{ fontSize: 14 }} />, onClick: () => handleStartRename(item) },
-                            { key: 'delete', label: '删除', icon: <DeleteOutlined style={{ fontSize: 14 }} />, danger: true, onClick: () => handleDeleteSession(item.id) }
-                          ]
-                        }}
-                        trigger={['click']}
-                      >
-                        <span 
-                          style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', padding: 4, borderRadius: 4 }}
-                          onMouseEnter={(e) => { e.currentTarget.style.color = '#1890ff'; e.currentTarget.style.background = '#e6f7ff'; }}
-                          onMouseLeave={(e) => { e.currentTarget.style.color = '#999'; e.currentTarget.style.background = 'transparent'; }}
-                        >
-                          <MoreOutlined style={{ color: '#999', cursor: 'pointer', fontSize: 14 }} />
-                        </span>
-                      </Dropdown>
-                    ]}
                   >
-                    <List.Item.Meta
-                      title={editingSessionId === item.id ? (
+                    <div className="xtsql-session-icon">
+                      <AppIcon size={28} circle />
+                    </div>
+                    <div className="xtsql-session-meta">
+                      {editingSessionId === item.id ? (
                         <Input
                           size="small"
                           value={editingSessionName}
@@ -988,124 +996,141 @@ const explainColumns = useMemo(() => explainResults.length > 0
                           autoFocus
                         />
                       ) : (
-                        <span style={{ fontSize: 11 }}>{item.name} <span style={{ color: '#999' }}>#{item.id}</span></span>
+                        <>
+                          <div className="xtsql-session-name">{item.name}</div>
+                          <div className="xtsql-session-desc">
+                            {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
+                          </div>
+                        </>
                       )}
-                      description={<span style={{ fontSize: 9, color: '#999' }}>{item.created_at ? new Date(item.created_at).toLocaleString() : ''}</span>}
-                    />
-                  </List.Item>
-                )}
-              />
+                    </div>
+                    <div className="xtsql-session-actions" onClick={(e) => e.stopPropagation()}>
+                      <Dropdown
+                        menu={{
+                          items: [
+                            { key: 'summarize', label: '总结聊天', icon: <FileTextOutlined style={{ fontSize: 13 }} />, onClick: () => handleSummarizeSession(item.id) },
+                            { key: 'rename', label: '重命名', icon: <EditOutlined style={{ fontSize: 13 }} />, onClick: () => handleStartRename(item) },
+                            { key: 'delete', label: '删除', icon: <DeleteOutlined style={{ fontSize: 13 }} />, danger: true, onClick: () => handleDeleteSession(item.id) }
+                          ]
+                        }}
+                        trigger={['click']}
+                      >
+                        <button className="xtsql-icon-btn" title="更多操作">
+                          <MoreOutlined />
+                        </button>
+                      </Dropdown>
+                    </div>
+                  </div>
+                ))
+              )}
             </div>
-            <div style={{ padding: '8px', borderTop: '1px solid var(--xtsql-border)', display: 'flex', gap: 8 }}>
-              <Button icon={<SettingOutlined />} onClick={() => setConfigOpen(true)} size="small" style={{ flex: 1 }}>
-                配置
-              </Button>
-              <Button icon={<FolderOutlined />} onClick={() => { if (skillTree.length === 0) loadSkillsList(); setSkillOpen(true); }} size="small" style={{ flex: 1 }}>
-                Skill
-              </Button>
-            </div>
-            <div style={{ padding: '6px 10px', borderTop: '1px solid var(--xtsql-border)', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--xtsql-hover)' }}>
-              <Avatar size={26} style={{ backgroundColor: '#1677ff' }} icon={<UserOutlined />} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {user?.display_name || user?.username || '用户'}
-                </div>
-                <div style={{ fontSize: 10, color: '#999', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                  {user?.role === 'admin' ? '管理员' : '普通用户'} · {user?.username}
-                </div>
+            <div className="xtsql-sider-footer">
+              <div className="xtsql-sider-actions">
+                <Button icon={<SettingOutlined />} onClick={() => setConfigOpen(true)}>配置</Button>
+                <Button icon={<FolderOutlined />} onClick={() => { if (skillTree.length === 0) loadSkillsList(); setSkillOpen(true); }}>Skill</Button>
               </div>
-              <Tooltip title="修改密码">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<LockOutlined />}
-                  onClick={() => setChangePwdOpen(true)}
-                />
-              </Tooltip>
-              <Tooltip title="退出登录">
-                <Button
-                  type="text"
-                  size="small"
-                  icon={<LogoutOutlined />}
-                  onClick={() => {
-                    Modal.confirm({
-                      title: '确认退出登录？',
-                      content: '退出后需要重新登录才能使用。',
-                      okText: '退出',
-                      cancelText: '取消',
-                      onOk: () => logout()
-                    });
-                  }}
-                />
-              </Tooltip>
+              <div className="xtsql-user-card">
+                <div className="xtsql-user-avatar">
+                  {(user?.display_name || user?.username || 'U').slice(0, 1).toUpperCase()}
+                </div>
+                <div className="xtsql-user-info">
+                  <div className="xtsql-user-name">{user?.display_name || user?.username || '用户'}</div>
+                  <div className="xtsql-user-role">{user?.role === 'admin' ? '管理员' : '普通用户'}</div>
+                </div>
+                <Tooltip title="修改密码">
+                  <Button type="text" size="small" icon={<LockOutlined />} onClick={() => setChangePwdOpen(true)} style={{ color: 'var(--xtsql-text-tertiary)' }} />
+                </Tooltip>
+                <Tooltip title="退出登录">
+                  <Button
+                    type="text"
+                    size="small"
+                    icon={<LogoutOutlined />}
+                    onClick={() => {
+                      Modal.confirm({
+                        title: '确认退出登录？',
+                        content: '退出后需要重新登录才能使用。',
+                        okText: '退出',
+                        cancelText: '取消',
+                        onOk: () => logout()
+                      });
+                    }}
+                    style={{ color: 'var(--xtsql-text-tertiary)' }}
+                  />
+                </Tooltip>
+              </div>
             </div>
           </div>
         </Sider>
 
         <Layout>
-          <Content style={{ display: 'flex', flexDirection: 'column', padding: 0 }}>
-<div style={{ padding: '8px 16px 0', borderBottom: '1px solid var(--xtsql-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
-  <Button
-    type="text"
-    icon={<MenuOutlined />}
-    onClick={() => setSiderCollapsed(!siderCollapsed)}
-    title={siderCollapsed ? '显示侧边栏' : '隐藏侧边栏'}
-    style={{ marginBottom: 2 }}
-  />
+          <Content className="xtsql-content">
+            <div className="xtsql-content-header">
               {(() => {
                 const currentChatLabel = '聊天' + (currentSessionName !== '聊天' ? ` (${currentSessionName})` : '');
                 return (
-<Tabs
-        activeKey={activeTabKey}
-        onChange={handleTabChange}
-        type="editable-card"
-        size="small"
-        style={{ flex: 1 }}
-        hideAdd={false}
-        onEdit={(targetKey, action) => {
-          if (action === 'add') {
-            handleAddTab();
-          } else if (action === 'remove') {
-            handleDeleteTab(targetKey);
-          }
-        }}
-        items={Object.keys(tabs).map(key => ({
-          key,
-          closable: key !== 'chat',
-          label: (
-            <span>
-              {key === 'chat' ? currentChatLabel : (tabs[key].title || 'SQL查询')}
-            </span>
-          )
-        }))}
-      />
+                  <Tabs
+                    className="xtsql-tabs"
+                    activeKey={activeTabKey}
+                    onChange={handleTabChange}
+                    type="editable-card"
+                    size="small"
+                    style={{ flex: 1 }}
+                    hideAdd={false}
+                    onEdit={(targetKey, action) => {
+                      if (action === 'add') {
+                        handleAddTab();
+                      } else if (action === 'remove') {
+                        handleDeleteTab(targetKey);
+                      }
+                    }}
+                    items={Object.keys(tabs).map(key => ({
+                      key,
+                      closable: key !== 'chat',
+                      label: (
+                        <span>
+                          {key === 'chat' ? currentChatLabel : (tabs[key].title || 'SQL查询')}
+                        </span>
+                      )
+                    }))}
+                  />
                 );
               })()}
             </div>
-            
-            <div ref={chatContentRef} style={{ flex: 1, overflow: 'auto', padding: '20px 24px', background: 'var(--xtsql-bg)' }}>
+
+            <div ref={chatContentRef} className="xtsql-chat-area">
               {activeTabKey === 'chat' ? (
                 messages.length === 0 ? (
-                  <Empty description="开始新对话吧" style={{ marginTop: 100 }}>
-                    <div style={{ color: '#999', fontSize: 14 }}>例如: "查询2024年的课程销售额"</div>
-                  </Empty>
+                  <div className="xtsql-empty">
+                    <div className="xtsql-empty-icon"><AppIcon size={64} circle /></div>
+                    <div className="xtsql-empty-title">开始新对话</div>
+                    <div className="xtsql-empty-desc">用自然语言描述你想要的查询，AI 会自动生成 SQL 并执行</div>
+                    <div className="xtsql-suggestion-list">
+                      {['查询2024年的销售额', '统计每个分类的商品数量', '查找销售额最高的10个客户', '分析最近30天的订单趋势'].map(s => (
+                        <div key={s} className="xtsql-suggestion" onClick={() => setInput(s)}>
+                          {s}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
                 ) : (
-                  messages.map((msg) => (
-                    <ChatMessage
-                      key={msg.id}
-                      msgId={msg.id}
-                      role={msg.role}
-                      content={msg.content}
-                      isStreaming={msg.isStreaming}
-                      timestamp={msg.timestamp}
-                      collapsed={msg.collapsed !== undefined ? msg.collapsed : true}
-                      onToggleCollapse={handleToggleCollapse}
-                      logType={msg.logType}
-                      sql={msg.sql}
-                      onOpenSqlTab={handleOpenSqlTab}
-                      onCopyAndExecute={handleCopyAndExecute}
-                    />
-                  ))
+                  <div className="xtsql-chat-inner">
+                    {messages.map((msg) => (
+                      <ChatMessage
+                        key={msg.id}
+                        msgId={msg.id}
+                        role={msg.role}
+                        content={msg.content}
+                        isStreaming={msg.isStreaming}
+                        timestamp={msg.timestamp}
+                        collapsed={msg.collapsed !== undefined ? msg.collapsed : true}
+                        onToggleCollapse={handleToggleCollapse}
+                        logType={msg.logType}
+                        sql={msg.sql}
+                        onOpenSqlTab={handleOpenSqlTab}
+                        onCopyAndExecute={handleCopyAndExecute}
+                      />
+                    ))}
+                  </div>
                 )
               ) : (
                 <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
@@ -1306,7 +1331,7 @@ children: currentResults.length > 0 ? (
                         children: (
                           <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                              <Button size="small" icon={<RobotOutlined />} onClick={handleExplainAnalyze}>AI分析</Button>
+                              <Button size="small" icon={<AppIcon size={18} />} onClick={handleExplainAnalyze}>AI分析</Button>
                             </div>
                             <Table
                               dataSource={explainResults}
@@ -1378,22 +1403,14 @@ children: currentResults.length > 0 ? (
             </div>
             
             {activeTabKey === 'chat' && (
-              <>
+              <div className="xtsql-input-wrap">
                 <div
                   ref={inputResizerRef}
-                  style={{ minHeight: inputHeight, background: 'var(--xtsql-bg-elevated)', position: 'relative', display: 'flex', flexDirection: 'column', boxShadow: '0 -8px 16px rgba(0, 0, 0, 0.1), 0 -4px 8px rgba(0, 0, 0, 0.08)' }}
+                  className="xtsql-input-inner"
+                  style={{ minHeight: inputHeight }}
                 >
                   <div
-                    style={{
-                      position: 'absolute',
-                      top: 0,
-                      left: 0,
-                      right: 0,
-                      height: 10,
-                      cursor: 'ns-resize',
-                      zIndex: 20,
-                      pointerEvents: 'auto'
-                    }}
+                    className="xtsql-input-resizer"
                     onMouseDown={(e) => {
                       e.preventDefault();
                       e.stopPropagation();
@@ -1412,92 +1429,88 @@ children: currentResults.length > 0 ? (
                       document.addEventListener('mouseup', handleUp);
                     }}
                   />
-                  <div style={{ position: 'absolute', top: 1, left: '50%', transform: 'translateX(-50%)', width: 40, height: 4, background: '#d9d9d9', borderRadius: 2, cursor: 'ns-resize', pointerEvents: 'none', zIndex: 15 }} />
-                  <div style={{ flex: 1, padding: '8px 24px 0' }}>
-                    <TextArea
-                      value={input}
-                      onChange={e => setInput(e.target.value)}
-                      onPressEnter={e => { if (!e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                      placeholder="输入自然语言查询，按Enter发送，Shift+Enter换行"
-                      style={{ resize: 'none', width: '100%', border: 'none', boxShadow: 'none' }}
-                      autoSize={{ minRows: 1, maxRows: 10 }}
-                    />
-                  </div>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '4px 24px 8px' }}>
-                    <div style={{ fontSize: 11, fontWeight: 500, color: '#1890ff', display: 'flex', gap: 8, alignItems: 'center' }}>
-                      {currentModel && <span>{currentModel}</span>}
-                      {currentTokens > 0 && <span style={{ color: '#999', fontWeight: 'normal' }}>{currentTokens} tokens</span>}
+                  <div className="xtsql-input-grip" />
+                  <TextArea
+                    className="xtsql-input-textarea"
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onPressEnter={e => { if (!e.shiftKey) { e.preventDefault(); handleSend(); } }}
+                    placeholder="输入自然语言查询，按Enter发送，Shift+Enter换行"
+                    autoSize={{ minRows: 1, maxRows: 10 }}
+                    style={{ height: inputHeight - 44 }}
+                  />
+                  <div className="xtsql-input-footer">
+                    <div className="xtsql-input-meta">
+                      {currentModel && <span className="xtsql-input-model-tag"><AppIcon size={14} /> {currentModel}</span>}
+                      {currentTokens > 0 && <span>{currentTokens} tokens</span>}
                       <div
+                        className="xtsql-token-bar"
                         onClick={handleViewMessages}
-                        style={{ 
-                          width: '60px', 
-                          height: '8px',
-                          cursor: 'pointer',
-                          backgroundColor: '#e8e8e8',
-                          borderRadius: '4px',
-                          overflow: 'hidden'
-                        }}
+                        title="查看消息详情"
                       >
-                        <div 
-                          style={{ 
-                            height: '100%', 
+                        <div
+                          className="xtsql-token-bar-fill"
+                          style={{
                             width: `${Math.min((sessionMessagesTokens / tokenWarningLevel) * 100, 100)}%`,
-                            backgroundColor: sessionMessagesTokens > tokenWarningLevel ? '#ff4d4f' : '#52c41a',
-                            borderRadius: '4px',
-                            transition: 'width 0.3s ease'
-                          }} 
+                            backgroundColor: sessionMessagesTokens > tokenWarningLevel ? 'var(--xtsql-danger)' : 'var(--xtsql-accent)'
+                          }}
                         />
                       </div>
                     </div>
                     {loading ? (
                       <Button
-                        size="small"
-                        danger
+                        className="xtsql-send-btn danger"
                         onClick={handleStop}
-                        style={{ fontSize: 11, padding: '4px 8px', display: 'flex', alignItems: 'center', justifyContent: 'center' }}
-                        icon={<Spin size="small" indicator={<LoadingOutlined style={{ fontSize: 11, color: '#ff4d4f' }} spin />} />}
+                        icon={<LoadingOutlined spin />}
                       />
                     ) : (
                       <Button
-                        size="small"
-                        type="primary"
+                        className="xtsql-send-btn"
                         onClick={handleSend}
                         disabled={!input.trim()}
                         icon={<SendOutlined />}
-                        loading={loading}
-                        style={{ fontSize: 11, padding: '4px 8px' }}
                       />
                     )}
                   </div>
                 </div>
-              </>
+              </div>
             )}
           </Content>
         </Layout>
-        
-        <Drawer title="配置" placement="right" width={400} onClose={() => setConfigOpen(false)} open={configOpen}>
+        </Layout>
+        </div>
+
+        <Drawer
+          className="xtsql-drawer"
+          title="配置"
+          placement="right"
+          width={400}
+          onClose={() => setConfigOpen(false)}
+          open={configOpen}
+        >
           <div className="config-drawer" style={{ padding: '0 10px' }}>
             <ConfigPanel compact />
           </div>
         </Drawer>
-        
-        <Drawer 
+
+        <Drawer
+          className="xtsql-drawer"
           title={
             <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
               <span>Skill查看器</span>
-              <Button 
-                type="text" 
-                size="small" 
-                icon={skillLocked ? <LockOutlined /> : <UnlockOutlined />} 
+              <Button
+                type="text"
+                size="small"
+                icon={skillLocked ? <LockOutlined /> : <UnlockOutlined />}
                 onClick={() => setSkillLocked(!skillLocked)}
                 title={skillLocked ? '点击解锁编辑权限' : '点击锁定编辑权限'}
-                style={{ color: skillLocked ? '#999' : '#52c41a' }}
+                style={{ color: skillLocked ? 'var(--xtsql-text-tertiary)' : 'var(--xtsql-success)' }}
               />
             </div>
-          } 
-          placement="right" 
-          width={skillDrawerWidth} 
-          onClose={() => setSkillOpen(false)} 
+          }
+          placement="right"
+          width={skillDrawerWidth}
+          onClose={() => setSkillOpen(false)}
           open={skillOpen}
           onOpen={() => { if (skillTree.length === 0) loadSkillsList(); }}
           styles={{ body: { padding: '0 16px', position: 'relative' } }}
@@ -1796,7 +1809,6 @@ children: currentResults.length > 0 ? (
             )}
           </div>
         </Modal>
-      </Layout>
     </ConfigProvider>
   );
 }
