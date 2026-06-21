@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Layout, Input, Button, Table, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, InputNumber, Modal, Steps, Space, Dropdown, Avatar, Tooltip, Form } from 'antd';
+import { Layout, Input, Button, Table, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, InputNumber, Modal, Steps, Space, Dropdown, Avatar, Tooltip, Form, theme } from 'antd';
 import 'react-resizable/css/styles.css';
 import './App.css';
 const { Panel } = Collapse;
@@ -10,8 +10,9 @@ import ChatMessage from './components/ChatMessage';
 import ConfigPanel from './components/ConfigPanel';
 import LoginPage from './components/LoginPage';
 import { useAuth } from './context/AuthContext.jsx';
+import { useTheme } from './context/ThemeContext.jsx';
 import * as api from './api/index.js';
-import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined, RobotOutlined, MoreOutlined, DeleteOutlined, LoadingOutlined, LogoutOutlined, UserOutlined } from '@ant-design/icons';
+import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined, RobotOutlined, MoreOutlined, DeleteOutlined, LoadingOutlined, LogoutOutlined, UserOutlined, BulbOutlined, BulbFilled } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
@@ -20,6 +21,7 @@ import { queryExecute, getSessions, createSession, getSessionMessages, saveSessi
 
 const { TextArea } = Input;
 const { Sider, Content } = Layout;
+const { defaultAlgorithm, darkAlgorithm } = theme;
 
 function App() {
   const { isAuthenticated, bootstrapping, user, logout } = useAuth();
@@ -41,6 +43,7 @@ function App() {
 
 // 鉴权通过后的主体组件，保持原 App 业务逻辑不变
 function AuthenticatedApp({ user, logout }) {
+  const { theme, toggleTheme } = useTheme();
   const [sessions, setSessions] = useState([]);
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
@@ -918,18 +921,27 @@ const explainColumns = useMemo(() => explainResults.length > 0
   }, [currentSessionId]);
   
   return (
-    <ConfigProvider>
-      <Layout style={{ height: '100vh', background: '#fff', overflow: 'hidden' }}>
-        <Sider 
-          width={260} 
-          style={{ background: '#fafafa', borderRight: '1px solid #e8e8e8' }} 
+    <ConfigProvider theme={{ algorithm: theme === 'dark' ? darkAlgorithm : defaultAlgorithm }}>
+      <Tooltip title={theme === 'dark' ? '切换为亮色主题' : '切换为暗色主题'}>
+        <button
+          className="xtsql-theme-toggle"
+          onClick={toggleTheme}
+          aria-label="toggle theme"
+        >
+          {theme === 'dark' ? <BulbFilled style={{ fontSize: 18 }} /> : <BulbOutlined style={{ fontSize: 18 }} />}
+        </button>
+      </Tooltip>
+      <Layout style={{ height: '100vh', background: 'var(--xtsql-bg)', overflow: 'hidden' }}>
+        <Sider
+          width={260}
+          style={{ background: 'var(--xtsql-bg-sider)', borderRight: '1px solid var(--xtsql-border)' }}
           collapsed={siderCollapsed}
-          collapsible 
+          collapsible
           collapsedWidth={0}
           trigger={null}
         >
           <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
-            <div style={{ padding: 8, borderBottom: '1px solid #e8e8e8' }}>
+            <div style={{ padding: 8, borderBottom: '1px solid var(--xtsql-border)' }}>
               <Button type="primary" icon={<PlusOutlined />} onClick={handleNewSession} size="small" style={{ width: '100%' }}>
                 新对话
               </Button>
@@ -984,7 +996,7 @@ const explainColumns = useMemo(() => explainResults.length > 0
                 )}
               />
             </div>
-            <div style={{ padding: '8px', borderTop: '1px solid #e8e8e8', display: 'flex', gap: 8 }}>
+            <div style={{ padding: '8px', borderTop: '1px solid var(--xtsql-border)', display: 'flex', gap: 8 }}>
               <Button icon={<SettingOutlined />} onClick={() => setConfigOpen(true)} size="small" style={{ flex: 1 }}>
                 配置
               </Button>
@@ -992,7 +1004,7 @@ const explainColumns = useMemo(() => explainResults.length > 0
                 Skill
               </Button>
             </div>
-            <div style={{ padding: '6px 10px', borderTop: '1px solid #e8e8e8', display: 'flex', alignItems: 'center', gap: 8, background: '#fafafa' }}>
+            <div style={{ padding: '6px 10px', borderTop: '1px solid var(--xtsql-border)', display: 'flex', alignItems: 'center', gap: 8, background: 'var(--xtsql-hover)' }}>
               <Avatar size={26} style={{ backgroundColor: '#1677ff' }} icon={<UserOutlined />} />
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 12, fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
@@ -1032,7 +1044,7 @@ const explainColumns = useMemo(() => explainResults.length > 0
 
         <Layout>
           <Content style={{ display: 'flex', flexDirection: 'column', padding: 0 }}>
-<div style={{ padding: '8px 16px 0', borderBottom: '1px solid #e8e8e8', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
+<div style={{ padding: '8px 16px 0', borderBottom: '1px solid var(--xtsql-border)', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8 }}>
   <Button
     type="text"
     icon={<MenuOutlined />}
@@ -1071,7 +1083,7 @@ const explainColumns = useMemo(() => explainResults.length > 0
               })()}
             </div>
             
-            <div ref={chatContentRef} style={{ flex: 1, overflow: 'auto', padding: '20px 24px', background: '#fff' }}>
+            <div ref={chatContentRef} style={{ flex: 1, overflow: 'auto', padding: '20px 24px', background: 'var(--xtsql-bg)' }}>
               {activeTabKey === 'chat' ? (
                 messages.length === 0 ? (
                   <Empty description="开始新对话吧" style={{ marginTop: 100 }}>
@@ -1339,12 +1351,12 @@ children: currentResults.length > 0 ? (
                 width={800}
                 styles={{ body: { padding: 0 } }}
               >
-                <div style={{ padding: '12px 16px', background: '#f5f5f5', borderBottom: '1px solid #e8e8e8', fontSize: 12 }}>
+                <div style={{ padding: '12px 16px', background: 'var(--xtsql-hover)', borderBottom: '1px solid var(--xtsql-border)', fontSize: 12 }}>
                   <span style={{ color: '#666' }}>消息上下文长度：</span>
                   <span style={{ color: '#1890ff', fontWeight: 500, marginLeft: 4 }}>{sessionMessagesTokens}</span>
                   <span style={{ color: '#666', marginLeft: 2 }}>tokens</span>
                 </div>
-                <div style={{ height: 480, borderTop: '1px solid #e8e8e8' }}>
+                <div style={{ height: 480, borderTop: '1px solid var(--xtsql-border)' }}>
                   <Editor
                     height={480}
                     defaultLanguage="json"
@@ -1369,7 +1381,7 @@ children: currentResults.length > 0 ? (
               <>
                 <div
                   ref={inputResizerRef}
-                  style={{ minHeight: inputHeight, background: '#fff', position: 'relative', display: 'flex', flexDirection: 'column', boxShadow: '0 -8px 16px rgba(0, 0, 0, 0.1), 0 -4px 8px rgba(0, 0, 0, 0.08)' }}
+                  style={{ minHeight: inputHeight, background: 'var(--xtsql-bg-elevated)', position: 'relative', display: 'flex', flexDirection: 'column', boxShadow: '0 -8px 16px rgba(0, 0, 0, 0.1), 0 -4px 8px rgba(0, 0, 0, 0.08)' }}
                 >
                   <div
                     style={{
@@ -1538,7 +1550,7 @@ children: currentResults.length > 0 ? (
                 >添加</Button>
               </div>
             )}
-            {!skillTreeCollapsed && <div style={{ height: skillTreeHeight, overflow: 'auto', borderBottom: '1px solid #e8e8e8', marginBottom: 8, padding: 8, background: '#fafafa', borderRadius: 4, position: 'relative' }} className="skill-drawer-scroll">
+            {!skillTreeCollapsed && <div style={{ height: skillTreeHeight, overflow: 'auto', borderBottom: '1px solid var(--xtsql-border)', marginBottom: 8, padding: 8, background: 'var(--xtsql-hover)', borderRadius: 4, position: 'relative' }} className="skill-drawer-scroll">
               <div
                 style={{
                   position: 'absolute',

@@ -1,12 +1,15 @@
 import React, { useState } from 'react';
-import { Form, Input, Button, Tabs, Alert, Typography, Space } from 'antd';
-import { UserOutlined, LockOutlined, ThunderboltOutlined } from '@ant-design/icons';
+import { Form, Input, Button, Tabs, Alert, Typography, Space, ConfigProvider, theme } from 'antd';
+import { UserOutlined, LockOutlined, ThunderboltOutlined, BulbOutlined, BulbFilled } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext.jsx';
+import { useTheme } from '../context/ThemeContext.jsx';
 
 const { Title, Text } = Typography;
+const { defaultAlgorithm, darkAlgorithm } = theme;
 
 export default function LoginPage() {
   const { login, register } = useAuth();
+  const { theme: themeMode, toggleTheme } = useTheme();
   const [mode, setMode] = useState('login');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
@@ -47,7 +50,16 @@ export default function LoginPage() {
 
   return (
     <div style={styles.page}>
-      <div style={styles.card}>
+      <button
+        className="xtsql-theme-toggle"
+        onClick={toggleTheme}
+        aria-label="toggle theme"
+        title={themeMode === 'dark' ? '切换为亮色主题' : '切换为暗色主题'}
+      >
+        {themeMode === 'dark' ? <BulbFilled style={{ fontSize: 18 }} /> : <BulbOutlined style={{ fontSize: 18 }} />}
+      </button>
+      <ConfigProvider theme={{ algorithm: themeMode === 'dark' ? darkAlgorithm : defaultAlgorithm }}>
+        <div style={styles.card}>
         <Space direction="vertical" size={8} style={{ width: '100%', textAlign: 'center', marginBottom: 12 }}>
           <ThunderboltOutlined style={{ fontSize: 36, color: '#1677ff' }} />
           <Title level={3} style={{ margin: 0 }}>XTSQL Query Agent</Title>
@@ -142,7 +154,8 @@ export default function LoginPage() {
             </Form.Item>
           </Form>
         )}
-      </div>
+        </div>
+      </ConfigProvider>
     </div>
   );
 }

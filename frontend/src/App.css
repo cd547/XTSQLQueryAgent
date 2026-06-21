@@ -135,3 +135,274 @@
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* ===== 暗色主题 ===== */
+:root {
+  --xtsql-bg: #f5f5f5;
+  --xtsql-bg-elevated: #ffffff;
+  --xtsql-bg-sider: #ffffff;
+  --xtsql-bg-header: #ffffff;
+  --xtsql-text: rgba(0, 0, 0, 0.88);
+  --xtsql-text-secondary: rgba(0, 0, 0, 0.65);
+  --xtsql-text-tertiary: rgba(0, 0, 0, 0.45);
+  --xtsql-border: #f0f0f0;
+  --xtsql-border-strong: #d9d9d9;
+  --xtsql-hover: #f5f5f5;
+  --xtsql-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+  --xtsql-scrollbar-track: #f1f1f1;
+  --xtsql-scrollbar-thumb: #c1c1c1;
+  --xtsql-scroll-bg: #ffffff;
+  --xtsql-code-bg: #f6f8fa;
+  --xtsql-message-user: #e6f4ff;
+  --xtsql-message-assistant: #ffffff;
+}
+
+html.xtsql-dark,
+html.xtsql-dark body {
+  --xtsql-bg: #141414;
+  --xtsql-bg-elevated: #1f1f1f;
+  --xtsql-bg-sider: #1f1f1f;
+  --xtsql-bg-header: #1f1f1f;
+  --xtsql-text: rgba(255, 255, 255, 0.88);
+  --xtsql-text-secondary: rgba(255, 255, 255, 0.65);
+  --xtsql-text-tertiary: rgba(255, 255, 255, 0.45);
+  --xtsql-border: #303030;
+  --xtsql-border-strong: #434343;
+  --xtsql-hover: #262626;
+  --xtsql-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+  --xtsql-scrollbar-track: #1f1f1f;
+  --xtsql-scrollbar-thumb: #434343;
+  --xtsql-scroll-bg: #1f1f1f;
+  --xtsql-code-bg: #262626;
+  --xtsql-message-user: #111b26;
+  --xtsql-message-assistant: #1f1f1f;
+  background: var(--xtsql-bg);
+  color: var(--xtsql-text);
+}
+
+html.xtsql-dark ::-webkit-scrollbar-track {
+  background: var(--xtsql-scrollbar-track);
+}
+html.xtsql-dark ::-webkit-scrollbar-thumb {
+  background: var(--xtsql-scrollbar-thumb);
+}
+html.xtsql-dark * {
+  scrollbar-color: var(--xtsql-scrollbar-thumb) var(--xtsql-scrollbar-track);
+}
+
+/* App 主背景 */
+html.xtsql-dark #root,
+html.xtsql-dark .ant-layout,
+html.xtsql-dark .ant-layout-content,
+html.xtsql-dark .ant-layout-sider,
+html.xtsql-dark .ant-layout-header {
+  background-color: var(--xtsql-bg) !important;
+  color: var(--xtsql-text) !important;
+}
+
+html.xtsql-dark .ant-layout-sider,
+html.xtsql-dark .ant-layout-header {
+  background-color: var(--xtsql-bg-sider) !important;
+  border-color: var(--xtsql-border) !important;
+}
+
+html.xtsql-dark .ant-menu {
+  background-color: transparent !important;
+  color: var(--xtsql-text) !important;
+}
+html.xtsql-dark .ant-menu-item,
+html.xtsql-dark .ant-menu-submenu-title {
+  color: var(--xtsql-text) !important;
+}
+html.xtsql-dark .ant-menu-item:hover,
+html.xtsql-dark .ant-menu-submenu-title:hover {
+  background-color: var(--xtsql-hover) !important;
+  color: var(--xtsql-text) !important;
+}
+html.xtsql-dark .ant-menu-item-selected {
+  background-color: rgba(22, 119, 255, 0.18) !important;
+  color: #91caff !important;
+}
+
+/* 卡片 / 抽屉 / Modal */
+html.xtsql-dark .ant-card,
+html.xtsql-dark .ant-drawer-content,
+html.xtsql-dark .ant-drawer-header,
+html.xtsql-dark .ant-modal-content,
+html.xtsql-dark .ant-modal-header,
+html.xtsql-dark .ant-popover-inner,
+html.xtsql-dark .ant-dropdown-menu,
+html.xtsql-dark .ant-select-dropdown {
+  background-color: var(--xtsql-bg-elevated) !important;
+  color: var(--xtsql-text) !important;
+  border-color: var(--xtsql-border) !important;
+}
+html.xtsql-dark .ant-drawer-mask,
+html.xtsql-dark .ant-modal-mask {
+  background-color: rgba(0, 0, 0, 0.65) !important;
+}
+
+/* 输入控件 */
+html.xtsql-dark .ant-input,
+html.xtsql-dark .ant-input-affix-wrapper,
+html.xtsql-dark .ant-input-password,
+html.xtsql-dark .ant-input-number,
+html.xtsql-dark .ant-select-selector,
+html.xtsql-dark .ant-input-search,
+html.xtsql-dark textarea.ant-input,
+html.xtsql-dark .ant-picker {
+  background-color: var(--xtsql-bg-elevated) !important;
+  color: var(--xtsql-text) !important;
+  border-color: var(--xtsql-border-strong) !important;
+}
+html.xtsql-dark .ant-input::placeholder,
+html.xtsql-dark textarea.ant-input::placeholder {
+  color: var(--xtsql-text-tertiary) !important;
+}
+html.xtsql-dark .ant-select-selection-item,
+html.xtsql-dark .ant-select-arrow,
+html.xtsql-dark .ant-input-number-handler-wrap {
+  color: var(--xtsql-text) !important;
+}
+html.xtsql-dark .ant-input-number-handler {
+  border-color: var(--xtsql-border-strong) !important;
+}
+
+/* 按钮（非 primary 透明感） */
+html.xtsql-dark .ant-btn {
+  background-color: var(--xtsql-bg-elevated) !important;
+  color: var(--xtsql-text) !important;
+  border-color: var(--xtsql-border-strong) !important;
+}
+html.xtsql-dark .ant-btn-text,
+html.xtsql-dark .ant-btn-link {
+  background: transparent !important;
+  border-color: transparent !important;
+}
+html.xtsql-dark .ant-btn-primary {
+  background: #1668dc !important;
+  border-color: #1668dc !important;
+  color: #fff !important;
+}
+
+/* 表格 */
+html.xtsql-dark .ant-table,
+html.xtsql-dark .ant-table-thead > tr > th,
+html.xtsql-dark .ant-table-tbody > tr > td {
+  background-color: var(--xtsql-bg-elevated) !important;
+  color: var(--xtsql-text) !important;
+  border-color: var(--xtsql-border) !important;
+}
+html.xtsql-dark .ant-table-thead > tr > th {
+  background-color: #262626 !important;
+}
+html.xtsql-dark .ant-table-tbody > tr:hover > td {
+  background-color: var(--xtsql-hover) !important;
+}
+html.xtsql-dark .ant-table-placeholder:hover > td {
+  background: var(--xtsql-bg-elevated) !important;
+}
+
+/* Tabs / Collapse / Tree */
+html.xtsql-dark .ant-tabs-nav,
+html.xtsql-dark .ant-tabs-tab,
+html.xtsql-dark .ant-tabs-tab-active .ant-tabs-tab-btn,
+html.xtsql-dark .ant-tabs-ink-bar {
+  color: var(--xtsql-text) !important;
+}
+html.xtsql-dark .ant-tabs-tab:hover {
+  color: #91caff !important;
+}
+html.xtsql-dark .ant-collapse,
+html.xtsql-dark .ant-collapse-item,
+html.xtsql-dark .ant-collapse-header,
+html.xtsql-dark .ant-collapse-content,
+html.xtsql-dark .ant-collapse-content-box {
+  background-color: var(--xtsql-bg-elevated) !important;
+  color: var(--xtsql-text) !important;
+  border-color: var(--xtsql-border) !important;
+}
+html.xtsql-dark .ant-tree {
+  background: transparent !important;
+  color: var(--xtsql-text) !important;
+}
+html.xtsql-dark .ant-tree-node-content-wrapper:hover {
+  background-color: var(--xtsql-hover) !important;
+}
+html.xtsql-dark .ant-tree-node-selected {
+  background-color: rgba(22, 119, 255, 0.2) !important;
+}
+
+/* 列表 / Empty */
+html.xtsql-dark .ant-list,
+html.xtsql-dark .ant-list-item,
+html.xtsql-dark .ant-empty-description {
+  color: var(--xtsql-text-secondary) !important;
+}
+html.xtsql-dark .ant-list-item:hover {
+  background-color: var(--xtsql-hover) !important;
+}
+
+/* Spin / message / Tooltip */
+html.xtsql-dark .ant-spin-text,
+html.xtsql-dark .ant-typography,
+html.xtsql-dark .ant-typography-secondary,
+html.xtsql-dark .ant-form-item-label > label,
+html.xtsql-dark .ant-form-item-extra {
+  color: var(--xtsql-text) !important;
+}
+html.xtsql-dark .ant-typography-secondary {
+  color: var(--xtsql-text-secondary) !important;
+}
+html.xtsql-dark .ant-tooltip-inner {
+  background-color: #434343 !important;
+  color: #fff !important;
+}
+html.xtsql-dark .ant-tooltip-arrow::before {
+  background: #434343 !important;
+}
+
+/* Tag / Badge */
+html.xtsql-dark .ant-tag {
+  border-color: var(--xtsql-border-strong) !important;
+}
+
+/* 分割线 */
+html.xtsql-dark .ant-divider {
+  border-color: var(--xtsql-border) !important;
+}
+
+/* 通用文本 */
+html.xtsql-dark {
+  color-scheme: dark;
+}
+html.xtsql-dark body,
+html.xtsql-dark #root,
+html.xtsql-dark .app-main-text {
+  color: var(--xtsql-text);
+}
+
+/* 主题切换按钮 */
+.xtsql-theme-toggle {
+  position: fixed;
+  top: 12px;
+  right: 16px;
+  z-index: 1000;
+  cursor: pointer;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+  color: var(--xtsql-text);
+  background: transparent;
+  border: none;
+  transition: background 0.2s;
+}
+.xtsql-theme-toggle:hover {
+  background: var(--xtsql-hover);
+}
+html.xtsql-dark .xtsql-theme-toggle {
+  color: #fadb14;
+}
