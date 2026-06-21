@@ -72,6 +72,10 @@ export function getLlMConfig() {
   return api.get('/config/llm').then(r => r.data);
 }
 
+export function getDeepseekModels() {
+  return api.get('/config/llm/models').then(r => r.data);
+}
+
 export function queryGenerate(data) {
   return api.post('/query/generate', data).then(r => r.data);
 }
