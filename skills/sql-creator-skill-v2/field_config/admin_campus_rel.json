@@ -1,0 +1,32 @@
+{
+  "table_name": "admin_campus_rel",
+  "field_aliases": {},
+  "field_enums": {},
+  "virtual_associations": [
+    {
+      "name": "关联用户主表",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = admin_campus_rel.admin_user_id",
+      "type": "one_to_one",
+      "description": "1条员工-业务校区关系表信息对应一个用户",
+      "fields_mapping": {
+        "id": "admin_user_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联业务校区主表",
+      "target_table": "edu_campus",
+      "join_condition": "edu_campus.simple = admin_campus_rel.campus_value",
+      "type": "one_to_one",
+      "description": "1条员工-业务校区关系表信息对应一个业务校区",
+      "fields_mapping": {
+        "simple": "campus_value"
+      },
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}

@@ -800,581 +800,184 @@
     {
       "name": "study_abroad_apply_online_account_info",
       "description": "留学网申账户信息表",
-      "tags": [
-        "留学",
-        "网申",
-        "账户"
-      ],
-      "related_tables": [
-        "study_abroad_planning_info",
-        "edu_student"
-      ],
+      "tags": [],
+      "related_tables": [],
       "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "网申账户归属学生",
-          "description": "一个学生可以维护网申账户信息，查询规划信息时可通过 student_id 关联该学生的网申账户。"
-        }
-      ]
+      "business_rules": []
     },
     {
       "name": "study_abroad_apply_online_info",
       "description": "留学网申信息主表",
-      "tags": [
-        "留学",
-        "网申",
-        "申请"
-      ],
-      "related_tables": [
-        "study_abroad_planning_info",
-        "study_abroad_apply_online_school_info",
-        "study_abroad_apply_online_person_info",
-        "study_abroad_offer_info",
-        "study_abroad_proofread_book",
-        "edu_student"
-      ],
+      "tags": [],
+      "related_tables": [],
       "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "网申主表",
-          "description": "该表是学生网申业务的主表，学校信息、offer信息、定校书信息可基于该表进行关联。"
-        }
-      ]
+      "business_rules": []
     },
     {
       "name": "study_abroad_apply_online_person_info",
       "description": "留学网申个人信息表",
-      "tags": [
-        "留学",
-        "网申",
-        "个人信息"
-      ],
-      "related_tables": [
-        "study_abroad_planning_info",
-        "study_abroad_apply_online_info",
-        "edu_student"
-      ],
+      "tags": [],
+      "related_tables": [],
       "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "网申个人信息",
-          "description": "该表保存学生网申过程中需要填写的个人基础信息，可通过 student_id 与规划信息、网申主表关联。"
-        }
-      ]
+      "business_rules": []
     },
     {
       "name": "study_abroad_apply_online_school_info",
       "description": "留学网申信息学校信息",
-      "tags": [
-        "留学",
-        "网申",
-        "学校"
-      ],
-      "related_tables": [
-        "study_abroad_apply_online_info",
-        "study_abroad_school",
-        "study_abroad_offer_info"
-      ],
+      "tags": [],
+      "related_tables": [],
       "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "网申学校明细",
-          "description": "一个网申主记录可以对应多个申请学校信息，查询时通过 apply_online_info_id 关联网申主表。"
-        }
-      ]
+      "business_rules": []
     },
     {
       "name": "study_abroad_attachment",
       "description": "留学附件表",
-      "tags": [
-        "留学",
-        "附件",
-        "文件"
-      ],
-      "related_tables": [
-        "study_abroad_document",
-        "study_abroad_document_materials",
-        "study_abroad_apply_online_info"
-      ],
-      "business_constraints": [
-        "附件表通常用于保存留学业务中上传的文件资源",
-        "具体业务表可能通过附件ID、附件URL或业务ID进行关联"
-      ],
-      "business_rules": [
-        {
-          "rule": "附件通用管理",
-          "description": "该表可作为留学业务的通用附件资源表，文书、材料、网申等业务可引用附件信息。"
-        }
-      ]
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
     },
     {
       "name": "study_abroad_case_closure",
       "description": "留学结案表",
-      "tags": [
-        "留学",
-        "结案"
-      ],
-      "related_tables": [
-        "study_abroad_planning_info",
-        "edu_student"
-      ],
+      "tags": [],
+      "related_tables": [],
       "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "学生留学结案",
-          "description": "学生留学服务流程结束后，可通过 student_id 查询对应结案信息。"
-        }
-      ]
+      "business_rules": []
     },
     {
       "name": "study_abroad_copy_writer",
       "description": "留学文案表",
-      "tags": [
-        "留学",
-        "文案",
-        "专业方向"
-      ],
-      "related_tables": [
-        "study_abroad_planning_info",
-        "study_abroad_major",
-        "edu_student"
-      ],
-      "business_constraints": [
-        "查询时可通过 student_id 与规划信息关联，也可通过 study_abroad_major_id 与专业方向关联"
-      ],
-      "business_rules": [
-        {
-          "rule": "文案与专业方向",
-          "description": "留学文案通常与学生和申请专业方向相关，可通过 student_id 定位学生，通过 study_abroad_major_id 定位专业方向。"
-        }
-      ]
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
     },
     {
       "name": "study_abroad_document",
       "description": "留学文书表",
-      "tags": [
-        "留学",
-        "文书"
-      ],
-      "related_tables": [
-        "study_abroad_planning_info",
-        "study_abroad_document_attachment",
-        "study_abroad_document_materials",
-        "edu_student"
-      ],
+      "tags": [],
+      "related_tables": [],
       "business_constraints": [],
       "business_rules": []
     },
     {
       "name": "study_abroad_document_attachment",
       "description": "留学文书类型表",
-      "tags": [
-        "留学",
-        "文书",
-        "附件类型"
-      ],
-      "related_tables": [
-        "study_abroad_document",
-        "study_abroad_document_materials",
-        "study_abroad_attachment"
-      ],
-      "business_constraints": [
-        "通常作为文书附件或文书类型的基础配置表"
-      ],
-      "business_rules": [
-        {
-          "rule": "文书类型配置",
-          "description": "用于维护文书材料或附件的类型信息，便于文书材料分类管理。"
-        }
-      ]
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
     },
     {
       "name": "study_abroad_document_materials",
       "description": "留学文书材料表",
-      "tags": [
-        "留学",
-        "文书",
-        "材料",
-        "定校书"
-      ],
-      "related_tables": [
-        "study_abroad_planning_info",
-        "study_abroad_document",
-        "study_abroad_proofread_book",
-        "edu_student"
-      ],
+      "tags": [],
+      "related_tables": [],
       "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "文书材料与定校书",
-          "description": "文书材料属于学生维度数据，同时可关联定校书，用于生成或维护申请材料内容。"
-        }
-      ]
+      "business_rules": []
     },
     {
       "name": "study_abroad_major",
       "description": "留学专业方向信息表",
-      "tags": [
-        "留学",
-        "专业",
-        "方向"
-      ],
-      "related_tables": [
-        "study_abroad_planning_info",
-        "study_abroad_copy_writer"
-      ],
+      "tags": [],
+      "related_tables": [],
       "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "专业方向基础信息",
-          "description": "该表维护留学申请专业方向，规划信息和文案信息均可引用该表。"
-        }
-      ]
+      "business_rules": []
     },
     {
       "name": "study_abroad_offer_info",
       "description": "留学offer表",
-      "tags": [
-        "留学",
-        "offer",
-        "录取"
-      ],
-      "related_tables": [
-        "study_abroad_planning_info",
-        "study_abroad_apply_online_info",
-        "study_abroad_visa_info",
-        "edu_student"
-      ],
+      "tags": [],
+      "related_tables": [],
       "business_constraints": [],
       "business_rules": []
     },
     {
       "name": "study_abroad_operate_log",
       "description": "操作记录主表",
-      "tags": [
-        "留学",
-        "操作日志"
-      ],
-      "related_tables": [
-        "study_abroad_operate_log_detail"
-      ],
-      "business_constraints": [
-        "日志主表通常记录一次操作的主体信息"
-      ],
-      "business_rules": [
-        {
-          "rule": "操作日志主从结构",
-          "description": "study_abroad_operate_log 作为日志主表，study_abroad_operate_log_detail 作为日志详情表，用于记录字段级或明细级变更。"
-        }
-      ]
-    },
-    {
-      "name": "study_abroad_operate_log_detail",
-      "description": "操作记录详情表",
-      "tags": [
-        "留学",
-        "操作日志",
-        "日志详情"
-      ],
-      "related_tables": [
-        "study_abroad_operate_log"
-      ],
-      "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "操作日志详情",
-          "description": "记录具体操作明细，例如变更字段、变更前后内容等。"
-        }
-      ]
-    },
-    {
-      "name": "study_abroad_planning_info",
-      "description": "留学规划信息表",
-      "tags": [
-        "留学",
-        "规划",
-        "主流程",
-        "核心表"
-      ],
-      "related_tables": [
-        "study_abroad_planning_info_operation_log",
-        "study_abroad_planning_info_user_operation_record",
-        "study_abroad_apply_online_account_info",
-        "study_abroad_apply_online_info",
-        "study_abroad_apply_online_person_info",
-        "study_abroad_document",
-        "study_abroad_document_materials",
-        "study_abroad_case_closure",
-        "study_abroad_copy_writer",
-        "study_abroad_offer_info",
-        "study_abroad_proofread_book",
-        "study_abroad_school_selection",
-        "study_abroad_visa_info",
-        "study_abroad_major",
-        "order_student",
-        "edu_student"
-      ],
-      "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "留学业务主表",
-          "description": "study_abroad_planning_info 是留学业务的核心主表，网申、文书、offer、签证、结案、定校书等业务均可围绕 student_id 或 planning_info_id 关联。"
-        },
-        {
-          "rule": "学生维度关联",
-          "description": "大多数留学业务表通过 student_id 与 study_abroad_planning_info.student_id 关联。"
-        },
-        {
-          "rule": "规划维度关联",
-          "description": "规划操作日志、用户操作记录、定校书生成记录等与具体规划单相关的数据，通过 planning_info_id 或 plan_info_id 关联 study_abroad_planning_info.id。"
-        }
-      ]
-    },
-    {
-      "name": "study_abroad_planning_info_operation_log",
-      "description": "规划信息操作日志表",
-      "tags": [
-        "留学",
-        "规划",
-        "操作日志"
-      ],
-      "related_tables": [
-        "study_abroad_planning_info"
-      ],
-      "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "规划操作日志",
-          "description": "记录规划信息的操作日志，通过 planning_info_id 关联具体规划记录。"
-        }
-      ]
-    },
-    {
-      "name": "study_abroad_planning_info_user_operation_record",
-      "description": "规划信息用户操作记录表",
-      "tags": [
-        "留学",
-        "规划",
-        "用户操作记录"
-      ],
-      "related_tables": [
-        "study_abroad_planning_info",
-        "edu_student"
-      ],
-      "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "用户操作记录唯一定位",
-          "description": "该表记录用户在某个规划信息下的操作记录，通常需要 planning_info_id 和 student_id 同时关联，避免跨学生或跨规划数据误匹配。"
-        }
-      ]
-    },
-    {
-      "name": "study_abroad_proofread_book",
-      "description": "留学定校书",
-      "tags": [
-        "留学",
-        "定校书"
-      ],
-      "related_tables": [
-        "study_abroad_apply_online_info",
-        "study_abroad_document_materials",
-        "study_abroad_planning_info"
-      ],
-      "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "定校书关联网申和材料",
-          "description": "定校书可同时关联网申主表和文书材料表，用于支撑学生申请学校、申请材料等业务。"
-        }
-      ]
-    },
-    {
-      "name": "study_abroad_school",
-      "description": "留学学校信息表",
-      "tags": [
-        "留学",
-        "学校",
-        "院校库"
-      ],
-      "related_tables": [
-        "study_abroad_apply_online_school_info",
-        "study_abroad_school_selection_detail"
-      ],
-      "business_constraints": [
-        "学校信息通常作为院校基础数据，被网申学校信息或定校明细引用"
-      ],
-      "business_rules": [
-        {
-          "rule": "院校基础数据",
-          "description": "该表维护留学学校基础信息，申请学校、定校明细等业务可以引用该表。"
-        }
-      ]
-    },
-    {
-      "name": "study_abroad_school_selection",
-      "description": "留学生成定校书pdf表",
-      "tags": [
-        "留学",
-        "定校",
-        "定校书PDF"
-      ],
-      "related_tables": [
-        "study_abroad_planning_info",
-        "study_abroad_school_selection_detail",
-        "edu_student"
-      ],
-      "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "定校书PDF主表",
-          "description": "该表保存学生定校书PDF生成记录，通过 student_id 关联学生，通过 plan_info_id 关联规划信息。"
-        },
-        {
-          "rule": "定校主从结构",
-          "description": "study_abroad_school_selection 为主表，study_abroad_school_selection_detail 为明细表。"
-        }
-      ]
-    },
-    {
-      "name": "study_abroad_school_selection_detail",
-      "description": "留学生成定校书pdf明细表",
-      "tags": [
-        "留学",
-        "定校",
-        "定校书PDF",
-        "明细"
-      ],
-      "related_tables": [
-        "study_abroad_school_selection",
-        "study_abroad_school"
-      ],
-      "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "定校书PDF明细",
-          "description": "该表保存定校书中的学校明细信息，通过 school_selection_id 关联定校书PDF主表。"
-        }
-      ]
-    },
-    {
-      "name": "study_abroad_visa_info",
-      "description": "留学签证表",
-      "tags": [
-        "留学",
-        "签证",
-        "offer"
-      ],
-      "related_tables": [
-        "study_abroad_planning_info",
-        "study_abroad_offer_info",
-        "edu_student"
-      ],
-      "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "签证基于offer办理",
-          "description": "签证信息通常在学生获得 offer 后产生，因此通过 offer_id 关联具体 offer。"
-        }
-      ]
-    },
-    {
-      "name": "abroad_standard_field",
-      "description": "自定义标准字段表",
-      "tags": [
-        "留学",
-        "标准字段",
-        "自定义字段"
-      ],
-      "related_tables": [
-        "study_abroad_planning_info",
-        "study_abroad_apply_online_info",
-        "study_abroad_document",
-        "study_abroad_offer_info",
-        "study_abroad_visa_info"
-      ],
-      "business_constraints": [
-        "用于维护留学业务中的自定义标准字段",
-        "可作为动态字段、字段映射、字段展示配置的基础表"
-      ],
-      "business_rules": [
-        {
-          "rule": "标准字段配置",
-          "description": "用于统一管理留学业务模块中的动态字段或标准字段，方便不同业务表进行字段映射、字段展示和AI查询。"
-        }
-      ]
-    },
-    {
-      "name": "order_student",
-      "description": "订单学生表",
-      "tags": [
-        "订单",
-        "学生"
-      ],
-      "related_tables": [
-        "study_abroad_planning_info"
-      ],
-      "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "规划信息关联订单学生",
-          "description": "留学规划信息中的 order_id 关联 order_student.id，用于追溯学生对应的订单信息。"
-        }
-      ]
-    },
-    {
-      "name": "edu_student",
-      "description": "学生基础信息表",
-      "tags": [
-        "学生",
-        "基础信息"
-      ],
-      "related_tables": [
-        "study_abroad_planning_info",
-        "study_abroad_apply_online_account_info",
-        "study_abroad_apply_online_info",
-        "study_abroad_document",
-        "study_abroad_offer_info",
-        "study_abroad_visa_info"
-      ],
-      "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "学生基础信息主表",
-          "description": "edu_student 是学生基础信息表，留学模块大部分业务表通过 student_id 关联该表。"
-        }
-      ]
-    },
-    {
-      "name": "auth_role",
-      "description": "角色信息表",
-      "tags": [
-        "新系统角色",
-        "新系统权限"
-      ],
+      "tags": [],
       "related_tables": [],
       "business_constraints": [],
       "business_rules": []
     },
     {
-      "name": "auth_user_role",
-      "description": "用户角色信息表",
+      "name": "study_abroad_operate_log_detail",
+      "description": "操作记录详情表",
       "tags": [],
-      "related_tables": [
-        "auth_role",
-        "admin_user"
-      ],
+      "related_tables": [],
       "business_constraints": [],
       "business_rules": []
     },
     {
-      "name": "admin_campus_rel",
-      "description": "员工-业务校区关系表",
+      "name": "study_abroad_planning_info",
+      "description": "留学规划信息表",
       "tags": [],
-      "related_tables": [
-        "admin_user",
-        "edu_campus"
-      ],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "study_abroad_planning_info_operation_log",
+      "description": "规划信息操作日志表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "study_abroad_planning_info_user_operation_record",
+      "description": "规划信息用户操作记录表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "study_abroad_proofread_book",
+      "description": "留学定校书",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "study_abroad_school",
+      "description": "留学学校信息表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "study_abroad_school_selection",
+      "description": "留学生成定校书pdf表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "study_abroad_school_selection_detail",
+      "description": "留学生成定校书pdf明细表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "study_abroad_visa_info",
+      "description": "留学签证表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "abroad_standard_field",
+      "description": "自定义标准字段表",
+      "tags": [],
+      "related_tables": [],
       "business_constraints": [],
       "business_rules": []
     }

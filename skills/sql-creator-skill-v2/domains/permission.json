@@ -6,6 +6,9 @@
     "admin_character",
     "admin_user_campus",
     "admin_department_manage",
-    "admin_department_type"
+    "admin_department_type",
+    "auth_user_role",
+    "auth_role",
+    "admin_campus_rel"
   ]
 }

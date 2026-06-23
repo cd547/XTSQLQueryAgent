@@ -1,0 +1,23 @@
+CREATE TABLE `study_abroad_copy_writer` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '自增ID',
+  `student_id` bigint(11) NOT NULL COMMENT '学生ID',
+  `transfer_case_time` datetime DEFAULT NULL COMMENT '转案时间',
+  `edu_student_type_id` bigint(11) DEFAULT NULL COMMENT '学生类型',
+  `application_start_time` datetime DEFAULT NULL COMMENT '申请季开始时间',
+  `application_end_time` datetime DEFAULT NULL COMMENT '申请季开始时间',
+  `application_level` int(11) DEFAULT NULL COMMENT '申请级别(1中学 2本科 3硕士 4博士)',
+  `product_name` varchar(255) DEFAULT NULL COMMENT '产品名称',
+  `planner_id` int(11) DEFAULT NULL COMMENT '规划师ID',
+  `transfer_teacher_id` int(11) DEFAULT NULL COMMENT '转案老师ID',
+  `copywriting_teacher_id` int(11) DEFAULT NULL COMMENT '文案老师ID',
+  `application_country` varchar(255) DEFAULT NULL COMMENT '申请国家',
+  `application_major` varchar(255) DEFAULT NULL COMMENT '申请专业',
+  `transfer_status` int(11) NOT NULL DEFAULT '0' COMMENT '转案状态（0-未转案、1-已转案）',
+  `del` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否被删除（0表示未删除，1表示已删除）',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  `study_abroad_major_id` bigint(20) DEFAULT NULL COMMENT '专业方向ID',
+  PRIMARY KEY (`id`),
+  KEY `idx_create_time` (`create_time`),
+  KEY `idx_update_time` (`update_time`)
+) ENGINE=InnoDB AUTO_INCREMENT=55 DEFAULT CHARSET=utf8mb4 COMMENT='留学文案表'

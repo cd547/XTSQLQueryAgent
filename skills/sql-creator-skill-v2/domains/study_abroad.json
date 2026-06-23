@@ -1,0 +1,28 @@
+{
+  "id": "study_abroad",
+  "name": "留学",
+  "tables": [
+    "study_abroad_apply_online_account_info",
+    "study_abroad_apply_online_info",
+    "study_abroad_apply_online_person_info",
+    "study_abroad_apply_online_school_info",
+    "study_abroad_attachment",
+    "study_abroad_case_closure",
+    "study_abroad_copy_writer",
+    "study_abroad_document",
+    "study_abroad_document_attachment",
+    "study_abroad_document_materials",
+    "study_abroad_major",
+    "study_abroad_offer_info",
+    "study_abroad_operate_log",
+    "study_abroad_operate_log_detail",
+    "study_abroad_planning_info",
+    "study_abroad_planning_info_operation_log",
+    "study_abroad_planning_info_user_operation_record",
+    "study_abroad_proofread_book",
+    "study_abroad_school",
+    "study_abroad_school_selection",
+    "study_abroad_school_selection_detail",
+    "study_abroad_visa_info"
+  ]
+}

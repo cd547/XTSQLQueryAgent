@@ -326,6 +326,7 @@ async function startBackend() {
     env.LOG_PATH = path.join(projectRoot, 'logs');
 
     let backendProcess;
+    const spawnTime = Date.now();  // #region debug-point splash-timeout | 记录 spawn 时间点
     try {
       backendProcess = spawn(nodePath, [backendPath], {
         cwd: backendCwd,
@@ -337,6 +338,7 @@ async function startBackend() {
       resolve({ ok: false, reason: `spawn 抛出异常: ${e.message}`, stderr: '', nodePath });
       return;
     }
+    console.log(`[PERF] backend spawned: T+0ms, pid=${backendProcess.pid}`);  // #endregion debug-point splash-timeout
 
     let resolved = false;
     const stderrChunks = [];
@@ -377,17 +379,19 @@ async function startBackend() {
 
     backendProcess.stdout.on('data', (data) => {
       const output = data.toString();
-      console.log(`Backend stdout: ${output}`);
+      const elapsed = Date.now() - spawnTime;  // #region debug-point splash-timeout | 每个 stdout 都打时间戳
+      console.log(`[PERF] T+${elapsed}ms stdout: ${output}`);
+      console.log(`Backend stdout: ${output}`);  // #endregion debug-point splash-timeout
 
       // 阶段性提示，让用户知道在干啥
       if (/SQLite initialized/i.test(output)) {
-        updateSplash('数据库就绪，正在加载路由...');
+        updateSplash(`数据库就绪（T+${elapsed}ms），正在加载路由...`);  // #region debug-point splash-timeout
       } else if (/Server running on port/i.test(output)) {
         console.log('Backend started successfully!');
         updateSplash('后端就绪，正在打开主界面...');
         finish({ ok: true });
       }
-    });
+    });  // #endregion debug-point splash-timeout
 
     backendProcess.stderr.on('data', (data) => {
       const text = data.toString();
@@ -398,25 +402,33 @@ async function startBackend() {
     console.log('Waiting for backend to start...');
 
     // 阶段性提示（前端没动静时告诉用户"还在等"）
+    // 阶段提示时间：5s / 20s / 40s / 50s（对应 60s 总超时）
+    // #region debug-point splash-timeout | 之前 3/10/25/30s 太激进，模块加载 37s 直接超时
     setTimeout(() => {
-      if (!resolved) updateSplash('正在启动后端服务...（首次较慢）');
-    }, 3000);
+      if (!resolved) updateSplash('正在启动后端服务...（首次较慢，杀软扫描可能耗时）');
+    }, 5000);
     setTimeout(() => {
       if (!resolved) updateSplash('仍在等待后端响应（数据库或原生模块可能还在加载）');
-    }, 10000);
+    }, 20000);
     setTimeout(() => {
       if (!resolved) updateSplash('即将超时...（如持续等待请打开日志查看详情）');
-    }, 25000);
+    }, 40000);
+    setTimeout(() => {
+      if (!resolved) updateSplash('最后 10 秒...（如长期未响应请打开日志）');
+    }, 50000);
+    // #endregion debug-point splash-timeout
 
     setTimeout(() => {
       finish({
         ok: false,
-        reason: '30 秒内未检测到 "Server running on port" 标志，后端可能卡在初始化阶段（数据库连接、依赖加载、或 Node 版本不匹配）',
+        // #region debug-point splash-timeout | 把 30s 改成 60s，给冷启动杀软扫描留时间
+        reason: '60 秒内未检测到 "Server running on port" 标志，后端可能卡在初始化阶段（数据库连接、依赖加载、杀软扫描、或 Node 版本不匹配）',
+        // #endregion debug-point splash-timeout
         stderr: tailStderr(),
         nodePath,
         backendPath
       });
-    }, 30000);
+    }, 60000);  // #region debug-point splash-timeout | 30s → 60s
   });
 }
 

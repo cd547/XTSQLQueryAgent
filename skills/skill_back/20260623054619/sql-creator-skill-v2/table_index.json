@@ -800,16 +800,15 @@
     {
       "name": "study_abroad_apply_online_account_info",
       "description": "留学网申账户信息表",
-      "tags": [
-        "留学",
-        "网申",
-        "账户"
-      ],
+      "tags": ["留学", "网申", "账户"],
       "related_tables": [
         "study_abroad_planning_info",
         "edu_student"
       ],
-      "business_constraints": [],
+      "business_constraints": [
+        "student_id: 关联学生ID，通常关联 study_abroad_planning_info.student_id 或 edu_student.id",
+        "查询留学网申账户信息时，通常以 student_id 作为学生维度关联字段"
+      ],
       "business_rules": [
         {
           "rule": "网申账户归属学生",
@@ -820,11 +819,7 @@
     {
       "name": "study_abroad_apply_online_info",
       "description": "留学网申信息主表",
-      "tags": [
-        "留学",
-        "网申",
-        "申请"
-      ],
+      "tags": ["留学", "网申", "申请"],
       "related_tables": [
         "study_abroad_planning_info",
         "study_abroad_apply_online_school_info",
@@ -833,7 +828,12 @@
         "study_abroad_proofread_book",
         "edu_student"
       ],
-      "business_constraints": [],
+      "business_constraints": [
+        "student_id: 关联学生ID",
+        "book_id: 关联 study_abroad_proofread_book.id",
+        "id: 可被 study_abroad_apply_online_school_info.apply_online_info_id 引用",
+        "id: 可被 study_abroad_offer_info.apply_online_id 引用"
+      ],
       "business_rules": [
         {
           "rule": "网申主表",
@@ -844,17 +844,15 @@
     {
       "name": "study_abroad_apply_online_person_info",
       "description": "留学网申个人信息表",
-      "tags": [
-        "留学",
-        "网申",
-        "个人信息"
-      ],
+      "tags": ["留学", "网申", "个人信息"],
       "related_tables": [
         "study_abroad_planning_info",
         "study_abroad_apply_online_info",
         "edu_student"
       ],
-      "business_constraints": [],
+      "business_constraints": [
+        "student_id: 关联学生ID，通常关联 study_abroad_planning_info.student_id"
+      ],
       "business_rules": [
         {
           "rule": "网申个人信息",
@@ -865,17 +863,15 @@
     {
       "name": "study_abroad_apply_online_school_info",
       "description": "留学网申信息学校信息",
-      "tags": [
-        "留学",
-        "网申",
-        "学校"
-      ],
+      "tags": ["留学", "网申", "学校"],
       "related_tables": [
         "study_abroad_apply_online_info",
         "study_abroad_school",
         "study_abroad_offer_info"
       ],
-      "business_constraints": [],
+      "business_constraints": [
+        "apply_online_info_id: 关联 study_abroad_apply_online_info.id"
+      ],
       "business_rules": [
         {
           "rule": "网申学校明细",
@@ -886,11 +882,7 @@
     {
       "name": "study_abroad_attachment",
       "description": "留学附件表",
-      "tags": [
-        "留学",
-        "附件",
-        "文件"
-      ],
+      "tags": ["留学", "附件", "文件"],
       "related_tables": [
         "study_abroad_document",
         "study_abroad_document_materials",
@@ -910,15 +902,14 @@
     {
       "name": "study_abroad_case_closure",
       "description": "留学结案表",
-      "tags": [
-        "留学",
-        "结案"
-      ],
+      "tags": ["留学", "结案"],
       "related_tables": [
         "study_abroad_planning_info",
         "edu_student"
       ],
-      "business_constraints": [],
+      "business_constraints": [
+        "student_id: 关联学生ID，通常关联 study_abroad_planning_info.student_id"
+      ],
       "business_rules": [
         {
           "rule": "学生留学结案",
@@ -929,17 +920,15 @@
     {
       "name": "study_abroad_copy_writer",
       "description": "留学文案表",
-      "tags": [
-        "留学",
-        "文案",
-        "专业方向"
-      ],
+      "tags": ["留学", "文案", "专业方向"],
       "related_tables": [
         "study_abroad_planning_info",
         "study_abroad_major",
         "edu_student"
       ],
       "business_constraints": [
+        "student_id: 关联学生ID",
+        "study_abroad_major_id: 关联 study_abroad_major.id",
         "查询时可通过 student_id 与规划信息关联，也可通过 study_abroad_major_id 与专业方向关联"
       ],
       "business_rules": [
@@ -952,27 +941,27 @@
     {
       "name": "study_abroad_document",
       "description": "留学文书表",
-      "tags": [
-        "留学",
-        "文书"
-      ],
+      "tags": ["留学", "文书"],
       "related_tables": [
         "study_abroad_planning_info",
         "study_abroad_document_attachment",
         "study_abroad_document_materials",
         "edu_student"
       ],
-      "business_constraints": [],
-      "business_rules": []
+      "business_constraints": [
+        "student_id: 关联学生ID，通常关联 study_abroad_planning_info.student_id"
+      ],
+      "business_rules": [
+        {
+          "rule": "学生文书信息",
+          "description": "该表保存学生留学申请过程中的文书信息，可通过 student_id 与规划主流程关联。"
+        }
+      ]
     },
     {
       "name": "study_abroad_document_attachment",
       "description": "留学文书类型表",
-      "tags": [
-        "留学",
-        "文书",
-        "附件类型"
-      ],
+      "tags": ["留学", "文书", "附件类型"],
       "related_tables": [
         "study_abroad_document",
         "study_abroad_document_materials",
@@ -991,19 +980,18 @@
     {
       "name": "study_abroad_document_materials",
       "description": "留学文书材料表",
-      "tags": [
-        "留学",
-        "文书",
-        "材料",
-        "定校书"
-      ],
+      "tags": ["留学", "文书", "材料", "定校书"],
       "related_tables": [
         "study_abroad_planning_info",
         "study_abroad_document",
         "study_abroad_proofread_book",
         "edu_student"
       ],
-      "business_constraints": [],
+      "business_constraints": [
+        "student_id: 关联学生ID",
+        "book_id: 关联 study_abroad_proofread_book.id",
+        "查询时可通过 student_id 与规划信息关联，通过 book_id 与定校书关联"
+      ],
       "business_rules": [
         {
           "rule": "文书材料与定校书",
@@ -1014,16 +1002,15 @@
     {
       "name": "study_abroad_major",
       "description": "留学专业方向信息表",
-      "tags": [
-        "留学",
-        "专业",
-        "方向"
-      ],
+      "tags": ["留学", "专业", "方向"],
       "related_tables": [
         "study_abroad_planning_info",
         "study_abroad_copy_writer"
       ],
-      "business_constraints": [],
+      "business_constraints": [
+        "id: 可被 study_abroad_planning_info.study_abroad_major_id 引用",
+        "id: 可被 study_abroad_copy_writer.study_abroad_major_id 引用"
+      ],
       "business_rules": [
         {
           "rule": "专业方向基础信息",
@@ -1034,32 +1021,39 @@
     {
       "name": "study_abroad_offer_info",
       "description": "留学offer表",
-      "tags": [
-        "留学",
-        "offer",
-        "录取"
-      ],
+      "tags": ["留学", "offer", "录取"],
       "related_tables": [
         "study_abroad_planning_info",
         "study_abroad_apply_online_info",
         "study_abroad_visa_info",
         "edu_student"
       ],
-      "business_constraints": [],
-      "business_rules": []
+      "business_constraints": [
+        "student_id: 关联学生ID",
+        "apply_online_id: 关联 study_abroad_apply_online_info.id",
+        "id: 可被 study_abroad_visa_info.offer_id 引用"
+      ],
+      "business_rules": [
+        {
+          "rule": "offer来源于网申",
+          "description": "offer信息通常由网申结果产生，可通过 student_id 关联学生，通过 apply_online_id 关联具体网申记录。"
+        },
+        {
+          "rule": "offer关联签证",
+          "description": "签证信息通常基于已获得的 offer 办理，因此 study_abroad_visa_info.offer_id 关联 offer 表主键。"
+        }
+      ]
     },
     {
       "name": "study_abroad_operate_log",
       "description": "操作记录主表",
-      "tags": [
-        "留学",
-        "操作日志"
-      ],
+      "tags": ["留学", "操作日志"],
       "related_tables": [
         "study_abroad_operate_log_detail"
       ],
       "business_constraints": [
-        "日志主表通常记录一次操作的主体信息"
+        "日志主表通常记录一次操作的主体信息",
+        "详情表通常通过日志主表ID关联"
       ],
       "business_rules": [
         {
@@ -1071,15 +1065,13 @@
     {
       "name": "study_abroad_operate_log_detail",
       "description": "操作记录详情表",
-      "tags": [
-        "留学",
-        "操作日志",
-        "日志详情"
-      ],
+      "tags": ["留学", "操作日志", "日志详情"],
       "related_tables": [
         "study_abroad_operate_log"
       ],
-      "business_constraints": [],
+      "business_constraints": [
+        "通常通过操作日志主表ID关联 study_abroad_operate_log"
+      ],
       "business_rules": [
         {
           "rule": "操作日志详情",
@@ -1090,12 +1082,7 @@
     {
       "name": "study_abroad_planning_info",
       "description": "留学规划信息表",
-      "tags": [
-        "留学",
-        "规划",
-        "主流程",
-        "核心表"
-      ],
+      "tags": ["留学", "规划", "主流程", "核心表"],
       "related_tables": [
         "study_abroad_planning_info_operation_log",
         "study_abroad_planning_info_user_operation_record",
@@ -1114,7 +1101,13 @@
         "order_student",
         "edu_student"
       ],
-      "business_constraints": [],
+      "business_constraints": [
+        "id: 规划信息主键，可被规划日志、用户操作记录、定校书PDF表等引用",
+        "student_id: 学生ID，是留学业务中最核心的学生维度关联字段",
+        "order_id: 关联 order_student.id",
+        "study_abroad_major_id: 关联 study_abroad_major.id",
+        "查询留学规划主流程时，通常以 study_abroad_planning_info 为主表"
+      ],
       "business_rules": [
         {
           "rule": "留学业务主表",
@@ -1133,15 +1126,13 @@
     {
       "name": "study_abroad_planning_info_operation_log",
       "description": "规划信息操作日志表",
-      "tags": [
-        "留学",
-        "规划",
-        "操作日志"
-      ],
+      "tags": ["留学", "规划", "操作日志"],
       "related_tables": [
         "study_abroad_planning_info"
       ],
-      "business_constraints": [],
+      "business_constraints": [
+        "planning_info_id: 关联 study_abroad_planning_info.id"
+      ],
       "business_rules": [
         {
           "rule": "规划操作日志",
@@ -1152,16 +1143,16 @@
     {
       "name": "study_abroad_planning_info_user_operation_record",
       "description": "规划信息用户操作记录表",
-      "tags": [
-        "留学",
-        "规划",
-        "用户操作记录"
-      ],
+      "tags": ["留学", "规划", "用户操作记录"],
       "related_tables": [
         "study_abroad_planning_info",
         "edu_student"
       ],
-      "business_constraints": [],
+      "business_constraints": [
+        "planning_info_id: 关联 study_abroad_planning_info.id",
+        "student_id: 关联 study_abroad_planning_info.student_id",
+        "查询时需同时满足 planning_info_id = study_abroad_planning_info.id 和 student_id = study_abroad_planning_info.student_id"
+      ],
       "business_rules": [
         {
           "rule": "用户操作记录唯一定位",
@@ -1172,16 +1163,16 @@
     {
       "name": "study_abroad_proofread_book",
       "description": "留学定校书",
-      "tags": [
-        "留学",
-        "定校书"
-      ],
+      "tags": ["留学", "定校书"],
       "related_tables": [
         "study_abroad_apply_online_info",
         "study_abroad_document_materials",
         "study_abroad_planning_info"
       ],
-      "business_constraints": [],
+      "business_constraints": [
+        "id: 可被 study_abroad_apply_online_info.book_id 引用",
+        "id: 可被 study_abroad_document_materials.book_id 引用"
+      ],
       "business_rules": [
         {
           "rule": "定校书关联网申和材料",
@@ -1192,11 +1183,7 @@
     {
       "name": "study_abroad_school",
       "description": "留学学校信息表",
-      "tags": [
-        "留学",
-        "学校",
-        "院校库"
-      ],
+      "tags": ["留学", "学校", "院校库"],
       "related_tables": [
         "study_abroad_apply_online_school_info",
         "study_abroad_school_selection_detail"
@@ -1214,17 +1201,17 @@
     {
       "name": "study_abroad_school_selection",
       "description": "留学生成定校书pdf表",
-      "tags": [
-        "留学",
-        "定校",
-        "定校书PDF"
-      ],
+      "tags": ["留学", "定校", "定校书PDF"],
       "related_tables": [
         "study_abroad_planning_info",
         "study_abroad_school_selection_detail",
         "edu_student"
       ],
-      "business_constraints": [],
+      "business_constraints": [
+        "student_id: 关联 study_abroad_planning_info.student_id",
+        "plan_info_id: 关联 study_abroad_planning_info.id",
+        "id: 可被 study_abroad_school_selection_detail.school_selection_id 引用"
+      ],
       "business_rules": [
         {
           "rule": "定校书PDF主表",
@@ -1239,17 +1226,14 @@
     {
       "name": "study_abroad_school_selection_detail",
       "description": "留学生成定校书pdf明细表",
-      "tags": [
-        "留学",
-        "定校",
-        "定校书PDF",
-        "明细"
-      ],
+      "tags": ["留学", "定校", "定校书PDF", "明细"],
       "related_tables": [
         "study_abroad_school_selection",
         "study_abroad_school"
       ],
-      "business_constraints": [],
+      "business_constraints": [
+        "school_selection_id: 关联 study_abroad_school_selection.id"
+      ],
       "business_rules": [
         {
           "rule": "定校书PDF明细",
@@ -1260,17 +1244,16 @@
     {
       "name": "study_abroad_visa_info",
       "description": "留学签证表",
-      "tags": [
-        "留学",
-        "签证",
-        "offer"
-      ],
+      "tags": ["留学", "签证", "offer"],
       "related_tables": [
         "study_abroad_planning_info",
         "study_abroad_offer_info",
         "edu_student"
       ],
-      "business_constraints": [],
+      "business_constraints": [
+        "student_id: 关联 study_abroad_planning_info.student_id",
+        "offer_id: 关联 study_abroad_offer_info.id"
+      ],
       "business_rules": [
         {
           "rule": "签证基于offer办理",
@@ -1281,11 +1264,7 @@
     {
       "name": "abroad_standard_field",
       "description": "自定义标准字段表",
-      "tags": [
-        "留学",
-        "标准字段",
-        "自定义字段"
-      ],
+      "tags": ["留学", "标准字段", "自定义字段"],
       "related_tables": [
         "study_abroad_planning_info",
         "study_abroad_apply_online_info",
@@ -1305,78 +1284,44 @@
       ]
     },
     {
-      "name": "order_student",
-      "description": "订单学生表",
-      "tags": [
-        "订单",
-        "学生"
-      ],
-      "related_tables": [
-        "study_abroad_planning_info"
-      ],
-      "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "规划信息关联订单学生",
-          "description": "留学规划信息中的 order_id 关联 order_student.id，用于追溯学生对应的订单信息。"
-        }
-      ]
-    },
+  "name": "order_student",
+  "description": "订单学生表",
+  "tags": ["订单", "学生"],
+  "related_tables": [
+    "study_abroad_planning_info"
+  ],
+  "business_constraints": [
+    "id: 关联 study_abroad_planning_info.order_id"
+  ],
+  "business_rules": [
     {
-      "name": "edu_student",
-      "description": "学生基础信息表",
-      "tags": [
-        "学生",
-        "基础信息"
-      ],
-      "related_tables": [
-        "study_abroad_planning_info",
-        "study_abroad_apply_online_account_info",
-        "study_abroad_apply_online_info",
-        "study_abroad_document",
-        "study_abroad_offer_info",
-        "study_abroad_visa_info"
-      ],
-      "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "学生基础信息主表",
-          "description": "edu_student 是学生基础信息表，留学模块大部分业务表通过 student_id 关联该表。"
-        }
-      ]
-    },
-    {
-      "name": "auth_role",
-      "description": "角色信息表",
-      "tags": [
-        "新系统角色",
-        "新系统权限"
-      ],
-      "related_tables": [],
-      "business_constraints": [],
-      "business_rules": []
-    },
-    {
-      "name": "auth_user_role",
-      "description": "用户角色信息表",
-      "tags": [],
-      "related_tables": [
-        "auth_role",
-        "admin_user"
-      ],
-      "business_constraints": [],
-      "business_rules": []
-    },
-    {
-      "name": "admin_campus_rel",
-      "description": "员工-业务校区关系表",
-      "tags": [],
-      "related_tables": [
-        "admin_user",
-        "edu_campus"
-      ],
-      "business_constraints": [],
-      "business_rules": []
+      "rule": "规划信息关联订单学生",
+      "description": "留学规划信息中的 order_id 关联 order_student.id，用于追溯学生对应的订单信息。"
     }
+  ]
+},
+{
+  "name": "edu_student",
+  "description": "学生基础信息表",
+  "tags": ["学生", "基础信息"],
+  "related_tables": [
+    "study_abroad_planning_info",
+    "study_abroad_apply_online_account_info",
+    "study_abroad_apply_online_info",
+    "study_abroad_document",
+    "study_abroad_offer_info",
+    "study_abroad_visa_info"
+  ],
+  "business_constraints": [
+    "id: 关联 study_abroad_planning_info.student_id",
+    "id: 关联多个留学业务表的 student_id"
+  ],
+  "business_rules": [
+    {
+      "rule": "学生基础信息主表",
+      "description": "edu_student 是学生基础信息表，留学模块大部分业务表通过 student_id 关联该表。"
+    }
+  ]
+}
   ]
 }

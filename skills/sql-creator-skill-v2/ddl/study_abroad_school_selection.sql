@@ -1,0 +1,22 @@
+CREATE TABLE `study_abroad_school_selection` (
+  `id` bigint(20) NOT NULL AUTO_INCREMENT COMMENT '自增ID',
+  `student_id` bigint(20) NOT NULL COMMENT '学生ID',
+  `student_parent_name` varchar(20) DEFAULT NULL COMMENT '签约人姓名（家长）',
+  `plan_info_id` bigint(20) DEFAULT NULL COMMENT '规划信息表ID',
+  `id_card_no` varchar(18) DEFAULT NULL COMMENT '规划信息表ID',
+  `country` varchar(20) DEFAULT NULL COMMENT '赴读国家',
+  `first_part_student` varchar(255) DEFAULT NULL COMMENT '甲方签字确认学生(签署图片的url)',
+  `first_part_parent` varchar(255) DEFAULT NULL COMMENT '甲方法定代理人签字确认家长(签署图片的url)',
+  `second_part_user_id` bigint(20) DEFAULT NULL COMMENT '乙方签约人签字确认',
+  `second_part_personal_id` bigint(20) DEFAULT NULL COMMENT '乙方项目负责人签字确认',
+  `first_part_sign_time` datetime DEFAULT NULL COMMENT '甲方签字时间',
+  `second_part_sign_time` datetime DEFAULT NULL COMMENT '乙方签字时间',
+  `sign_status` int(11) NOT NULL DEFAULT '0' COMMENT '是否签署（0表示未签署，1表示已签署）',
+  `sync_status` int(11) NOT NULL DEFAULT '0' COMMENT '同步状态（0表示未同步，1表示已同步）',
+  `file_code` varchar(255) DEFAULT NULL COMMENT '文件唯一编码',
+  `file_name` varchar(255) DEFAULT NULL COMMENT '文件名',
+  `del` tinyint(1) NOT NULL DEFAULT '0' COMMENT '是否被删除（0表示未删除，1表示已删除）',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
+  `update_time` datetime DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
+  PRIMARY KEY (`id`)
+) ENGINE=InnoDB AUTO_INCREMENT=29 DEFAULT CHARSET=utf8mb4 COMMENT='留学生成定校书pdf表'
