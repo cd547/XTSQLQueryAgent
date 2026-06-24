@@ -1,0 +1,20 @@
+CREATE TABLE `keqiao_surface` (
+  `id` bigint(11) NOT NULL AUTO_INCREMENT,
+  `static` int(11) NOT NULL DEFAULT '1' COMMENT '状态1未生效 2已生效',
+  `keqiao_time_table_id` bigint(11) NOT NULL COMMENT '作息时间表ID',
+  `edu_campus_school_id` bigint(11) NOT NULL COMMENT '所属校区分校ID',
+  `name` varchar(255) NOT NULL COMMENT '课表名称',
+  `start_time` bigint(11) NOT NULL COMMENT '课表开始时间',
+  `end_time` bigint(11) NOT NULL COMMENT '课表结束时间',
+  `admin_user_id` int(11) NOT NULL COMMENT '操作人',
+  `is_sync` int(11) NOT NULL DEFAULT '1' COMMENT '是否同步 1 未同步 2 已同步',
+  `created_time` bigint(11) NOT NULL,
+  `update_time` bigint(11) DEFAULT NULL,
+  `del` int(11) NOT NULL,
+  `org` tinyint(4) NOT NULL DEFAULT '1' COMMENT '1: 科桥; 2: 克勒',
+  PRIMARY KEY (`id`),
+  KEY `keqiao_surface1` (`keqiao_time_table_id`) USING BTREE,
+  KEY `keqiao_surface2` (`edu_campus_school_id`) USING BTREE,
+  CONSTRAINT `keqiao_surface_ibfk_1` FOREIGN KEY (`keqiao_time_table_id`) REFERENCES `keqiao_time_table` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `keqiao_surface_ibfk_2` FOREIGN KEY (`edu_campus_school_id`) REFERENCES `edu_campus_school` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB AUTO_INCREMENT=193 DEFAULT CHARSET=utf8mb4 COMMENT='课程-总表'

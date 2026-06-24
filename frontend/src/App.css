@@ -23,6 +23,8 @@
   --xtsql-scrollbar-track: transparent;
   --xtsql-scrollbar-thumb: rgba(0, 0, 0, 0.18);
   --xtsql-code-bg: #f6f8fa;
+  --xtsql-warning-bg: #fff7e6;
+  --xtsql-warning-border: #faad14;
   --xtsql-message-user: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
   --xtsql-message-user-text: #ffffff;
   --xtsql-message-assistant: #ffffff;
@@ -58,6 +60,8 @@ html.xtsql-dark body {
   --xtsql-shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.55);
   --xtsql-scrollbar-thumb: rgba(255, 255, 255, 0.18);
   --xtsql-code-bg: #232833;
+  --xtsql-warning-bg: rgba(250, 173, 20, 0.12);
+  --xtsql-warning-border: rgba(250, 173, 20, 0.45);
   --xtsql-message-user: linear-gradient(135deg, #1677ff 0%, #4f46e5 100%);
   --xtsql-message-user-text: #ffffff;
   --xtsql-message-assistant: #1a1d24;

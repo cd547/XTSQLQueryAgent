@@ -2,8 +2,77 @@
   "table_name": "edu_study",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联科目名称",
+      "target_table": "edu_course_exam_subject_name",
+      "join_condition": "edu_course_exam_subject_name.id = edu_study.edu_course_exam_subject_name_id",
+      "type": "many_to_one",
+      "description": "多条排课记录可属于同一科目名称",
+      "fields_mapping": {
+        "id": "edu_course_exam_subject_name_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联班级类型",
+      "target_table": "edu_class_type",
+      "join_condition": "edu_class_type.id = edu_study.edu_class_type_id",
+      "type": "many_to_one",
+      "description": "多条排课记录可属于同一班级类型",
+      "fields_mapping": {
+        "id": "edu_class_type_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联上课老师",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_study.edu_admin_user_id",
+      "type": "many_to_one",
+      "description": "多条排课记录可由同一老师授课",
+      "fields_mapping": {
+        "id": "edu_admin_user_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联操作人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_study.admin_user_id",
+      "type": "many_to_one",
+      "description": "多条排课记录可由同一操作人创建",
+      "fields_mapping": {
+        "id": "admin_user_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联教室",
+      "target_table": "edu_campus_school_class",
+      "join_condition": "edu_campus_school_class.id = edu_study.edu_campus_school_class_id",
+      "type": "many_to_one",
+      "description": "多条排课记录可使用同一教室",
+      "fields_mapping": {
+        "id": "edu_campus_school_class_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联更新人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_study.update_admin_user_id",
+      "type": "many_to_one",
+      "description": "多条排课记录可由同一人更新",
+      "fields_mapping": {
+        "id": "update_admin_user_id"
+      },
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
-  "business_constraints": {},
+  "business_constraints": {
+    "科目展示": "一般根据edu_course_exam_subject_name_id，找到4级科目，然后以一到四级科目的顺序展示"
+  },
   "business_rules": ["class_time_start和class_time_end是13位时间戳"]
 }

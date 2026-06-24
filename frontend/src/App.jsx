@@ -1720,7 +1720,7 @@ children: currentResults.length > 0 ? (
           
           {addTableStep === 1.5 && (
             <div>
-              <div style={{ marginBottom: 16, padding: 16, background: '#fff7e6', border: '1px solid #faad14', borderRadius: 4 }}>
+              <div style={{ marginBottom: 16, padding: 16, background: 'var(--xtsql-warning-bg)', border: '1px solid var(--xtsql-warning-border)', borderRadius: 4 }}>
                 表 <strong>{addTableName}</strong> 已存在，继续则仅覆盖 DDL 文件，table_index 和 field_config 不会修改
               </div>
               <div style={{ textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -1738,7 +1738,7 @@ children: currentResults.length > 0 ? (
                 </div>
               ) : (
                 <div>
-                  <div style={{ marginBottom: 16, padding: 16, background: '#f5f5f5', borderRadius: 4 }}>
+                  <div style={{ marginBottom: 16, padding: 16, background: 'var(--xtsql-code-bg)', borderRadius: 4 }}>
                     正在获取表 <strong>{addTableName}</strong> 的DDL...
                   </div>
                   <div style={{ textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
@@ -1763,7 +1763,7 @@ children: currentResults.length > 0 ? (
                   </>
                 )}
               </div>
-              <div style={{ marginBottom: 16, maxHeight: 200, overflow: 'auto', background: '#f5f5f5', padding: 8, borderRadius: 4, fontSize: 11 }}>
+              <div style={{ marginBottom: 16, maxHeight: 200, overflow: 'auto', background: 'var(--xtsql-code-bg)', padding: 8, borderRadius: 4, fontSize: 11 }}>
                 <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{addTableDDL}</pre>
               </div>
               <div style={{ textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>

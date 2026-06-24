@@ -1377,6 +1377,17 @@
       ],
       "business_constraints": [],
       "business_rules": []
+    },
+    {
+      "name": "keqiao_surface",
+      "description": "课程-总表",
+      "tags": [],
+      "related_tables": [
+        "keqiao_time_table",
+        "edu_campus_school"
+      ],
+      "business_constraints": [],
+      "business_rules": []
     }
   ]
 }
