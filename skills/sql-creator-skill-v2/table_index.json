@@ -128,6 +128,7 @@
       ],
       "related_tables": [
         "admin_department",
+        "admin_user",
         "customer_clue_info"
       ]
     },
