@@ -273,69 +273,10 @@ html.xtsql-dark { color-scheme: dark; }
   height: 100vh;
 }
 
-/* 顶部 header */
-.xtsql-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 24px;
-  background: var(--xtsql-bg-header);
-  backdrop-filter: blur(14px);
-  -webkit-backdrop-filter: blur(14px);
-  border-bottom: 1px solid var(--xtsql-border);
-  position: relative;
-  z-index: 5;
-}
-.xtsql-header-left {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  min-width: 0;
-  flex: 1;
-}
-.xtsql-logo {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-weight: 700;
-  font-size: 15px;
-  letter-spacing: 0.2px;
-  color: var(--xtsql-text);
-}
-.xtsql-logo-icon {
-  width: 44px;
-  height: 44px;
-  border-radius: 11px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  filter: drop-shadow(0 3px 6px rgba(22, 119, 255, 0.32));
-}
-.xtsql-logo-title {
-  display: flex;
-  flex-direction: column;
-  line-height: 1.15;
-  font-size: 15px;
-  font-weight: 600;
-}
-.xtsql-logo-sub {
-  font-size: 10px;
-  font-weight: 500;
-  color: var(--xtsql-text-tertiary);
-  letter-spacing: 1px;
-  text-transform: uppercase;
-}
-.xtsql-header-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
 /* 主题切换按钮 */
 .xtsql-theme-toggle {
-  width: 36px;
-  height: 36px;
+  width: 32px;
+  height: 32px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -345,7 +286,8 @@ html.xtsql-dark { color-scheme: dark; }
   color: var(--xtsql-text-secondary);
   cursor: pointer;
   transition: all 0.2s ease;
-  font-size: 16px;
+  font-size: 15px;
+  flex-shrink: 0;
 }
 .xtsql-theme-toggle:hover {
   background: var(--xtsql-accent-soft);
@@ -562,8 +504,8 @@ html.xtsql-dark { color-scheme: dark; }
 .xtsql-content-header {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 8px 16px 0;
+  gap: 8px;
+  padding: 8px 12px 0;
   border-bottom: 1px solid var(--xtsql-border);
   background: var(--xtsql-bg-header);
   backdrop-filter: blur(14px);
@@ -576,6 +518,7 @@ html.xtsql-dark { color-scheme: dark; }
   height: 32px;
   border-radius: var(--xtsql-radius-sm);
   color: var(--xtsql-text-secondary);
+  flex-shrink: 0;
 }
 .xtsql-menu-btn:hover {
   background: var(--xtsql-hover) !important;

@@ -925,31 +925,6 @@ const explainColumns = useMemo(() => explainResults.length > 0
   return (
     <ConfigProvider theme={{ algorithm: theme === 'dark' ? darkAlgorithm : defaultAlgorithm, token: { borderRadius: 10, colorPrimary: '#1677ff' } }}>
       <div className="xtsql-app-bg" style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
-        <div className="xtsql-header">
-          <div className="xtsql-header-left">
-            <Button
-              type="text"
-              className="xtsql-menu-btn"
-              icon={<MenuOutlined />}
-              onClick={() => setSiderCollapsed(!siderCollapsed)}
-              title={siderCollapsed ? '显示侧边栏' : '隐藏侧边栏'}
-            />
-            <div className="xtsql-logo">
-              <div className="xtsql-logo-icon"><AppIcon size={44} /></div>
-              <div className="xtsql-logo-title">
-                <span>XTSQL Query Agent</span>
-                <span className="xtsql-logo-sub">智能数据分析</span>
-              </div>
-            </div>
-          </div>
-          <div className="xtsql-header-right">
-            <Tooltip title={theme === 'dark' ? '切换为亮色主题' : '切换为暗色主题'}>
-              <button className="xtsql-theme-toggle" onClick={toggleTheme} aria-label="toggle theme">
-                {theme === 'dark' ? <BulbFilled /> : <BulbOutlined />}
-              </button>
-            </Tooltip>
-          </div>
-        </div>
         <Layout style={{ flex: 1, background: 'transparent', overflow: 'hidden' }}>
           <Sider
             width={260}
@@ -1065,6 +1040,13 @@ const explainColumns = useMemo(() => explainResults.length > 0
         <Layout>
           <Content className="xtsql-content">
             <div className="xtsql-content-header">
+              <Button
+                type="text"
+                className="xtsql-menu-btn"
+                icon={<MenuOutlined />}
+                onClick={() => setSiderCollapsed(!siderCollapsed)}
+                title={siderCollapsed ? '显示侧边栏' : '隐藏侧边栏'}
+              />
               {(() => {
                 const currentChatLabel = '聊天' + (currentSessionName !== '聊天' ? ` (${currentSessionName})` : '');
                 return (
@@ -1074,7 +1056,7 @@ const explainColumns = useMemo(() => explainResults.length > 0
                     onChange={handleTabChange}
                     type="editable-card"
                     size="small"
-                    style={{ flex: 1 }}
+                    style={{ flex: 1, minWidth: 0 }}
                     hideAdd={false}
                     onEdit={(targetKey, action) => {
                       if (action === 'add') {
@@ -1095,6 +1077,11 @@ const explainColumns = useMemo(() => explainResults.length > 0
                   />
                 );
               })()}
+              <Tooltip title={theme === 'dark' ? '切换为亮色主题' : '切换为暗色主题'}>
+                <button className="xtsql-theme-toggle" onClick={toggleTheme} aria-label="toggle theme">
+                  {theme === 'dark' ? <BulbFilled /> : <BulbOutlined />}
+                </button>
+              </Tooltip>
             </div>
 
             <div ref={chatContentRef} className="xtsql-chat-area">
