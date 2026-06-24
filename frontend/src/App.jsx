@@ -18,6 +18,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
 import './utils/monacoEnv';
+import { createMarkdownRenderers } from './components/markdownRenderers.jsx';
 import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages } from './api';
 
 const { TextArea } = Input;
@@ -1785,17 +1786,17 @@ children: currentResults.length > 0 ? (
           width={700}
           style={{ top: 20 }}
         >
-          <div style={{ 
-            maxHeight: '70vh', 
+          <div style={{
+            maxHeight: '70vh',
             overflow: 'auto',
             padding: '8px 12px',
-            background: '#f5f5f5',
+            background: 'var(--xtsql-code-bg)',
             borderRadius: 4
           }}>
             {explainAnalysisLoading && !explainAnalysisContent ? (
               <><Spin /> 正在分析...</>
             ) : (
-              <ReactMarkdown 
+              <ReactMarkdown
                 remarkPlugins={[remarkGfm]}
                 components={{
                   p: ({node, ...props}) => <p style={{fontSize: 12, marginTop: 0, marginBottom: 8}} {...props} />,
@@ -1804,8 +1805,7 @@ children: currentResults.length > 0 ? (
                   h3: ({node, ...props}) => <h3 style={{fontSize: 13, marginTop: 8, marginBottom: 6}} {...props} />,
                   ul: ({node, ...props}) => <ul style={{fontSize: 12, paddingLeft: 20, marginTop: 4, marginBottom: 8}} {...props} />,
                   li: ({node, ...props}) => <li style={{fontSize: 12, marginBottom: 4}} {...props} />,
-                  code: ({node, ...props}) => <code style={{fontSize: 11, background: '#eee', padding: '1px 4px', borderRadius: 3}} {...props} />,
-                  pre: ({node, ...props}) => <pre style={{fontSize: 11, background: '#eee', padding: 8, borderRadius: 4, overflow: 'auto'}} {...props} />
+                  ...createMarkdownRenderers(theme === 'dark', { fontSize: 11 }),
                 }}
               >{explainAnalysisContent || (explainAnalysisLoading ? '正在分析...' : '')}</ReactMarkdown>
             )}

@@ -4,8 +4,11 @@ import { CaretRightOutlined, DownOutlined, UserOutlined, CopyOutlined, Thunderbo
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import AppIcon from './AppIcon.jsx';
+import { useTheme } from '../context/ThemeContext.jsx';
+import { createMarkdownRenderers } from './markdownRenderers.jsx';
 
 const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, onOpenSqlTab, onCopyAndExecute }) {
+  const { theme: themeMode } = useTheme();
   const isUser = role === 'user';
   const isLog = role === 'log' || role === 'LLM' || role === 'tool' || role === 'tool_return';
 
@@ -40,7 +43,10 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
     messageText = content;
   }
 
+  const { pre: PreRender, code: CodeRender } = createMarkdownRenderers(themeMode === 'dark');
   const markdownComponents = {
+    pre: PreRender,
+    code: CodeRender,
     table: ({ children, ...props }) => (
       <table {...props}>{children}</table>
     ),
