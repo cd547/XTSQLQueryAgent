@@ -1,5 +1,29 @@
 # 更新日志
 
+## 2026-06-24
+
+### Bug 修复：Electron 启动间歇性卡在 splash 页
+
+#### 现象
+打包后 `dist\win-unpacked\XTSQLQueryAgent.exe` 启动时 ~16% 概率卡在 splash 页面 60 秒后自动退出。
+
+#### 根因
+[electron/main.js](electron/main.js) 后端 stdout 处理用 `if/else if` 链匹配 `SQLite initialized` 和 `Server running on port 5002`：
+- 后端连续 `console.log` 写出的三行在 Windows pipe 上有时被合并到**同一个 chunk**（间歇性）
+- 合并场景下 `SQLite initialized` 分支命中，`else if` 被跳过
+- `finish({ ok: true })` 永远不调用 → 60s 定时器触发 `finish({ ok: false })` → 错误页 → 20s 后 `app.quit()`
+
+#### 修复
+- 把 `Server running on port` 分支提到第一个独立 `if`（ready 信号优先级最高）
+- `SQLite initialized` 改成第二个独立 `if`（进度提示）
+- 两者互不依赖，stdout 合并块 / 分块都能正确触发 `finish({ ok: true })`
+- 详见 [electron/main.js:402-419](electron/main.js#L402-L419)
+
+#### 验证
+连续启动 12 次全部成功，每次日志 ≥ 42 行、均出现 `Backend started successfully!` 和 `Loading URL:`，启动耗时 < 5s。
+
+---
+
 ## 2026-06-20
 
 ### 代码审查与 P0/P1 修复

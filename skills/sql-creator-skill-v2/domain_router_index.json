@@ -36,7 +36,7 @@
     },
     {
       "id": "activity",
-      "name": "活动",
+      "name": "活动，报名",
       "description": "媒体文章、活动专场、活动报名"
     },
     {
@@ -44,7 +44,10 @@
       "name": "渠道线索",
       "description": "线索来源、渠道跟进、CRM"
     },
-    { "id": "report", "name": "报表", "description": "跨域统计、汇总、看板" },
-    { "id": "study_abroad", "name": "留学", "description": "留学相关数据,留学规划信息" }
+    {
+      "id": "study_abroad",
+      "name": "留学",
+      "description": "留学相关数据,留学规划信息"
+    }
   ]
 }

@@ -325,44 +325,19 @@ async function startBackend() {
     env.SKILL_PATH = path.join(projectRoot, 'skills');
     env.LOG_PATH = path.join(projectRoot, 'logs');
 
-    // #region debug-point electron-cold-startup | 间歇性慢诊断
-    // 目标：区分 H1 (AV 扫描) / H2 (env 差异) / H3 (nodePath PATH 查找)
-    // 收集：spawn 前后时间戳、父进程信息、关键 env、spawn callback 触发时间
-    const _spawnStart = Date.now();
-    const _os = require('os');
-    console.log(`[DEBUG] === pre-spawn snapshot at ${new Date().toISOString()} ===`);
-    console.log(`[DEBUG] cwd=${backendCwd}`);
-    console.log(`[DEBUG] nodePath=${nodePath}`);
-    console.log(`[DEBUG] backendPath=${backendPath}`);
-    console.log(`[DEBUG] parent pid=${process.pid}, parent exec=${process.execPath}`);
-    console.log(`[DEBUG] user=${_os.userInfo().username}, platform=${process.platform}, arch=${process.arch}`);
-    console.log(`[DEBUG] key env: NODE_ENV=${env.NODE_ENV}, USERPROFILE=${env.USERPROFILE}, APPDATA=${env.APPDATA}`);
-    console.log(`[DEBUG] uptime=${_os.uptime().toFixed(0)}s, loadavg=${JSON.stringify(_os.loadavg())}`);
-    console.log(`[DEBUG] mem free=${(_os.freemem() / 1024 / 1024).toFixed(0)}MB, total=${(_os.totalmem() / 1024 / 1024).toFixed(0)}MB`);
-    // #endregion debug-point electron-cold-startup
-
     let backendProcess;
     try {
-      // #region debug-point electron-cold-startup | 记录 spawn 同步返回的时间
       backendProcess = spawn(nodePath, [backendPath], {
         cwd: backendCwd,
         env: env,
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true
       });
-      console.log(`[DEBUG] spawn() returned synchronously at T+${Date.now() - _spawnStart}ms, pid=${backendProcess.pid}`);
-      // #endregion debug-point electron-cold-startup
     } catch (e) {
       resolve({ ok: false, reason: `spawn 抛出异常: ${e.message}`, stderr: '', nodePath });
       return;
     }
     console.log(`Backend spawned, pid=${backendProcess.pid}`);
-
-    // #region debug-point electron-cold-startup | spawn 事件 (子进程实际启动完成)
-    backendProcess.on('spawn', () => {
-      console.log(`[DEBUG] backend 'spawn' event fired at T+${Date.now() - _spawnStart}ms`);
-    });
-    // #endregion debug-point electron-cold-startup
 
     let resolved = false;
     const stderrChunks = [];
@@ -403,19 +378,20 @@ async function startBackend() {
 
     backendProcess.stdout.on('data', (data) => {
       const output = data.toString();
-      // #region debug-point electron-cold-startup | 每个 stdout chunk 记时间戳
-      const _elapsed = Date.now() - _spawnStart;
-      console.log(`[DEBUG] stdout chunk at T+${_elapsed}ms: ${output.trim()}`);
-      // #endregion debug-point electron-cold-startup
       console.log(`Backend stdout: ${output}`);
 
       // 阶段性提示，让用户知道在干啥
-      if (/SQLite initialized/i.test(output)) {
-        updateSplash('数据库就绪，正在加载路由...');
-      } else if (/Server running on port/i.test(output)) {
+      // 注意：必须用两个独立 if（不是 else if）。
+      // 后端连续 console.log 写出的多行在 Windows pipe 上可能被合并到同一 chunk，
+      // 此时 "SQLite initialized" 和 "Server running on port 5002" 都在 output 里；
+      // 若用 else if，SQLite 分支命中后 Server running 分支被跳过，finish({ok:true}) 永远不调用。
+      if (/Server running on port/i.test(output)) {
         console.log('Backend started successfully!');
         updateSplash('后端就绪，正在打开主界面...');
         finish({ ok: true });
+      }
+      if (/SQLite initialized/i.test(output)) {
+        updateSplash('数据库就绪，正在加载路由...');
       }
     });
 

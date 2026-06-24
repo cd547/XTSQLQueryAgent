@@ -433,24 +433,6 @@ html.xtsql-dark { color-scheme: dark; }
   border-radius: 2px;
   background: var(--xtsql-accent);
 }
-.xtsql-session-icon {
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--xtsql-bg-elevated);
-  border: 1px solid var(--xtsql-border);
-  color: var(--xtsql-text-secondary);
-  font-size: 12px;
-}
-.xtsql-session-item.active .xtsql-session-icon {
-  background: var(--xtsql-accent);
-  color: #fff;
-  border-color: var(--xtsql-accent);
-}
 .xtsql-session-meta {
   flex: 1;
   min-width: 0;

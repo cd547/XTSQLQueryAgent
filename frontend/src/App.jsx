@@ -982,9 +982,6 @@ const explainColumns = useMemo(() => explainResults.length > 0
                     className={`xtsql-session-item ${currentSessionId === item.id ? 'active' : ''}`}
                     onClick={() => handleSessionClick(item)}
                   >
-                    <div className="xtsql-session-icon">
-                      <AppIcon size={28} circle />
-                    </div>
                     <div className="xtsql-session-meta">
                       {editingSessionId === item.id ? (
                         <Input
