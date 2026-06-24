@@ -142,12 +142,21 @@ html.xtsql-dark .ant-drawer-content,
 html.xtsql-dark .ant-drawer-header,
 html.xtsql-dark .ant-modal-content,
 html.xtsql-dark .ant-modal-header,
+html.xtsql-dark .ant-modal-confirm-title,
+html.xtsql-dark .ant-modal-confirm-content,
 html.xtsql-dark .ant-popover-inner,
 html.xtsql-dark .ant-dropdown-menu,
 html.xtsql-dark .ant-select-dropdown {
   background-color: var(--xtsql-bg-elevated) !important;
   color: var(--xtsql-text) !important;
   border-color: var(--xtsql-border) !important;
+}
+html.xtsql-dark .ant-modal-confirm-title { color: var(--xtsql-text) !important; }
+html.xtsql-dark .ant-modal-confirm-content { color: var(--xtsql-text-secondary) !important; }
+html.xtsql-dark .ant-modal-confirm-btns .ant-btn-default {
+  background-color: var(--xtsql-bg-elevated) !important;
+  color: var(--xtsql-text) !important;
+  border-color: var(--xtsql-border-strong) !important;
 }
 html.xtsql-dark .ant-drawer-mask,
 html.xtsql-dark .ant-modal-mask {
@@ -691,7 +700,6 @@ html.xtsql-dark { color-scheme: dark; }
   color: #fff;
   font-weight: 600;
 }
-}
 .xtsql-msg-avatar.assistant {
   background: var(--xtsql-bg-elevated);
   color: var(--xtsql-accent);
@@ -722,7 +730,8 @@ html.xtsql-dark { color-scheme: dark; }
   font-size: 13px;
   line-height: 1.65;
   word-break: break-word;
-  white-space: pre-wrap;
+  /* 移除 white-space: pre-wrap：会让 LLM 输出里的空行被保留成 line-height 高的空白，导致段落间距爆炸。
+     用户消息的 pre-wrap 改在它自己的容器 div 上（见 ChatMessage.jsx 里的 inline style） */
   box-shadow: var(--xtsql-shadow-sm);
   border: 1px solid var(--xtsql-border);
   position: relative;
@@ -745,6 +754,54 @@ html.xtsql-dark { color-scheme: dark; }
   border-radius: 4px;
   font-size: 12px;
   font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+}
+
+/* markdown 元素间距：避免 LLM 流式输出多空行导致段落间距爆炸 */
+.xtsql-msg-bubble p {
+  margin: 0 0 6px 0;
+  line-height: 1.65;
+}
+.xtsql-msg-bubble p:last-child { margin-bottom: 0; }
+/* 隐藏空段落（连续 \n\n 会被 react-markdown 转成空 <p>） */
+.xtsql-msg-bubble p:empty { display: none; }
+.xtsql-msg-bubble h1,
+.xtsql-msg-bubble h2,
+.xtsql-msg-bubble h3,
+.xtsql-msg-bubble h4,
+.xtsql-msg-bubble h5,
+.xtsql-msg-bubble h6 {
+  margin: 10px 0 6px 0;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.xtsql-msg-bubble h1 { font-size: 18px; }
+.xtsql-msg-bubble h2 { font-size: 16px; }
+.xtsql-msg-bubble h3 { font-size: 15px; }
+.xtsql-msg-bubble h4,
+.xtsql-msg-bubble h5,
+.xtsql-msg-bubble h6 { font-size: 14px; }
+.xtsql-msg-bubble ul,
+.xtsql-msg-bubble ol {
+  margin: 4px 0;
+  padding-left: 22px;
+}
+.xtsql-msg-bubble li {
+  margin: 2px 0;
+  line-height: 1.6;
+}
+.xtsql-msg-bubble li > p { margin: 2px 0; }
+.xtsql-msg-bubble blockquote {
+  margin: 6px 0;
+  padding: 4px 10px;
+  border-left: 3px solid var(--xtsql-border-strong);
+  color: var(--xtsql-text-secondary);
+  background: var(--xtsql-hover);
+  border-radius: 0 4px 4px 0;
+}
+.xtsql-msg-bubble hr {
+  border: none;
+  border-top: 1px solid var(--xtsql-border);
+  margin: 10px 0;
 }
 .xtsql-msg.user .xtsql-msg-bubble code {
   background: rgba(255, 255, 255, 0.18);

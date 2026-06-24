@@ -167,19 +167,21 @@ const styles = {
     display: 'flex',
     alignItems: 'center',
     justifyContent: 'center',
-    background: 'linear-gradient(135deg, #e3f2fd 0%, #f3e5f5 100%)'
+    // 使用 CSS 变量，自动跟随 html.xtsql-dark 切换
+    background: 'var(--xtsql-app-bg)'
   },
   card: {
     width: 420,
     maxWidth: '92vw',
     padding: '28px 28px 20px',
-    background: '#fff',
+    background: 'var(--xtsql-bg-elevated)',
     borderRadius: 12,
-    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08)'
+    boxShadow: '0 8px 32px rgba(0, 0, 0, 0.08)',
+    border: '1px solid var(--xtsql-border)'
   },
   hint: {
     marginTop: 12,
-    color: '#999',
+    color: 'var(--xtsql-text-tertiary)',
     fontSize: 12,
     textAlign: 'center'
   }
