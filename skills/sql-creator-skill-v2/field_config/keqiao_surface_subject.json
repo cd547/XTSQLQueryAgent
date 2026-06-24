@@ -1,0 +1,54 @@
+{
+  "table_name": "keqiao_surface_subject",
+  "field_aliases": {},
+  "field_enums": {},
+  "virtual_associations": [
+    {
+      "name": "关联课表总表",
+      "target_table": "keqiao_surface",
+      "join_condition": "keqiao_surface.id = keqiao_surface_subject.keqiao_surface_id",
+      "type": "many_to_one",
+      "description": "多个科目记录可属于同一课表",
+      "fields_mapping": {
+        "id": "keqiao_surface_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联科目名称",
+      "target_table": "edu_course_exam_subject_name",
+      "join_condition": "edu_course_exam_subject_name.id = keqiao_surface_subject.edu_course_exam_subject_name_id",
+      "type": "many_to_one",
+      "description": "多个科目记录可对应同一科目名称",
+      "fields_mapping": {
+        "id": "edu_course_exam_subject_name_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联教室",
+      "target_table": "edu_campus_school_class",
+      "join_condition": "edu_campus_school_class.id = keqiao_surface_subject.edu_campus_school_class_id",
+      "type": "many_to_one",
+      "description": "多个科目记录可使用同一教室",
+      "fields_mapping": {
+        "id": "edu_campus_school_class_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联班级",
+      "target_table": "keqiao_class",
+      "join_condition": "keqiao_class.id = keqiao_surface_subject.keqiao_class_id",
+      "type": "many_to_one",
+      "description": "多个科目记录可属于同一班级",
+      "fields_mapping": {
+        "id": "keqiao_class_id"
+      },
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}

@@ -1,0 +1,36 @@
+{
+  "table_name": "keqiao_time_table_section",
+  "field_aliases": {},
+  "field_enums": {
+    "s_week": {
+      "0": "星期日",
+      "1": "星期一",
+      "2": "星期二",
+      "3": "星期三",
+      "4": "星期四",
+      "5": "星期五",
+      "6": "星期六"
+    }
+  },
+  "virtual_associations": [
+    {
+      "name": "关联作息时间",
+      "target_table": "keqiao_time_table",
+      "join_condition": "keqiao_time_table.id = keqiao_time_table_section.keqiao_time_table_id",
+      "type": "many_to_one",
+      "description": "多个课节可属于同一作息时间表",
+      "fields_mapping": {
+        "id": "keqiao_time_table_id"
+      },
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "上下课时间",
+      "description": "s_start_time、s_end_time表示每天的毫秒数。从0点开始"
+    }
+  ]
+}

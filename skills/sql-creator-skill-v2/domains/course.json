@@ -21,6 +21,11 @@
     "keqiao_study",
     "keqiao_study_student",
     "keqiao_preschool_examination",
-    "keqiao_surface"
+    "keqiao_surface",
+    "keqiao_time_table",
+    "keqiao_time_table_section",
+    "keqiao_surface_subject",
+    "keqiao_surface_table",
+    "keqiao_surface_subject_teacher"
   ]
 }

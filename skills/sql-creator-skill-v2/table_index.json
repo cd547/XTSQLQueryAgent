@@ -1388,6 +1388,60 @@
       ],
       "business_constraints": [],
       "business_rules": []
+    },
+    {
+      "name": "keqiao_time_table",
+      "description": "作息时间",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "keqiao_surface_table",
+      "description": "课程-课表",
+      "tags": [],
+      "related_tables": [
+        "keqiao_time_table",
+        "keqiao_surface_subject",
+        "keqiao_surface"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "keqiao_surface_subject",
+      "description": "课程-科目",
+      "tags": [],
+      "related_tables": [
+        "edu_course_exam_subject_name",
+        "edu_campus_school_class",
+        "keqiao_class",
+        "keqiao_surface"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "keqiao_surface_subject_teacher",
+      "description": "课程-课表授课老师",
+      "tags": [],
+      "related_tables": [
+        "keqiao_surface_subject",
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "keqiao_time_table_section",
+      "description": "作息时间课节",
+      "tags": [],
+      "related_tables": [
+        "keqiao_time_table"
+      ],
+      "business_constraints": [],
+      "business_rules": []
     }
   ]
 }
