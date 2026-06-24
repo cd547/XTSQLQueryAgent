@@ -102,13 +102,25 @@
 
 ---
 
-## 5. Cleanup
+## 5. Cleanup ✅ DONE
 
-需要清理的插桩：
-- [electron/main.js](file:///d:/Ai_Program_Files/XTSQLQueryAgent/electron/main.js) - `[PERF] T+Xms stdout` 标签、阶段提示时间 hard-coded
-- [backend/src/index.js](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/index.js) - `[PERF]` 阶段时间戳
-- [backend/src/routes/query.js](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/query.js) - `query.js module load` 标签
-- [backend/bench-startup.mjs](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/bench-startup.mjs) - 调试工具
+已清理：
+- [electron/main.js](file:///d:/Ai_Program_Files/XTSQLQueryAgent/electron/main.js) - 移除 `[PERF] T+Xms stdout` 标签、`spawnTime` 变量、`数据库就绪（T+Xms）` 时间戳
+- [backend/src/index.js](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/index.js) - 移除 `_processStart` 锚点和所有 `[PERF]` 阶段时间戳
+- [backend/src/routes/query.js](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/query.js) - 移除 `query.js module load` 标签
+- [backend/src/services/llm.js](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js) - 移除 `// import { ChatOpenAI }` 注释和 TODO 死代码
+- [backend/bench-startup.mjs](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/bench-startup.mjs) - 已删除
 
-**状态**: [OPEN] - 等用户验证修复后再清
+**状态**: [RESOLVED] - 2026-06-23，用户确认"现在启动没有超过30s"
+
+---
+
+## 6. 验证记录
+
+| 项 | 改前 | 改后 |
+|---|---|---|
+| 启动耗时（用户环境） | 37s | < 30s |
+| 超时阈值 | 30s | 60s |
+| 阶段提示文案 | 3/10/25/30s | 5/20/40/50s |
+| 死依赖 | 3 个 | 0 个 |
 

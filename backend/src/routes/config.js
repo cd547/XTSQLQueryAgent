@@ -2,14 +2,16 @@ import { Router } from 'express';
 import { getDb } from '../db/sqlite.js';
 import { logger } from '../logger.js';
 import { getAgentConfig, updateAgentConfig, getTokenWarningLevel } from '../services/config.js';
-import { authRequired } from '../services/auth.js';
+import { authRequired, adminRequired } from '../services/auth.js';
 
 const router = Router();
 
-// 配置接口要求登录
+// 配置接口默认要求登录；具体路由再按需加 adminRequired
+// （GET /config/agent 普通用户也要用——读 token 警告阈值，所以不加 admin）
 router.use(authRequired);
 
-router.post('/test', async (req, res) => {
+// 数据库连接信息：仅管理员可读/改（含密码字段）
+router.post('/test', adminRequired, async (req, res) => {
   try {
     const mysql = await import('mysql2/promise');
     const { host, port, user, password, database } = req.body;
@@ -25,7 +27,7 @@ router.post('/test', async (req, res) => {
   }
 });
 
-router.post('/db', async (req, res) => {
+router.post('/db', adminRequired, async (req, res) => {
   const { host, port, user, password, database } = req.body;
   const db = getDb();
 
@@ -40,7 +42,7 @@ router.post('/db', async (req, res) => {
   res.json({ success: true });
 });
 
-router.get('/db', async (req, res) => {
+router.get('/db', adminRequired, async (req, res) => {
   const db = getDb();
   const row = db.prepare('SELECT value FROM configs WHERE key = ?').get('db_config');
 
@@ -53,7 +55,7 @@ router.get('/db', async (req, res) => {
   }
 });
 
-router.post('/llm', async (req, res) => {
+router.post('/llm', adminRequired, async (req, res) => {
   const { provider, apiKey, model } = req.body;
   const db = getDb();
 
@@ -68,7 +70,7 @@ router.post('/llm', async (req, res) => {
   res.json({ success: true });
 });
 
-router.get('/llm', async (req, res) => {
+router.get('/llm', adminRequired, async (req, res) => {
   const db = getDb();
   const row = db.prepare('SELECT value FROM configs WHERE key = ?').get('llm_config');
 
@@ -82,7 +84,7 @@ router.get('/llm', async (req, res) => {
   }
 });
 
-router.get('/llm/models', async (req, res) => {
+router.get('/llm/models', adminRequired, async (req, res) => {
   const db = getDb();
   const row = db.prepare('SELECT value FROM configs WHERE key = ?').get('llm_config');
 
@@ -118,7 +120,7 @@ router.get('/llm/models', async (req, res) => {
   }
 });
 
-router.get('/agent', async (req, res) => {
+router.get('/agent', async (req, res) => {  // 普通用户也用：读 token 警告阈值
   try {
     const config = getAgentConfig();
     // 添加 token 警告上限到 agent 配置中
@@ -130,7 +132,7 @@ router.get('/agent', async (req, res) => {
   }
 });
 
-router.put('/agent/:key', async (req, res) => {
+router.put('/agent/:key', adminRequired, async (req, res) => {
   try {
     const { key } = req.params;
     const { value } = req.body;

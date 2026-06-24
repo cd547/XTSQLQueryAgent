@@ -1026,7 +1026,9 @@ const explainColumns = useMemo(() => explainResults.length > 0
             </div>
             <div className="xtsql-sider-footer">
               <div className="xtsql-sider-actions">
-                <Button icon={<SettingOutlined />} onClick={() => setConfigOpen(true)}>配置</Button>
+                {user?.role === 'admin' && (
+                  <Button icon={<SettingOutlined />} onClick={() => setConfigOpen(true)}>配置</Button>
+                )}
                 <Button icon={<FolderOutlined />} onClick={() => { if (skillTree.length === 0) loadSkillsList(); setSkillOpen(true); }}>Skill</Button>
               </div>
               <div className="xtsql-user-card">

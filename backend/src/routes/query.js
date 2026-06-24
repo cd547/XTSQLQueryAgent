@@ -196,10 +196,6 @@ function buildSchemaFromSkillV2(question, tableIndex) {
 }
 
 loadSkillV2();
-// #region debug-point splash-timeout | 测量从 process 启动到 query.js import 完成的时间
-const _moduleLoadMs = (performance.now()).toFixed(0);
-console.log(`[PERF] query.js module load: T+${_moduleLoadMs}ms (from process start)`);
-// #endregion debug-point splash-timeout
 
 router.get('/version', async (req, res) => {
   loadSkillV2();

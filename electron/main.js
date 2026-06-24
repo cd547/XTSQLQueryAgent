@@ -325,20 +325,44 @@ async function startBackend() {
     env.SKILL_PATH = path.join(projectRoot, 'skills');
     env.LOG_PATH = path.join(projectRoot, 'logs');
 
+    // #region debug-point electron-cold-startup | 间歇性慢诊断
+    // 目标：区分 H1 (AV 扫描) / H2 (env 差异) / H3 (nodePath PATH 查找)
+    // 收集：spawn 前后时间戳、父进程信息、关键 env、spawn callback 触发时间
+    const _spawnStart = Date.now();
+    const _os = require('os');
+    console.log(`[DEBUG] === pre-spawn snapshot at ${new Date().toISOString()} ===`);
+    console.log(`[DEBUG] cwd=${backendCwd}`);
+    console.log(`[DEBUG] nodePath=${nodePath}`);
+    console.log(`[DEBUG] backendPath=${backendPath}`);
+    console.log(`[DEBUG] parent pid=${process.pid}, parent exec=${process.execPath}`);
+    console.log(`[DEBUG] user=${_os.userInfo().username}, platform=${process.platform}, arch=${process.arch}`);
+    console.log(`[DEBUG] key env: NODE_ENV=${env.NODE_ENV}, USERPROFILE=${env.USERPROFILE}, APPDATA=${env.APPDATA}`);
+    console.log(`[DEBUG] uptime=${_os.uptime().toFixed(0)}s, loadavg=${JSON.stringify(_os.loadavg())}`);
+    console.log(`[DEBUG] mem free=${(_os.freemem() / 1024 / 1024).toFixed(0)}MB, total=${(_os.totalmem() / 1024 / 1024).toFixed(0)}MB`);
+    // #endregion debug-point electron-cold-startup
+
     let backendProcess;
-    const spawnTime = Date.now();  // #region debug-point splash-timeout | 记录 spawn 时间点
     try {
+      // #region debug-point electron-cold-startup | 记录 spawn 同步返回的时间
       backendProcess = spawn(nodePath, [backendPath], {
         cwd: backendCwd,
         env: env,
         stdio: ['pipe', 'pipe', 'pipe'],
         windowsHide: true
       });
+      console.log(`[DEBUG] spawn() returned synchronously at T+${Date.now() - _spawnStart}ms, pid=${backendProcess.pid}`);
+      // #endregion debug-point electron-cold-startup
     } catch (e) {
       resolve({ ok: false, reason: `spawn 抛出异常: ${e.message}`, stderr: '', nodePath });
       return;
     }
-    console.log(`[PERF] backend spawned: T+0ms, pid=${backendProcess.pid}`);  // #endregion debug-point splash-timeout
+    console.log(`Backend spawned, pid=${backendProcess.pid}`);
+
+    // #region debug-point electron-cold-startup | spawn 事件 (子进程实际启动完成)
+    backendProcess.on('spawn', () => {
+      console.log(`[DEBUG] backend 'spawn' event fired at T+${Date.now() - _spawnStart}ms`);
+    });
+    // #endregion debug-point electron-cold-startup
 
     let resolved = false;
     const stderrChunks = [];
@@ -379,19 +403,21 @@ async function startBackend() {
 
     backendProcess.stdout.on('data', (data) => {
       const output = data.toString();
-      const elapsed = Date.now() - spawnTime;  // #region debug-point splash-timeout | 每个 stdout 都打时间戳
-      console.log(`[PERF] T+${elapsed}ms stdout: ${output}`);
-      console.log(`Backend stdout: ${output}`);  // #endregion debug-point splash-timeout
+      // #region debug-point electron-cold-startup | 每个 stdout chunk 记时间戳
+      const _elapsed = Date.now() - _spawnStart;
+      console.log(`[DEBUG] stdout chunk at T+${_elapsed}ms: ${output.trim()}`);
+      // #endregion debug-point electron-cold-startup
+      console.log(`Backend stdout: ${output}`);
 
       // 阶段性提示，让用户知道在干啥
       if (/SQLite initialized/i.test(output)) {
-        updateSplash(`数据库就绪（T+${elapsed}ms），正在加载路由...`);  // #region debug-point splash-timeout
+        updateSplash('数据库就绪，正在加载路由...');
       } else if (/Server running on port/i.test(output)) {
         console.log('Backend started successfully!');
         updateSplash('后端就绪，正在打开主界面...');
         finish({ ok: true });
       }
-    });  // #endregion debug-point splash-timeout
+    });
 
     backendProcess.stderr.on('data', (data) => {
       const text = data.toString();
@@ -401,9 +427,7 @@ async function startBackend() {
 
     console.log('Waiting for backend to start...');
 
-    // 阶段性提示（前端没动静时告诉用户"还在等"）
-    // 阶段提示时间：5s / 20s / 40s / 50s（对应 60s 总超时）
-    // #region debug-point splash-timeout | 之前 3/10/25/30s 太激进，模块加载 37s 直接超时
+    // 阶段提示时间：5s / 20s / 40s / 50s（对应 60s 总超时，给冷启动杀软扫描留时间）
     setTimeout(() => {
       if (!resolved) updateSplash('正在启动后端服务...（首次较慢，杀软扫描可能耗时）');
     }, 5000);
@@ -416,19 +440,16 @@ async function startBackend() {
     setTimeout(() => {
       if (!resolved) updateSplash('最后 10 秒...（如长期未响应请打开日志）');
     }, 50000);
-    // #endregion debug-point splash-timeout
 
     setTimeout(() => {
       finish({
         ok: false,
-        // #region debug-point splash-timeout | 把 30s 改成 60s，给冷启动杀软扫描留时间
         reason: '60 秒内未检测到 "Server running on port" 标志，后端可能卡在初始化阶段（数据库连接、依赖加载、杀软扫描、或 Node 版本不匹配）',
-        // #endregion debug-point splash-timeout
         stderr: tailStderr(),
         nodePath,
         backendPath
       });
-    }, 60000);  // #region debug-point splash-timeout | 30s → 60s
+    }, 60000);
   });
 }
 

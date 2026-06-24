@@ -1,9 +1,5 @@
 import { getLlmConfig, getAgentConfig } from './config.js';
 import { logger } from '../logger.js';
-// #region debug-point splash-timeout | 删除未使用的 @langchain/openai（仅在 line 280 TODO 注释里出现）
-// 删除原因：模块加载耗时 ~5-10s（30% 的 37s 启动开销），但实际未使用 → 是死代码
-// import { ChatOpenAI } from '@langchain/openai';
-// #endregion debug-point splash-timeout
 import { loadTableIndex, loadSkillMd, tools } from './toolFuncs.js';
 import { getDb } from '../db/sqlite.js';
 import { countMessagesTokens } from './tokenizer.js';
@@ -277,13 +273,6 @@ function getProviderConfig(provider, model) {
     llmModel: model || cfg.model
   };
 }
-
-// TODO: 流式输出支持
-// export async function generateSQLWithLangChainStream(question, history = '') {
-//   const llm = new ChatOpenAI({...}).bindTools(tools);
-//   const stream = await llm.stream([...]);
-//   for await (const chunk of stream) { yield chunk.content; }
-// }
 
 function saveMessagesToDb(sessionId, messages) {
   try {

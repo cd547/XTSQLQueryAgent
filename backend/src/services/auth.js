@@ -118,6 +118,19 @@ export function authRequired(req, res, next) {
   }
 }
 
+// 管理员鉴权中间件：必须在 authRequired 之后使用
+// 用于系统级配置等敏感接口，非 admin 角色一律 403
+export function adminRequired(req, res, next) {
+  if (!req.user) {
+    return res.status(401).json({ error: '未登录', code: 'AUTH_REQUIRED' });
+  }
+  if (req.user.role !== 'admin') {
+    logger.warn('非管理员尝试访问受限接口', { userId: req.user.id, username: req.user.username, path: req.path });
+    return res.status(403).json({ error: '需要管理员权限', code: 'ADMIN_REQUIRED' });
+  }
+  next();
+}
+
 // 辅助函数：校验指定 sessionId 是否属于当前用户；不属于则返回 false
 export function sessionBelongsToUser(sessionId, userId) {
   try {
