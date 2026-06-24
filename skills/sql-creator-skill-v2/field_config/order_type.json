@@ -7,7 +7,19 @@
       "2": { "label": "学校", "description": "之前叫科桥" }
     }
   },
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联行政事业部",
+      "target_table": "admin_division",
+      "join_condition": "admin_division.id = order_type.admin_division",
+      "type": "many_to_one",
+      "description": "订单类型所属事业部",
+      "fields_mapping": {
+        "id": "admin_division"
+      },
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": []

@@ -2,7 +2,30 @@
   "table_name": "edu_student_parent",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联学生",
+      "target_table": "edu_student",
+      "join_condition": "edu_student.id = edu_student_parent.student_id",
+      "type": "many_to_one",
+      "description": "通过学生ID关联学生信息",
+      "fields_mapping": {
+        "id": "student_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联注册用户",
+      "target_table": "my_user",
+      "join_condition": "my_user.id = edu_student_parent.my_user_id",
+      "type": "many_to_one",
+      "description": "通过注册用户ID关联用户信息",
+      "fields_mapping": {
+        "id": "my_user_id"
+      },
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": []

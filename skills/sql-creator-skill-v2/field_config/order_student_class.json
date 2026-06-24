@@ -2,7 +2,30 @@
   "table_name": "order_student_class",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联学生订单",
+      "target_table": "order_student",
+      "join_condition": "order_student.id = order_student_class.order_student_id",
+      "type": "many_to_one",
+      "description": "订单关联科目所属的学生订单",
+      "fields_mapping": {
+        "id": "order_student_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联科目名称",
+      "target_table": "edu_course_exam_subject_name",
+      "join_condition": "edu_course_exam_subject_name.id = order_student_class.edu_course_exam_subject_name_id",
+      "type": "many_to_one",
+      "description": "订单关联科目对应的科目名称",
+      "fields_mapping": {
+        "id": "edu_course_exam_subject_name_id"
+      },
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": []

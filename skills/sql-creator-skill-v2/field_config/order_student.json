@@ -2,7 +2,118 @@
   "table_name": "order_student",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联订单类型",
+      "target_table": "order_type",
+      "join_condition": "order_type.id = order_student.type_id",
+      "type": "many_to_one",
+      "description": "学生订单关联的订单类型",
+      "fields_mapping": {
+        "id": "type_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联学生类型",
+      "target_table": "edu_student_type",
+      "join_condition": "edu_student_type.id = order_student.edu_student_type_id",
+      "type": "many_to_one",
+      "description": "学生订单关联的学生类型",
+      "fields_mapping": {
+        "id": "edu_student_type_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联报读项目",
+      "target_table": "edu_student_type_project",
+      "join_condition": "edu_student_type_project.id = order_student.edu_student_type_project_id",
+      "type": "many_to_one",
+      "description": "学生订单关联的报读项目",
+      "fields_mapping": {
+        "id": "edu_student_type_project_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联订单模式",
+      "target_table": "order_pattern",
+      "join_condition": "order_pattern.id = order_student.pattern_id",
+      "type": "many_to_one",
+      "description": "学生订单关联的订单模式",
+      "fields_mapping": {
+        "id": "pattern_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联产品",
+      "target_table": "edu_goods",
+      "join_condition": "edu_goods.id = order_student.goods_id",
+      "type": "many_to_one",
+      "description": "学生订单关联的产品",
+      "fields_mapping": {
+        "id": "goods_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联订单创建人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = order_student.admin_user_id",
+      "type": "many_to_one",
+      "description": "学生订单的创建人",
+      "fields_mapping": {
+        "id": "admin_user_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联学生",
+      "target_table": "edu_student",
+      "join_condition": "edu_student.id = order_student.student_id",
+      "type": "many_to_one",
+      "description": "学生订单关联的学生",
+      "fields_mapping": {
+        "id": "student_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联项目名称",
+      "target_table": "order_entry",
+      "join_condition": "order_entry.id = order_student.order_entry_id",
+      "type": "many_to_one",
+      "description": "学生订单关联的项目名称",
+      "fields_mapping": {
+        "id": "order_entry_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联校区",
+      "target_table": "edu_campus",
+      "join_condition": "edu_campus.id = order_student.edu_campus_id",
+      "type": "many_to_one",
+      "description": "学生订单关联的校区",
+      "fields_mapping": {
+        "id": "edu_campus_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联合同模版",
+      "target_table": "order_contract_template",
+      "join_condition": "order_contract_template.id = order_student.order_contract_template_id",
+      "type": "many_to_one",
+      "description": "学生订单关联的合同模版",
+      "fields_mapping": {
+        "id": "order_contract_template_id"
+      },
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": [ "订单金额通常指成交金额 transaction_amount，而非 total_amount（订单总金额）"]

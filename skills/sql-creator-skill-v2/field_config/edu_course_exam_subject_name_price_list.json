@@ -2,7 +2,30 @@
   "table_name": "edu_course_exam_subject_name_price_list",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联标准单价",
+      "target_table": "edu_course_exam_subject_name_price",
+      "join_condition": "edu_course_exam_subject_name_price.id = edu_course_exam_subject_name_price_list.price_id",
+      "type": "many_to_one",
+      "description": "1个标准单价明细关联1个标准单价主表",
+      "fields_mapping": {
+        "id": "price_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联科目名称",
+      "target_table": "edu_course_exam_subject_name",
+      "join_condition": "edu_course_exam_subject_name.id = edu_course_exam_subject_name_price_list.subject_name_id",
+      "type": "many_to_one",
+      "description": "1个标准单价明细关联1个科目名称",
+      "fields_mapping": {
+        "id": "subject_name_id"
+      },
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": []

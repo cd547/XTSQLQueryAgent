@@ -2,7 +2,19 @@
   "table_name": "order_contract_template",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联行政事业部",
+      "target_table": "admin_division",
+      "join_condition": "admin_division.id = order_contract_template.admin_division",
+      "type": "many_to_one",
+      "description": "合同模版所属事业部",
+      "fields_mapping": {
+        "id": "admin_division"
+      },
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": []

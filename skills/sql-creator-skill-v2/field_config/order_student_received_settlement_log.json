@@ -2,7 +2,30 @@
   "table_name": "order_student_received_settlement_log",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联佣金结算",
+      "target_table": "order_student_received_settlement",
+      "join_condition": "order_student_received_settlement.id = order_student_received_settlement_log.admin_channel_settlement_id",
+      "type": "many_to_one",
+      "description": "结算日志关联的佣金结算记录",
+      "fields_mapping": {
+        "id": "admin_channel_settlement_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联操作人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = order_student_received_settlement_log.admin_user_id",
+      "type": "many_to_one",
+      "description": "结算日志的操作人",
+      "fields_mapping": {
+        "id": "admin_user_id"
+      },
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": []

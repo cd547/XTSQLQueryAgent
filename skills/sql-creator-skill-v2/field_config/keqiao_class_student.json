@@ -2,7 +2,30 @@
   "table_name": "keqiao_class_student",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联班级",
+      "target_table": "keqiao_class",
+      "join_condition": "keqiao_class.id = keqiao_class_student.keqiao_class_id",
+      "type": "many_to_one",
+      "description": "通过班级ID关联班级表",
+      "fields_mapping": {
+        "id": "keqiao_class_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联学生",
+      "target_table": "edu_student",
+      "join_condition": "edu_student.id = keqiao_class_student.edu_student_id",
+      "type": "many_to_one",
+      "description": "通过学生ID关联学生表",
+      "fields_mapping": {
+        "id": "edu_student_id"
+      },
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": []

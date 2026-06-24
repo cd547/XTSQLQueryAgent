@@ -9,7 +9,30 @@
       "4": {"label": "顾问", "description": "规划顾问 ADVISER"}
     }
   },
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联人员",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_student_personnel.admin_user_id",
+      "type": "many_to_one",
+      "description": "通过关联人员ID关联后台用户",
+      "fields_mapping": {
+        "id": "admin_user_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联学生",
+      "target_table": "edu_student",
+      "join_condition": "edu_student.id = edu_student_personnel.student_id",
+      "type": "many_to_one",
+      "description": "通过学生ID关联学生信息",
+      "fields_mapping": {
+        "id": "student_id"
+      },
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": []

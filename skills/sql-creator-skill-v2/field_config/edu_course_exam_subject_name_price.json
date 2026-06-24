@@ -2,7 +2,19 @@
   "table_name": "edu_course_exam_subject_name_price",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联操作人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_course_exam_subject_name_price.admin_user_id",
+      "type": "many_to_one",
+      "description": "1个标准单价记录关联1个操作人",
+      "fields_mapping": {
+        "id": "admin_user_id"
+      },
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": []

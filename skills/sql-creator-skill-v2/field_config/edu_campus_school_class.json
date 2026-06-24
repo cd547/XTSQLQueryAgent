@@ -2,7 +2,19 @@
   "table_name": "edu_campus_school_class",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联分校",
+      "target_table": "edu_campus_school",
+      "join_condition": "edu_campus_school.id = edu_campus_school_class.campus_school_id",
+      "type": "many_to_one",
+      "description": "1个班级关联1个分校",
+      "fields_mapping": {
+        "id": "campus_school_id"
+      },
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": []

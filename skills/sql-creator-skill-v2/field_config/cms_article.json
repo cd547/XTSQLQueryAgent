@@ -2,7 +2,41 @@
   "table_name": "cms_article",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联栏目",
+      "target_table": "cms_section",
+      "join_condition": "cms_section.id = cms_article.cms_section_id",
+      "type": "many_to_one",
+      "description": "文章所属栏目",
+      "fields_mapping": {
+        "id": "cms_section_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联媒体类型",
+      "target_table": "cms_type",
+      "join_condition": "cms_type.id = cms_article.cms_type_id",
+      "type": "many_to_one",
+      "description": "文章所属媒体类型",
+      "fields_mapping": {
+        "id": "cms_type_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联创建人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = cms_article.admin_user_id",
+      "type": "many_to_one",
+      "description": "创建文章的后台用户",
+      "fields_mapping": {
+        "id": "admin_user_id"
+      },
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": []

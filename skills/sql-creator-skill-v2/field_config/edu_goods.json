@@ -2,7 +2,107 @@
   "table_name": "edu_goods",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联产品添加人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_goods.admin_user_id",
+      "type": "many_to_one",
+      "description": "1个产品关联1个产品添加人",
+      "fields_mapping": {
+        "id": "admin_user_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联产品标准单价",
+      "target_table": "edu_course_exam_subject_name_price",
+      "join_condition": "edu_course_exam_subject_name_price.id = edu_goods.price_id",
+      "type": "many_to_one",
+      "description": "1个产品关联1个标准单价",
+      "fields_mapping": {
+        "id": "price_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联订单模式",
+      "target_table": "order_pattern",
+      "join_condition": "order_pattern.id = edu_goods.order_pattern_id",
+      "type": "many_to_one",
+      "description": "1个产品关联1个订单模式",
+      "fields_mapping": {
+        "id": "order_pattern_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联产品分类",
+      "target_table": "edu_goods_section",
+      "join_condition": "edu_goods_section.id = edu_goods.edu_goods_section_id",
+      "type": "many_to_one",
+      "description": "1个产品关联1个产品分类",
+      "fields_mapping": {
+        "id": "edu_goods_section_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联合同模板",
+      "target_table": "order_contract_template",
+      "join_condition": "order_contract_template.id = edu_goods.order_contract_template_id",
+      "type": "many_to_one",
+      "description": "1个产品关联1个合同模板",
+      "fields_mapping": {
+        "id": "order_contract_template_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联学生类型",
+      "target_table": "edu_student_type",
+      "join_condition": "edu_student_type.id = edu_goods.edu_student_type_id",
+      "type": "many_to_one",
+      "description": "1个产品关联1个学生类型",
+      "fields_mapping": {
+        "id": "edu_student_type_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联部门分区",
+      "target_table": "admin_division",
+      "join_condition": "admin_division.id = edu_goods.admin_division",
+      "type": "many_to_one",
+      "description": "1个产品关联1个部门分区",
+      "fields_mapping": {
+        "id": "admin_division"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联年份",
+      "target_table": "edu_goods_year",
+      "join_condition": "edu_goods_year.id = edu_goods.edu_goods_year_id",
+      "type": "many_to_one",
+      "description": "1个产品关联1个年份",
+      "fields_mapping": {
+        "id": "edu_goods_year_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联校区",
+      "target_table": "edu_campus",
+      "join_condition": "edu_campus.id = edu_goods.edu_campus_id",
+      "type": "many_to_one",
+      "description": "1个产品关联1个校区",
+      "fields_mapping": {
+        "id": "edu_campus_id"
+      },
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": []

@@ -2,7 +2,52 @@
   "table_name": "order_student_refund",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联学生订单",
+      "target_table": "order_student",
+      "join_condition": "order_student.id = order_student_refund.order_student_id",
+      "type": "many_to_one",
+      "description": "退款记录关联的学生订单",
+      "fields_mapping": {
+        "id": "order_student_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联退款发起人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = order_student_refund.launch_admin_user_id",
+      "type": "many_to_one",
+      "description": "退款记录的发起人",
+      "fields_mapping": {
+        "id": "launch_admin_user_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联审批人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = order_student_refund.confirm_admin_user_id",
+      "type": "many_to_one",
+      "description": "退款记录的审批人",
+      "fields_mapping": {
+        "id": "confirm_admin_user_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联支付操作人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = order_student_refund.payment_admin_user_id",
+      "type": "many_to_one",
+      "description": "退款记录的操作支付的操作人",
+      "fields_mapping": {
+        "id": "payment_admin_user_id"
+      },
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": []

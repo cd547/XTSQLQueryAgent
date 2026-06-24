@@ -2,7 +2,41 @@
   "table_name": "order_list",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联用户",
+      "target_table": "my_user",
+      "join_condition": "my_user.id = order_list.my_user_id",
+      "type": "many_to_one",
+      "description": "订单关联的用户",
+      "fields_mapping": {
+        "id": "my_user_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联退款操作人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = order_list.admin_user_id",
+      "type": "many_to_one",
+      "description": "订单退款操作的后台用户",
+      "fields_mapping": {
+        "id": "admin_user_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联支付单",
+      "target_table": "admin_pay_order",
+      "join_condition": "admin_pay_order.id = order_list.admin_pay_order_id",
+      "type": "many_to_one",
+      "description": "订单关联的支付单",
+      "fields_mapping": {
+        "id": "admin_pay_order_id"
+      },
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": []
