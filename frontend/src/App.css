@@ -334,6 +334,14 @@ html.xtsql-dark { color-scheme: dark; }
   overflow: auto;
   padding: 10px 8px;
 }
+.xtsql-sider-loading,
+.xtsql-sider-end {
+  text-align: center;
+  font-size: 11px;
+  color: var(--xtsql-text-tertiary);
+  padding: 10px 0 4px;
+  letter-spacing: 0.3px;
+}
 .xtsql-sider-section {
   font-size: 10px;
   font-weight: 600;

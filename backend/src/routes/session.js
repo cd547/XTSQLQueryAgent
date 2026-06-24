@@ -10,10 +10,14 @@ const router = Router();
 // 所有会话接口都要求登录
 router.use(authRequired);
 
-// 获取所有会话
+// 获取所有会话（分页）
 router.get('/', (req, res) => {
   try {
     const db = getDb();
+    // 分页参数：默认 20 条/页，单次上限 100 防止误传大数
+    const limit = Math.max(1, Math.min(100, parseInt(req.query.limit, 10) || 20));
+    const offset = Math.max(0, parseInt(req.query.offset, 10) || 0);
+
     // #PERF-06：把相关子查询改成 LEFT JOIN + GROUP BY。
     // 旧写法依赖 SQLite 优化器把子查询"展开"为 join；
     // 显式 JOIN 后总是 1 次扫描 messages 表（可走 idx_messages_session_role 索引），
@@ -26,10 +30,13 @@ router.get('/', (req, res) => {
       WHERE s.user_id = ?
       GROUP BY s.id
       ORDER BY s.id DESC
-    `).all(req.user.id);
-    res.json({ sessions });
+      LIMIT ? OFFSET ?
+    `).all(req.user.id, limit, offset);
+
+    const total = db.prepare('SELECT COUNT(*) AS cnt FROM sessions WHERE user_id = ?').get(req.user.id).cnt;
+    res.json({ sessions, total, hasMore: offset + sessions.length < total });
   } catch (error) {
-    res.json({ error: error.message, sessions: [] });
+    res.json({ error: error.message, sessions: [], total: 0, hasMore: false });
   }
 });
 

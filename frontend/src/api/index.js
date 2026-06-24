@@ -120,8 +120,8 @@ export function explainAnalyze(sql, explainResults) {
   });
 }
 
-export function getSessions() {
-  return api.get('/sessions').then(r => r.data);
+export function getSessions({ limit = 20, offset = 0 } = {}) {
+  return api.get('/sessions', { params: { limit, offset } }).then(r => r.data);
 }
 
 export function createSession(name) {

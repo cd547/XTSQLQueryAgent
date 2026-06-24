@@ -47,6 +47,9 @@ function App() {
 function AuthenticatedApp({ user, logout }) {
   const { theme, toggleTheme } = useTheme();
   const [sessions, setSessions] = useState([]);
+  const [sessionsTotal, setSessionsTotal] = useState(0);
+  const [hasMoreSessions, setHasMoreSessions] = useState(false);
+  const [loadingMoreSessions, setLoadingMoreSessions] = useState(false);
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -132,9 +135,11 @@ function AuthenticatedApp({ user, logout }) {
   // 异步加载去重 ref：用 useRef 跨 render 持久化标志位，
   // 替代原先 "loadXxx.loading = ..." 这种挂函数对象属性的反模式
   // - model: 加载当前模型（boolean）
-  // - sessions: 加载会话列表（boolean）
+  // - sessions: 首次加载会话列表（boolean）
+  // - sessionsMore: 滚动加载更多会话（boolean）
   // - messagesId: 加载某 sessionId 的消息（sessionId 或 null）
-  const loadingRef = useRef({ model: false, sessions: false, messagesId: null });
+  const loadingRef = useRef({ model: false, sessions: false, sessionsMore: false, messagesId: null });
+  const siderListRef = useRef(null);
   
   const handleTabChange = (key) => {
     if (activeTabKey === 'chat' && chatContentRef.current) {
@@ -195,14 +200,20 @@ function AuthenticatedApp({ user, logout }) {
     }
   };
 
+  const SESSIONS_PAGE_SIZE = 20;
+
+  // 首次加载会话列表（分页第一页）
   const loadSessions = async () => {
     if (loadingRef.current.sessions) return;
     loadingRef.current.sessions = true;
     try {
-      const data = await getSessions();
-      setSessions(data.sessions || []);
-      if (data.sessions && data.sessions.length > 0 && !currentSessionId) {
-        const firstSession = data.sessions[0];
+      const data = await getSessions({ limit: SESSIONS_PAGE_SIZE, offset: 0 });
+      const list = data.sessions || [];
+      setSessions(list);
+      setSessionsTotal(typeof data.total === 'number' ? data.total : list.length);
+      setHasMoreSessions(!!data.hasMore);
+      if (list.length > 0 && !currentSessionId) {
+        const firstSession = list[0];
         setCurrentSessionId(firstSession.id);
         setCurrentTokens(firstSession.total_tokens || 0);
         setCurrentSessionName(firstSession.name ? `${firstSession.name}#${firstSession.id}` : '聊天');
@@ -229,6 +240,38 @@ function AuthenticatedApp({ user, logout }) {
       loadingRef.current.sessions = false;
     }
   };
+
+  // 滚动触底：加载下一页会话
+  const loadMoreSessions = async () => {
+    if (loadingRef.current.sessionsMore) return;
+    if (!hasMoreSessions) return;
+    loadingRef.current.sessionsMore = true;
+    setLoadingMoreSessions(true);
+    try {
+      const data = await getSessions({ limit: SESSIONS_PAGE_SIZE, offset: sessions.length });
+      const list = data.sessions || [];
+      // 去重防御：相同 id 不重复入列
+      setSessions(prev => {
+        const seen = new Set(prev.map(s => s.id));
+        return [...prev, ...list.filter(s => !seen.has(s.id))];
+      });
+      setSessionsTotal(typeof data.total === 'number' ? data.total : sessions.length + list.length);
+      setHasMoreSessions(!!data.hasMore);
+    } catch (e) {
+      console.error('加载更多会话失败:', e);
+    } finally {
+      loadingRef.current.sessionsMore = false;
+      setLoadingMoreSessions(false);
+    }
+  };
+
+  // 侧边栏列表滚动监听：距底 80px 内触发加载更多
+  const handleSiderScroll = useCallback((e) => {
+    const el = e.currentTarget;
+    if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) {
+      loadMoreSessions();
+    }
+  }, [hasMoreSessions, sessions.length]);
   
   const loadMessages = async (sessionId) => {
     if (loadingRef.current.messagesId === sessionId) return;
@@ -265,12 +308,15 @@ function AuthenticatedApp({ user, logout }) {
     try {
       const data = await createSession('新对话');
       const sessionName = data.name || '新对话';
-      const newSession = { 
-        id: data.id, 
-        name: sessionName, 
-        created_at: new Date().toISOString() 
+      const newSession = {
+        id: data.id,
+        name: sessionName,
+        created_at: new Date().toISOString(),
+        total_tokens: 0
       };
+      // 新会话插到列表最前，分页计数 +1
       setSessions(prev => [newSession, ...prev]);
+      setSessionsTotal(prev => prev + 1);
       setCurrentSessionId(data.id);
       setCurrentSessionName(`${sessionName}#${data.id}`);
       setCurrentTokens(0);
@@ -340,7 +386,9 @@ function AuthenticatedApp({ user, logout }) {
       onOk: async () => {
         try {
           await deleteSession(sessionId);
+          // 本地移除并同步分页计数
           setSessions(prev => prev.filter(s => s.id !== sessionId));
+          setSessionsTotal(prev => Math.max(0, prev - 1));
           if (currentSessionId === sessionId) {
             setCurrentSessionId(null);
             setMessages([]);
@@ -941,60 +989,68 @@ const explainColumns = useMemo(() => explainResults.length > 0
                 新建对话
               </Button>
             </div>
-            <div className="xtsql-sider-list">
+            <div className="xtsql-sider-list" ref={siderListRef} onScroll={handleSiderScroll}>
               <div className="xtsql-sider-section">
                 <span>最近对话</span>
-                <span style={{ color: 'var(--xtsql-text-tertiary)' }}>{sessions.length}</span>
+                <span style={{ color: 'var(--xtsql-text-tertiary)' }}>{sessionsTotal || sessions.length}</span>
               </div>
               {sessions.length === 0 ? (
                 <div style={{ padding: '24px 8px', textAlign: 'center', fontSize: 12, color: 'var(--xtsql-text-tertiary)' }}>
                   暂无对话
                 </div>
               ) : (
-                sessions.map(item => (
-                  <div
-                    key={item.id}
-                    className={`xtsql-session-item ${currentSessionId === item.id ? 'active' : ''}`}
-                    onClick={() => handleSessionClick(item)}
-                  >
-                    <div className="xtsql-session-meta">
-                      {editingSessionId === item.id ? (
-                        <Input
-                          size="small"
-                          value={editingSessionName}
-                          onChange={(e) => setEditingSessionName(e.target.value)}
-                          onPressEnter={() => handleRenameSession(item.id)}
-                          onBlur={() => handleRenameSession(item.id)}
-                          onClick={(e) => e.stopPropagation()}
-                          autoFocus
-                        />
-                      ) : (
-                        <>
-                          <div className="xtsql-session-name">{item.name}</div>
-                          <div className="xtsql-session-desc">
-                            {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
-                          </div>
-                        </>
-                      )}
+                <>
+                  {sessions.map(item => (
+                    <div
+                      key={item.id}
+                      className={`xtsql-session-item ${currentSessionId === item.id ? 'active' : ''}`}
+                      onClick={() => handleSessionClick(item)}
+                    >
+                      <div className="xtsql-session-meta">
+                        {editingSessionId === item.id ? (
+                          <Input
+                            size="small"
+                            value={editingSessionName}
+                            onChange={(e) => setEditingSessionName(e.target.value)}
+                            onPressEnter={() => handleRenameSession(item.id)}
+                            onBlur={() => handleRenameSession(item.id)}
+                            onClick={(e) => e.stopPropagation()}
+                            autoFocus
+                          />
+                        ) : (
+                          <>
+                            <div className="xtsql-session-name">{item.name}</div>
+                            <div className="xtsql-session-desc">
+                              {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
+                            </div>
+                          </>
+                        )}
+                      </div>
+                      <div className="xtsql-session-actions" onClick={(e) => e.stopPropagation()}>
+                        <Dropdown
+                          menu={{
+                            items: [
+                              { key: 'summarize', label: '总结聊天', icon: <FileTextOutlined style={{ fontSize: 13 }} />, onClick: () => handleSummarizeSession(item.id) },
+                              { key: 'rename', label: '重命名', icon: <EditOutlined style={{ fontSize: 13 }} />, onClick: () => handleStartRename(item) },
+                              { key: 'delete', label: '删除', icon: <DeleteOutlined style={{ fontSize: 13 }} />, danger: true, onClick: () => handleDeleteSession(item.id) }
+                            ]
+                          }}
+                          trigger={['click']}
+                        >
+                          <button className="xtsql-icon-btn" title="更多操作">
+                            <MoreOutlined />
+                          </button>
+                        </Dropdown>
+                      </div>
                     </div>
-                    <div className="xtsql-session-actions" onClick={(e) => e.stopPropagation()}>
-                      <Dropdown
-                        menu={{
-                          items: [
-                            { key: 'summarize', label: '总结聊天', icon: <FileTextOutlined style={{ fontSize: 13 }} />, onClick: () => handleSummarizeSession(item.id) },
-                            { key: 'rename', label: '重命名', icon: <EditOutlined style={{ fontSize: 13 }} />, onClick: () => handleStartRename(item) },
-                            { key: 'delete', label: '删除', icon: <DeleteOutlined style={{ fontSize: 13 }} />, danger: true, onClick: () => handleDeleteSession(item.id) }
-                          ]
-                        }}
-                        trigger={['click']}
-                      >
-                        <button className="xtsql-icon-btn" title="更多操作">
-                          <MoreOutlined />
-                        </button>
-                      </Dropdown>
-                    </div>
-                  </div>
-                ))
+                  ))}
+                  {loadingMoreSessions && (
+                    <div className="xtsql-sider-loading">加载中...</div>
+                  )}
+                  {!hasMoreSessions && sessions.length > 0 && sessions.length >= sessionsTotal && sessionsTotal > 0 && (
+                    <div className="xtsql-sider-end">— 已显示全部 {sessionsTotal} 条对话 —</div>
+                  )}
+                </>
               )}
             </div>
             <div className="xtsql-sider-footer">
