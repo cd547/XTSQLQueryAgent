@@ -127,6 +127,9 @@ function AuthenticatedApp({ user, logout }) {
   const initialLoadRef = useRef(false);
   const abortControllerRef = useRef(null);
   const chatContentRef = useRef(null);
+  // Monaco hover 隐藏定时器 ref：跨 render 持久化 timer id，
+  // 避免 React 重新挂载时旧 setInterval 残留（导致内存泄漏 + 多次 hide 调用）
+  const hoverIntervalRef = useRef(null);
   // 流式响应期间用于 rAF 节流的滚动句柄（避免每 chunk 触发 scrollIntoView）
   const streamingScrollRafRef = useRef(0);
   // 客户端消息 id 计数器：保证新创建的每条消息都有稳定唯一 key
@@ -969,7 +972,18 @@ const explainColumns = useMemo(() => explainResults.length > 0
       loadMessages(currentSessionId);
     }
   }, [currentSessionId]);
-  
+
+  // 组件卸载时清理 Monaco hover 隐藏定时器，覆盖 editor.onDidDispose 未触发的边界场景
+  // （如 React 卸载先于 Monaco 异步销毁、Strict Mode 二次挂载等）
+  useEffect(() => {
+    return () => {
+      if (hoverIntervalRef.current) {
+        clearInterval(hoverIntervalRef.current);
+        hoverIntervalRef.current = null;
+      }
+    };
+  }, []);
+
   return (
     <ConfigProvider theme={{ algorithm: theme === 'dark' ? darkAlgorithm : defaultAlgorithm, token: { borderRadius: 10, colorPrimary: '#1677ff' } }}>
       <div className="xtsql-app-bg" style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
@@ -1226,10 +1240,18 @@ items={[
                                     });
                                   };
 
-                                  const hoverClearInterval = setInterval(hideHoverWidgets, 100);
+                                  // 清理旧 timer：处理 Editor 重新挂载场景（如 SQL 输入切换 / Strict Mode 二次挂载）
+                                  if (hoverIntervalRef.current) {
+                                    clearInterval(hoverIntervalRef.current);
+                                    hoverIntervalRef.current = null;
+                                  }
+                                  hoverIntervalRef.current = setInterval(hideHoverWidgets, 100);
                                   // 编辑器销毁时清理定时器，避免内存泄漏
                                   const disposeDisposable = editor.onDidDispose(() => {
-                                    clearInterval(hoverClearInterval);
+                                    if (hoverIntervalRef.current) {
+                                      clearInterval(hoverIntervalRef.current);
+                                      hoverIntervalRef.current = null;
+                                    }
                                     disposeDisposable?.dispose();
                                   });
                                 }}

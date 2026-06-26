@@ -1,5 +1,64 @@
 # 更新日志
 
+## 2026-06-26
+
+### 代码审查与 P0 修复
+
+#### 审查报告
+- 新增 [CODE_REVIEW_2026-06-26.md](CODE_REVIEW_2026-06-26.md)，全量审查 `backend/`、`frontend/`、`electron/`，发现 6 个严重 Bug + 7 个中等问题 + 7 个性能问题 + 3 个安全问题 + 5 个代码质量问题
+
+#### P0/P1 已修复
+- **#BUG-1 skill.js 路由未注册**：原 [`backend/src/routes/skill.js`](backend/src/routes/skill.js) 第 208 行 `export default router` 位置错误，导致后续 4 个关键路由永远不会被 Express 注册
+  - `/api/skills/save`（保存 Skill 文件）
+  - `/api/skills/check-table`（检查表是否存在）
+  - `/api/skills/fetch-ddl`（获取 DDL）
+  - `/api/skills/create-table-files`（创建表文件）
+  - 影响：前端"添加表格"向导 Steps 1-3 全部 404
+  - 修复：将 `export default router` 移至文件末尾（[skill.js:502](backend/src/routes/skill.js#L502)）
+- **#BUG-2 skill.js save 路由 ReferenceError**：catch 块引用了 try 块内 `let` 声明的 `oldContent`，导致错误日志写入自身崩溃
+  - 修复：将 `let oldContent = ''` 提升至 try/catch 之外（[skill.js:229](backend/src/routes/skill.js#L229)）
+- **#BUG-3 getDb 竞态条件**：[sqlite.js:21-35](backend/src/db/sqlite.js#L21) `if (!db)` 检查 + `new Database()` 赋值存在理论竞态
+  - 修复方案（职责分离）：`getDb()` 改为纯 getter（未初始化抛错），`new Database()` 下沉至 `initDatabase()` 内部，加 `initialized` 标志 + 幂等保护
+  - 配套修复（[auth.js:11-38](backend/src/services/auth.js#L11)）：JWT 密钥由顶层 `const` 改为懒求值，第一次 `signToken()` / `verifyToken()` 时才读 `configs` 表
+  - 验证：JWT 密钥仍从数据库读取，重启后 token 不会失效；模块加载期 `getDb()` 不会被触发
+- **#BUG-4 wait-for-backend 调用管理员接口**：[wait-for-backend.js:6](wait-for-backend.js#L6) 调用 `/api/config/db`（需要 admin 权限），未登录时返回 401，虽不阻塞但语义错误
+  - 修复：改为无鉴权的 `/api/health` 端点
+- **#BUG-5 JSON 解析无大小限制**：[backend/src/index.js:13](backend/src/index.js#L13) `express.json()` 默认 100KB，长会话消息历史会触发 `PayloadTooLargeError`
+  - 修复：改为 `express.json({ limit: '10mb' })`，兼顾 DoS 防护与正常使用
+- **#BUG-6 Monaco hover 定时器内存泄漏**：[App.jsx:1229](frontend/src/App.jsx#L1229) `setInterval(hideHoverWidgets, 100)` 仅在 `editor.onDidDispose` 中清理，React 卸载先于 Monaco 异步销毁时定时器残留
+  - 修复方案（useRef + useEffect cleanup）：新增 `hoverIntervalRef` 跨 render 持久化 timer id；`onMount` 中先清旧再创新；`onDidDispose` 中清理；新增 `useEffect(() => () => clearInterval(...), [])` 组件卸载兜底
+- **#BUG-9 消息历史取最早而非最新**：[query.js:328](backend/src/routes/query.js#L328) `ORDER BY id ASC LIMIT 20` 永远取会话最早的 20 条
+  - 修复：改为 `ORDER BY id DESC LIMIT 20` + `messages.reverse()` 翻转，LLM 上下文保留最近对话
+- **#BUG-11 错误响应统一返回 HTTP 200**：[session.js](backend/src/routes/session.js)、[query.js](backend/src/routes/query.js) 共 25 处 `res.json({ error` 全部用 HTTP 200 返回
+  - 修复方案（按错误类型分配状态码）：系统异常 → 500、资源不存在 → 404、参数/业务校验失败 → 400、权限不足 → 403
+  - 所有 catch 块新增 `logger.error(...)` 记录上下文（userId / sessionId / sql 等）
+
+#### 待修复
+- 🟡 P2：BUG-8（非 stream 模式）、BUG-10（checkPort 地址） — **不修**（经评估不进入本轮范围）
+- 🟢 P3：PERF-1/2/3/5、SEC-1、CODE-3 — 后续迭代处理
+
+#### 验证
+- 4 个之前 404 的 skill 路由全部可达
+- 后端启动日志无 `oldContent is not defined` 类错误
+- 10MB 内 payload 请求正常处理
+- `wait-for-backend` 调用无鉴权端点，符合最小权限原则
+- 数据库单例由 `initDatabase()` 统一创建，重复调用幂等
+- 单元测试：未初始化时调用 `getDb()` 抛 `Database not initialized` 错误
+- 长对话（>20 条消息）测试：最近消息正确进入 LLM 上下文
+- 错误响应测试：`curl -i /api/sessions/999` 返回 404；`curl -i -X POST /api/query/execute -d '{}'` 返回 400
+
+---
+
+## 2026-06-26（本轮修复收官）
+
+### 修复完成（8/16 = 50%）
+- 全部 P0/P1 严重 Bug（BUG-1~BUG-6）已修复
+- P2 中等 Bug：BUG-9 消息历史排序、BUG-11 错误响应状态码已修复
+- BUG-8、BUG-10 标记为不修（评估后不进入本轮范围）
+- P3 全部 6 项性能/安全/代码质量项留待后续迭代
+
+---
+
 ## 2026-06-24
 
 ### Bug 修复：Electron 启动间歇性卡在 splash 页

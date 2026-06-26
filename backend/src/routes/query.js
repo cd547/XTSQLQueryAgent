@@ -322,12 +322,13 @@ router.post('/generate', async (req, res) => {
 
     if (sessionId) {
       const db = getDb();
+      // 取最近 20 条消息（长对话保留近期上下文），再翻转成时间正序拼入 prompt
       const messages = db.prepare(`
         SELECT content, sql FROM messages
         WHERE session_id = ? AND role IN ('user', 'assistant')
-        ORDER BY id ASC LIMIT 20
+        ORDER BY id DESC LIMIT 20
       `).all(sessionId);
-      historyText = messages.map(m => `用户: ${m.content}\n助手: ${m.sql || ''}`).join('\n');
+      historyText = messages.reverse().map(m => `用户: ${m.content}\n助手: ${m.sql || ''}`).join('\n');
     }
 
     if (schemaMode === 'stream') {
@@ -490,7 +491,8 @@ logger.info('Stream done, sending final result', { sql: sql?.substring(0, 50), m
         res.end();
       } catch (_) { /* 客户端已断开 */ }
     } else {
-      res.json({ error: error.message, sql: '' });
+      logger.error('Generate SQL failed (non-stream)', { error: error.message });
+      res.status(500).json({ error: error.message, sql: '' });
     }
   }
 });
@@ -575,7 +577,7 @@ router.post('/execute', async (req, res) => {
   const startTime = Date.now();
 
   if (!sql || typeof sql !== 'string') {
-    return res.json({ error: 'SQL不能为空', rowCount: 0, queryTime: 0 });
+    return res.status(400).json({ error: 'SQL不能为空', rowCount: 0, queryTime: 0 });
   }
 
   // 若传入了 sessionId，需要校验归属
@@ -586,13 +588,13 @@ router.post('/execute', async (req, res) => {
   // 统一 SQL 校验：剥离注释、前缀白名单、危险函数黑名单、多语句检测
   const sqlCheck = validateReadOnlySql(sql, EXECUTE_SQL_OPTIONS);
   if (!sqlCheck.valid) {
-    return res.json({ error: sqlCheck.message, code: sqlCheck.code, rowCount: 0, queryTime: 0 });
+    return res.status(400).json({ error: sqlCheck.message, code: sqlCheck.code, rowCount: 0, queryTime: 0 });
   }
 
   try {
     const config = getConfig();
     if (!config) {
-      return res.json({ error: '数据库未配置', rowCount: 0, queryTime: 0 });
+      return res.status(500).json({ error: '数据库未配置', rowCount: 0, queryTime: 0 });
     }
     // 复用 sqlValidator 已清理过的 SQL（注释、末尾分号已剥离）
     // 不再静默追加 LIMIT 1000：会破坏含 LIMIT 的复杂查询、UNION 也不会被正确处理。
@@ -634,7 +636,7 @@ router.post('/execute', async (req, res) => {
     });
   } catch (error) {
     logger.error('SQL execution failed', { error: error.message, sql });
-    res.json({ error: error.message, rowCount: 0, queryTime: Date.now() - startTime });
+    res.status(500).json({ error: error.message, rowCount: 0, queryTime: Date.now() - startTime });
   }
 });
 
@@ -642,20 +644,20 @@ router.post('/explain', async (req, res) => {
   const { sql } = req.body;
   
   if (!sql || typeof sql !== 'string') {
-    return res.json({ error: '请提供 SQL 语句', rowCount: 0 });
+    return res.status(400).json({ error: '请提供 SQL 语句', rowCount: 0 });
   }
-  
+
   // 统一 SQL 校验：剥离注释、前缀白名单、危险函数黑名单、多语句检测
   const sqlCheck = validateReadOnlySql(sql, EXPLAIN_SQL_OPTIONS);
   if (!sqlCheck.valid) {
-    return res.json({ error: sqlCheck.message, code: sqlCheck.code, rowCount: 0 });
+    return res.status(400).json({ error: sqlCheck.message, code: sqlCheck.code, rowCount: 0 });
   }
   const cleanSql = sqlCheck.cleaned;
 
   try {
     const config = getConfig();
     if (!config) {
-      return res.json({ error: '数据库未配置', rowCount: 0 });
+      return res.status(500).json({ error: '数据库未配置', rowCount: 0 });
     }
 
     // 对于普通SELECT查询，使用标准EXPLAIN格式（不是JSON）
@@ -671,23 +673,23 @@ router.post('/explain', async (req, res) => {
     res.json({ results: rows, rowCount: rows.length });
   } catch (error) {
     logger.error('EXPLAIN execution failed', { error: error.message, sql });
-    res.json({ error: error.message, rowCount: 0 });
+    res.status(500).json({ error: error.message, rowCount: 0 });
   }
 });
 
 router.post('/explain-analyze', async (req, res) => {
   const { sql, explainResults } = req.body;
-  
+
   logger.info('EXPLAIN analyze called', { sql: sql?.substring(0, 100), resultsLength: explainResults?.length });
-  
+
   if (!sql || !explainResults || !Array.isArray(explainResults)) {
-    return res.json({ error: '请提供 SQL 语句和 EXPLAIN 结果', rowCount: 0 });
+    return res.status(400).json({ error: '请提供 SQL 语句和 EXPLAIN 结果', rowCount: 0 });
   }
 
   try {
     const config = getLlmConfig();
     if (!config || !config.apiKey) {
-      return res.json({ error: 'LLM 未配置', rowCount: 0 });
+      return res.status(400).json({ error: 'LLM 未配置', rowCount: 0 });
     }
 
     const prompt = `你是数据库性能优化专家。请分析以下 MySQL EXPLAIN 执行计划，找出潜在的性能问题并给出优化建议。
@@ -745,7 +747,7 @@ ${JSON.stringify(explainResults, null, 2)}
         stream: true
       };
     } else {
-      return res.json({ error: '不支持的 LLM provider', rowCount: 0 });
+      return res.status(400).json({ error: '不支持的 LLM provider', rowCount: 0 });
     }
     const response = await fetch(apiUrl, {
       method: 'POST',

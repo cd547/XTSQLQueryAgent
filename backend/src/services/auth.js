@@ -5,8 +5,18 @@ import { getDb } from '../db/sqlite.js';
 import { logger } from '../logger.js';
 
 // JWT 密钥：优先从环境变量读取，否则随机生成并保存到数据库中以便重启后仍可验签
+//
+// 懒求值：不在模块加载时执行，避免在 initDatabase() 完成前调用 getDb()
+// 第一次 signToken() / verifyToken() 时才求值，确保此时数据库已就绪
+let JWT_SECRET = null;
+const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
+
 function getJwtSecret() {
-  if (process.env.JWT_SECRET) return process.env.JWT_SECRET;
+  if (JWT_SECRET) return JWT_SECRET;
+  if (process.env.JWT_SECRET) {
+    JWT_SECRET = process.env.JWT_SECRET;
+    return JWT_SECRET;
+  }
   try {
     const db = getDb();
     let row = db.prepare('SELECT value FROM configs WHERE key = ?').get('jwt_secret');
@@ -14,18 +24,18 @@ function getJwtSecret() {
       const secret = crypto.randomBytes(48).toString('hex');
       db.prepare('INSERT OR REPLACE INTO configs (key, value) VALUES (?, ?)').run('jwt_secret', secret);
       logger.info('已生成新的 JWT 密钥并持久化');
-      return secret;
+      JWT_SECRET = secret;
+      return JWT_SECRET;
     }
-    return row.value;
+    JWT_SECRET = row.value;
+    return JWT_SECRET;
   } catch (e) {
     logger.error('获取 JWT 密钥失败', { error: e.message });
     // 兜底：进程级随机密钥（重启后失效，但至少能让本次启动的所有请求通过）
-    return crypto.randomBytes(48).toString('hex');
+    JWT_SECRET = crypto.randomBytes(48).toString('hex');
+    return JWT_SECRET;
   }
 }
-
-const JWT_SECRET = getJwtSecret();
-const JWT_EXPIRES_IN = process.env.JWT_EXPIRES_IN || '7d';
 
 // Cookie 名；前端无法读取 httpOnly 的值，从而防 XSS 窃取
 export const AUTH_COOKIE = 'xtsql_auth';
@@ -61,14 +71,14 @@ export async function comparePassword(plain, hash) {
 export function signToken(user) {
   return jwt.sign(
     { id: user.id, username: user.username, role: user.role || 'user', tv: user.token_version || 0 },
-    JWT_SECRET,
+    getJwtSecret(),
     { expiresIn: JWT_EXPIRES_IN }
   );
 }
 
 export function verifyToken(token) {
   try {
-    return jwt.verify(token, JWT_SECRET);
+    return jwt.verify(token, getJwtSecret());
   } catch (e) {
     return null;
   }

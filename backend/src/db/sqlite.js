@@ -16,20 +16,18 @@ try {
   // 目录已存在，忽略
 }
 
-let db;
+let db = null;
+let initialized = false;
 
+/**
+ * 获取已初始化的数据库实例。
+ *
+ * 必须在 initDatabase() 完成后调用，否则抛出错误。
+ * 这是一个纯 getter，不做任何懒加载——避免并发调用产生竞态。
+ */
 export function getDb() {
-  if (!db) {
-    db = new Database(dbPath, {
-      fileMustExist: false,
-      timeout: 5000
-    });
-    try {
-      db.pragma('journal_mode = WAL');
-    } catch (e) {
-      console.warn('Failed to set WAL mode, falling back to DELETE mode:', e.message);
-      db.pragma('journal_mode = DELETE');
-    }
+  if (!initialized) {
+    throw new Error('Database not initialized. Call initDatabase() first.');
   }
   return db;
 }
@@ -60,7 +58,20 @@ function addColumnIfMissing(db, table, column, definition) {
 }
 
 export async function initDatabase() {
-  const db = getDb();
+  // 幂等保护：重复调用直接返回，避免重复建连
+  if (initialized) return;
+
+  // 数据库创建职责下沉到 initDatabase()，从源头消除 getDb() 中的竞态条件
+  db = new Database(dbPath, {
+    fileMustExist: false,
+    timeout: 5000
+  });
+  try {
+    db.pragma('journal_mode = WAL');
+  } catch (e) {
+    console.warn('Failed to set WAL mode, falling back to DELETE mode:', e.message);
+    db.pragma('journal_mode = DELETE');
+  }
 
   // 用户表
   db.exec(`
@@ -199,6 +210,8 @@ export async function initDatabase() {
   // 添加 message_tokens 字段（用于存储消息上下文的 token 数量）
   addColumnIfMissing(db, 'llm_messages', 'message_tokens', 'INTEGER DEFAULT 0');
 
+  // 所有迁移完成后才标记为已初始化，getDb() 才允许返回实例
+  initialized = true;
   console.log('SQLite initialized');
 }
 

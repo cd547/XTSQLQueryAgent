@@ -3,7 +3,7 @@ const http = require('http');
 const waitForBackend = () => {
   return new Promise((resolve) => {
     const check = () => {
-      const req = http.get('http://localhost:5002/api/config/db', (res) => {
+      const req = http.get('http://localhost:5002/api/health', (res) => {
         resolve();
       });
       req.on('error', () => {

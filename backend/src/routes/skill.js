@@ -205,8 +205,6 @@ router.post('/add-tag', (req, res) => {
   }
 });
 
-export default router;
-
 router.post('/save', (req, res) => {
   const { path: filePath, content } = req.body;
   if (!filePath || content === undefined) {
@@ -227,6 +225,9 @@ router.post('/save', (req, res) => {
   const backupDir = path.join(skillBackPath, backupFolderName);
   const backupFilePath = path.join(backupDir, filePath);
 
+  // 提升作用域至 try/catch 之外，使 catch 块能正确引用
+  let oldContent = '';
+
   try {
     // 确保备份目录存在
     if (!fs.existsSync(skillBackPath)) {
@@ -235,7 +236,6 @@ router.post('/save', (req, res) => {
     fs.mkdirSync(path.dirname(backupFilePath), { recursive: true });
 
     // 读取原始文件内容（如果存在）
-    let oldContent = '';
     if (fs.existsSync(normalizedPath)) {
       oldContent = fs.readFileSync(normalizedPath, 'utf-8');
     }
@@ -500,3 +500,5 @@ router.post('/create-table-files', (req, res) => {
     res.status(500).json({ success: false, message: e.message });
   }
 });
+
+export default router;

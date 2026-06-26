@@ -36,7 +36,8 @@ router.get('/', (req, res) => {
     const total = db.prepare('SELECT COUNT(*) AS cnt FROM sessions WHERE user_id = ?').get(req.user.id).cnt;
     res.json({ sessions, total, hasMore: offset + sessions.length < total });
   } catch (error) {
-    res.json({ error: error.message, sessions: [], total: 0, hasMore: false });
+    logger.error('Get sessions failed', { error: error.message, userId: req.user.id });
+    res.status(500).json({ error: error.message, sessions: [], total: 0, hasMore: false });
   }
 });
 
@@ -44,13 +45,14 @@ router.get('/', (req, res) => {
 router.get('/:id/tokens', (req, res) => {
   try {
     if (!sessionBelongsToUser(req.params.id, req.user.id)) {
-      return res.json({ error: '会话不存在', total_tokens: 0 });
+      return res.status(404).json({ error: '会话不存在', total_tokens: 0 });
     }
     const db = getDb();
     const result = db.prepare('SELECT COALESCE(SUM(total_tokens), 0) as total_tokens FROM messages WHERE session_id = ? AND role = ?').get(req.params.id, 'usage');
     res.json({ total_tokens: result?.total_tokens || 0 });
   } catch (error) {
-    res.json({ error: error.message, total_tokens: 0 });
+    logger.error('Get session tokens failed', { error: error.message, sessionId: req.params.id });
+    res.status(500).json({ error: error.message, total_tokens: 0 });
   }
 });
 
@@ -66,7 +68,8 @@ router.post('/', (req, res) => {
     const result = db.prepare('INSERT INTO sessions (name, sort_order, user_id) VALUES (?, ?, ?)').run(sessionName, newOrder, req.user.id);
     res.json({ id: result.lastInsertRowid, name: sessionName, sort_order: newOrder });
   } catch (error) {
-    res.json({ error: error.message });
+    logger.error('Create session failed', { error: error.message, userId: req.user.id });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -74,13 +77,14 @@ router.post('/', (req, res) => {
 router.get('/:id/messages', (req, res) => {
   try {
     if (!sessionBelongsToUser(req.params.id, req.user.id)) {
-      return res.json({ error: '会话不存在', messages: [] });
+      return res.status(404).json({ error: '会话不存在', messages: [] });
     }
     const db = getDb();
     const messages = db.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY created_at ASC').all(req.params.id);
     res.json({ messages });
   } catch (error) {
-    res.json({ error: error.message, messages: [] });
+    logger.error('Get session messages failed', { error: error.message, sessionId: req.params.id });
+    res.status(500).json({ error: error.message, messages: [] });
   }
 });
 
@@ -96,7 +100,8 @@ router.post('/:id/messages', (req, res) => {
       .run(req.params.id, role, content, sql || '', results || '');
     res.json({ success: true });
   } catch (error) {
-    res.json({ error: error.message });
+    logger.error('Save message failed', { error: error.message, sessionId: req.params.id });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -111,7 +116,8 @@ router.put('/:id', (req, res) => {
     db.prepare('UPDATE sessions SET name = ? WHERE id = ?').run(name, req.params.id);
     res.json({ success: true });
   } catch (error) {
-    res.json({ error: error.message });
+    logger.error('Update session name failed', { error: error.message, sessionId: req.params.id });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -132,7 +138,8 @@ router.delete('/:id', (req, res) => {
     clearSessionRegistry(req.params.id);
     res.json({ success: true });
   } catch (error) {
-    res.json({ error: error.message });
+    logger.error('Delete session failed', { error: error.message, sessionId: req.params.id });
+    res.status(500).json({ error: error.message });
   }
 });
 
@@ -154,7 +161,7 @@ router.post('/:id/summarize', async (req, res) => {
     `).all(sessionId);
     
     if (messages.length === 0) {
-      return res.json({ error: '没有聊天记录可以总结', summary: '', name: '' });
+      return res.status(400).json({ error: '没有聊天记录可以总结', summary: '', name: '' });
     }
     
     // 构建对话内容
@@ -177,7 +184,7 @@ router.post('/:id/summarize', async (req, res) => {
     try {
       config = getLlmConfig();
     } catch (e) {
-      return res.json({ error: 'LLM未配置', summary: '', name: '' });
+      return res.status(400).json({ error: 'LLM未配置', summary: '', name: '' });
     }
     
     const { provider, apiKey, model } = config;
@@ -212,7 +219,7 @@ ${conversationText}`;
         llmModel = model || 'llama3.2';
         break;
       default:
-        return res.json({ error: `不支持的provider: ${provider}`, summary: '', name: '' });
+        return res.status(400).json({ error: `不支持的provider: ${provider}`, summary: '', name: '' });
     }
     
     const response = await fetch(`${baseURL}/chat/completions`, {
@@ -268,11 +275,11 @@ ${conversationText}`;
       .run(name, summary, sessionId);
     
     logger.info('Session summarized', { sessionId, name, summaryLength: summary.length });
-    
+
     res.json({ success: true, summary, name });
   } catch (error) {
     logger.error('Summarize session failed', { error: error.message, sessionId });
-    res.json({ error: error.message, summary: '', name: '' });
+    res.status(500).json({ error: error.message, summary: '', name: '' });
   }
 });
 
