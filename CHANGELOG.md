@@ -51,11 +51,69 @@
 
 ## 2026-06-26（本轮修复收官）
 
-### 修复完成（8/16 = 50%）
-- 全部 P0/P1 严重 Bug（BUG-1~BUG-6）已修复
+### 修复完成（14/17 = 82.35%）
+- 全部 P0 严重 Bug（BUG-1~BUG-6、NEW-1）已修复
 - P2 中等 Bug：BUG-9 消息历史排序、BUG-11 错误响应状态码已修复
 - BUG-8、BUG-10 标记为不修（评估后不进入本轮范围）
-- P3 全部 6 项性能/安全/代码质量项留待后续迭代
+- P3 共 15 项 + NEW-2~NEW-4 待修复
+
+---
+
+## 2026-06-26（补充复审发现）
+
+### 复审范围
+完成 8 项修复后，重新逐文件扫描后端 4 个核心路由，发现 **4 个新问题**（NEW-1~NEW-4），同时核对发现**原审查详细章节共 10 项遗漏**未进入汇总表。
+
+### 本轮新发现问题（4 项）
+
+#### NEW-1 `/explain-analyze` SSE 头已发送后 res.json 🔴 P0
+- **位置**: `backend/src/routes/query.js:750`（flushHeaders 在 721 行）
+- **影响**: 未知 provider 时崩溃整个接口（`ERR_HTTP_HEADERS_SENT`）
+- **触发**: LLM 配置中 `provider` 为 `minimax` 等非 `deepseek`/`openai` 旧值
+- **修复**: 在 `flushHeaders()` 之前完成所有参数校验
+
+#### NEW-2 `/explain-analyze` 无客户端断连保护 🟡 P2
+- **位置**: `backend/src/routes/query.js:680-802`
+- **影响**: 用户切换页面后服务端继续读 LLM 流 + 写死 socket，浪费 token 配额
+- **修复**: 复用 `/generate` 端点的 `abortController` 模式
+
+#### NEW-3 `/api/auth/me`、`/logout` 缺限流 🟢 P3
+- **位置**: `backend/src/routes/auth.js:85, 90`
+- **影响**: 需鉴权才能触发，影响较小
+
+#### NEW-4 `extractToken` 不校验 token 格式 🟢 P3
+- **位置**: `backend/src/services/auth.js:90-101`
+- **影响**: 垃圾 token 也走 `jwt.verify`，增加无效 CPU 开销
+- **修复**: 简单正则预校验
+
+### 原审查详细章节但汇总表遗漏（10 项）
+- BUG-12 (P3) — `initSkillLogTable` 未 await（防御性）
+- PERF-4 (P3) — 切换会话 3 个 API 串行调用
+- PERF-6 (P3) — LLM 消息 JSON Blob 全量存储
+- PERF-7 (P3) — `fs.readFileSync` 同步阻塞
+- SEC-2 (P2) — `killProcessOnPort` netstat 解析不可靠
+- SEC-3 (P3) — LLM 生成 SQL 仅前缀检查（非 AST）
+- CODE-1 (P3) — toolFuncs 格式化代码重复
+- CODE-2 (P3) — config.js 导出对象未使用
+- CODE-4 (P3) — 前端 40+ useState 难维护
+- CODE-5 (P3) — 空壳 routes（tables/tableSchema/export）
+
+### 已修复
+
+#### NEW-1 `/explain-analyze` SSE 头已发送后 res.json ✅
+- **位置**: `backend/src/routes/query.js:680-802`
+- **改动**:
+  - 提取 `validateLlmProvider()` 共享函数（同步校验 + 标准化错误）
+  - 在 `flushHeaders()` 之前完成 provider 校验
+  - 修正 line 716-721 的 6 空格缩进错误
+  - 修正 line 725 `=config.model` 缺少空格
+- **验证**: `node --check src/routes/query.js` 通过；`res.json()` 只在 SSE 头发送前调用
+
+### 待办优先级（建议）
+1. **NEW-2** — ✅ 已修复（2026-06-26）
+2. **PERF-2** — 3 行代码，长对话流式响应卡顿可缓解
+3. **PERF-4** — 3 行代码改 Promise.all
+4. **CODE-5** — 纯删除
 
 ---
 

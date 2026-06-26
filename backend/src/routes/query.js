@@ -712,42 +712,59 @@ ${JSON.stringify(explainResults, null, 2)}
 
 请用中文回复，结构化输出分析结果。`;
 
-    res.setHeader('Content-Type', 'text/event-stream');
-      res.setHeader('Cache-Control', 'no-cache');
-      res.setHeader('Connection', 'keep-alive');
-      // SSE 场景关闭 Nagle 算法，每个 chunk 立即发出，避免小包攒批导致 100-200ms 顿挫
-      req.socket.setNoDelay(true);
+    let streamCompleted = false;
+    // 共享函数：同步校验 LLM provider，避免在 flushHeaders() 之后 res.json 触发 ERR_HTTP_HEADERS_SENT
+    const validateLlmProvider = (p) => {
+      if (p === 'deepseek' || p === 'openai') return { valid: true, provider: p };
+      return { valid: false, error: `不支持的 LLM provider: ${p}（仅支持 deepseek / openai）` };
+    };
 
-      res.flushHeaders();
-
-    const provider = config.provider || 'deepseek';
+    const providerValidation = validateLlmProvider(config.provider || 'deepseek');
+    if (!providerValidation.valid) {
+      return res.status(400).json({ error: providerValidation.error, rowCount: 0 });
+    }
+    const provider = providerValidation.provider;
     const apiKey = config.apiKey;
-    const model =config.model || 'deepseek-chat';
-    
-    let apiUrl = '';
-    let requestBody = {};
-    
+    const model = config.model || (provider === 'openai' ? 'gpt-4o' : 'deepseek-chat');
+
+    // SSE 头必须在所有参数校验完成后才能发送
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    // SSE 场景关闭 Nagle 算法，每个 chunk 立即发出，避免小包攒批导致 100-200ms 顿挫
+    req.socket.setNoDelay(true);
+
+    // 客户端断连保护（NEW-2）：复用 /generate 的 abort 模式
+    const abortController = new AbortController();
+    res.on('close', () => {
+      if (!streamCompleted) {
+        logger.info('EXPLAIN analyze: client disconnected, aborting LLM request');
+        abortController.abort();
+      }
+    });
+
+    res.flushHeaders();
+
+    let apiUrl;
+    let requestBody;
+
     if (provider === 'deepseek') {
       apiUrl = 'https://api.deepseek.com/chat/completions';
       requestBody = {
-        model: model,
-        thinking:{
-          type: 'disabled'
-        },
+        model,
+        thinking: { type: 'disabled' },
         messages: [{ role: 'user', content: prompt }],
         temperature: 0,
         stream: true
       };
-    } else if (provider === 'openai') {
+    } else { // 'openai'，已在 validateLlmProvider 中保证
       apiUrl = 'https://api.openai.com/v1/chat/completions';
       requestBody = {
-        model: model || 'gpt-4o',
+        model,
         messages: [{ role: 'user', content: prompt }],
         temperature: 0,
         stream: true
       };
-    } else {
-      return res.status(400).json({ error: '不支持的 LLM provider', rowCount: 0 });
     }
     const response = await fetch(apiUrl, {
       method: 'POST',
@@ -755,7 +772,8 @@ ${JSON.stringify(explainResults, null, 2)}
         'Content-Type': 'application/json',
         'Authorization': `Bearer ${apiKey}`
       },
-      body: JSON.stringify(requestBody)
+      body: JSON.stringify(requestBody),
+      signal: abortController.signal
     });
 
     if (!response.ok) {
@@ -767,6 +785,10 @@ ${JSON.stringify(explainResults, null, 2)}
     let fullContent = '';
 
     while (true) {
+      if (abortController.signal.aborted) {
+        logger.info('EXPLAIN analyze: aborted before read');
+        break;
+      }
       const { done, value } = await reader.read();
       if (done) break;
 
@@ -776,7 +798,10 @@ ${JSON.stringify(explainResults, null, 2)}
         if (line.startsWith('data: ')) {
           const dataStr = line.slice(6);
           if (dataStr === '[DONE]') {
-            res.write(`data: ${JSON.stringify({ type: 'done', analysis: fullContent })}\n\n`);
+            streamCompleted = true;
+            if (!abortController.signal.aborted) {
+              res.write(`data: ${JSON.stringify({ type: 'done', analysis: fullContent })}\n\n`);
+            }
             break;
           }
           try {
@@ -784,20 +809,34 @@ ${JSON.stringify(explainResults, null, 2)}
             const content = data.choices?.[0]?.delta?.content || '';
             if (content) {
               fullContent += content;
-              res.write(`data: ${JSON.stringify({ type: 'chunk', content })}\n\n`);
-              res.flush();
+              if (!abortController.signal.aborted) {
+                res.write(`data: ${JSON.stringify({ type: 'chunk', content })}\n\n`);
+                res.flush();
+              }
             }
           } catch (e) {
+            // 忽略单行 JSON 解析错误（LLM 流中偶发），继续处理后续行
           }
         }
       }
     }
 
-    res.end();
+    streamCompleted = true;
+    if (!res.writableEnded) {
+      res.end();
+    }
   } catch (error) {
-    logger.error('EXPLAIN analyze failed', { error: error.message });
-    res.write(`data: ${JSON.stringify({ type: 'error', content: error.message })}\n\n`);
-    res.end();
+    if (error.name === 'AbortError') {
+      logger.info('EXPLAIN analyze: aborted by client');
+    } else {
+      logger.error('EXPLAIN analyze failed', { error: error.message });
+      if (!abortController.signal.aborted && !res.writableEnded) {
+        try {
+          res.write(`data: ${JSON.stringify({ type: 'error', content: error.message })}\n\n`);
+          res.end();
+        } catch (_) { /* 客户端已断开 */ }
+      }
+    }
   }
 });
 

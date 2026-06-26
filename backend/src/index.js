@@ -41,7 +41,7 @@ app.use('/api/export', exportRouter);
 (async () => {
   try {
     await initDatabase();
-    initSkillLogTable();
+    await initSkillLogTable();
     console.log('Server running on port ' + PORT);
     app.listen(PORT);
   } catch (e) {

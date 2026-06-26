@@ -82,12 +82,12 @@ router.post('/login', authRateLimiter, async (req, res) => {
 });
 
 // GET /api/auth/me  当前登录用户信息
-router.get('/me', authRequired, (req, res) => {
+router.get('/me', authRateLimiter, authRequired, (req, res) => {
   res.json({ user: req.user });
 });
 
 // POST /api/auth/logout  退出登录（清理 cookie；前端跳转登录页）
-router.post('/logout', authRequired, (req, res) => {
+router.post('/logout', authRateLimiter, authRequired, (req, res) => {
   try {
     // 递增 token_version 让当前 token 立刻失效（即便客户端保留旧的也用不了）
     const nextTv = (req.user.token_version || 0) + 1;

@@ -338,30 +338,34 @@ function AuthenticatedApp({ user, logout }) {
     const newName = session.name ? `${session.name}#${session.id}` : '聊天';
     setCurrentSessionName(newName);
     messageCountRef.current = 0;
-    // 获取当前会话的token消耗
-    try {
-      const data = await getSessionTokens(session.id);
-      setCurrentTokens(data.total_tokens || 0);
-    } catch (e) {
+    // 先重置查看消息按钮颜色为默认色（同步，避免并行请求延迟导致旧色残留）
+    setSessionMessagesTokens(0);
+    // 3 个独立 API 串行 → 并行（PERF-4 修复），切换会话快 ~2 倍
+    const [tokensResult, configResult, messagesResult] = await Promise.allSettled([
+      getSessionTokens(session.id),
+      api.getAgentConfig(),
+      getQueryMessages(session.id),
+    ]);
+    if (tokensResult.status === 'fulfilled') {
+      // getSessionTokens 内部已 .then(r => r.data) 解包，value 即为 data
+      setCurrentTokens(tokensResult.value.total_tokens || 0);
+    } else {
       setCurrentTokens(0);
     }
-    // 先重置查看消息按钮颜色为默认色
-    setSessionMessagesTokens(0);
-    // 获取最新的token警告阈值配置
-    try {
-      const config = await api.getAgentConfig();
-      setTokenWarningLevel(parseInt(config.agent_token_warning_level) || 30000);
-    } catch (e) {
-      console.debug('获取Agent配置失败:', e.message);
+    if (configResult.status === 'fulfilled') {
+      // api.getAgentConfig 内部也已解包
+      setTokenWarningLevel(parseInt(configResult.value.agent_token_warning_level) || 30000);
+    } else {
+      console.debug('获取Agent配置失败:', configResult.reason?.message);
     }
-    // 然后查询消息接口，更新token数用于判断按钮颜色
-    try {
-      const msgData = await getQueryMessages(session.id);
+    if (messagesResult.status === 'fulfilled') {
+      // getQueryMessages 未解包，value 仍是 { success, messageTokens }
+      const msgData = messagesResult.value;
       if (msgData.success) {
         setSessionMessagesTokens(msgData.messageTokens || 0);
       }
-    } catch (e) {
-      console.debug('获取消息token失败:', e.message);
+    } else {
+      console.debug('获取消息token失败:', messagesResult.reason?.message);
     }
   };
   

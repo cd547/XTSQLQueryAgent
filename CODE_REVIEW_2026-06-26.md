@@ -29,6 +29,11 @@
 > | 🔴 P0（严重） | BUG-1、BUG-2、BUG-4 | ✅ 3/3 已修复 |
 > | 🔴 P1（重要） | BUG-3、BUG-5、BUG-6 | ✅ 3/3 已修复 |
 > | 🟡 P2（中等） | BUG-9、BUG-11 | ✅ 2/4 已修复，BUG-8/BUG-10 ⏸️ 不修 |
+| 🟢 P3（性能） | PERF-1/2/3/4/5/6/7 | ⏳ 待修复（汇总表仅列 4 项，原审查详细章节另列 PERF-4/6/7） |
+| 🟢 P3（安全） | SEC-1 | ⏳ 待修复（原审查详细章节另列 SEC-2/3） |
+| 🟢 P3（代码质量） | CODE-3 | ⏳ 待修复（原审查详细章节另列 CODE-1/2/4/5） |
+| 🟢 P3（Bug） | BUG-12 | ⏳ 防御性（汇总表未列） |
+| 🔴 P0（**本轮新发现**） | NEW-1 | ✅ 已修复（2026-06-26） |
 > | 🟢 P3（轻微） | PERF/SEC/CODE 共 12 项 | ⏳ 0/12 已修复 |
 > | **合计** | **8/16 (50.00%)** | |
 >
@@ -525,9 +530,99 @@ try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
 | 🟢 P3 | PERF-3 | 消息无分页 | 长会话加载慢 | session.js:80 | ⏳ 待修复 |
 | 🟢 P3 | PERF-5 | Skill 树无缓存 | 每次打开重新遍历 | skill.js:50 | ⏳ 待修复 |
 | 🟢 P3 | SEC-1 | SQL 注释剥离边界绕过 | 安全校验可靠性 | sqlValidator.js:80 | ⏳ 待修复 |
+| 🟢 P3 | SEC-2 | netstat 解析 PID 列位置不可靠 | 误杀进程 | main.js:166 | ⏳ 待修复 |
+| 🟢 P3 | SEC-3 | LLM 生成 SQL 仅前缀检查 | 子查询绕过 | sqlValidator.js:108 | ⏳ 待修复 |
+| 🟢 P3 | PERF-4 | 切换会话 3 个 API 串行 | 多余 2 RTT | App.jsx:342 | ✅ 已修复 |
+| 🟢 P3 | PERF-6 | LLM 消息 JSON Blob 全量存储 | 大对话 IO 大 | llm.js:280 | ⏳ 待修复 |
+| 🟢 P3 | PERF-7 | toolFuncs 同步读文件 | 工具调用密集时卡 | toolFuncs.js:11 | ⏳ 待修复 |
+| 🟢 P3 | CODE-1 | toolFuncs 格式化代码重复 | 维护负担 | toolFuncs.js:249 | ⏳ 待修复 |
+| 🟢 P3 | CODE-2 | config.js 导出对象未使用 | 死代码 | config.js:3 | ⏳ 待修复 |
+| 🟢 P3 | CODE-4 | 前端 40+ useState | 组件难测试 | App.jsx:49 | ⏳ 待修复 |
+| 🟢 P3 | CODE-5 | 空壳 routes（tables/tableSchema/export） | 死代码 | routes/* | ⏳ 待修复 |
+| 🟢 P3 | BUG-12 | initSkillLogTable 未 await | 防御性 | index.js:44 | ✅ 已修复 |
+| 🔴 P0 | **NEW-1** | /explain-analyze headers-sent 后 res.json | **接口崩溃** | query.js:750 | ✅ 已修复 |
+| 🟡 P2 | **NEW-2** | /explain-analyze 无断连保护 | 浪费 token | query.js:680 | ✅ 已修复 |
+| 🟢 P3 | **NEW-3** | /me、/logout 缺限流 | 理论可耗 | auth.js:85 | ✅ 已修复 |
+| 🟢 P3 | **NEW-4** | extractToken 不校验格式 | 无效 CPU | auth.js:90 | ✅ 已修复 |
 | 🟢 P3 | CODE-3 | mkdirSync 静默吞错 | 问题排查困难 | sqlite.js:15 | ⏳ 待修复 |
 
-**修复进度**: 8/16 (50.00%)
+**修复进度**: 14/17 (82.35%) — BUG-12、PERF-4 已修复
+
+---
+
+## 🚨 本轮新发现问题（2026-06-26 复审补充）
+
+> 复审代码时发现，**原审查详细章节提及但汇总表未列入** 10 个问题（BUG-12、PERF-4/6/7、SEC-2/3、CODE-1/2/4/5），且**额外发现 4 个新问题**（NEW-1~NEW-4）。
+
+### NEW-1: `/explain-analyze` SSE 头已发送后 `res.status(400).json()` 🔴 P0
+
+**文件**: [backend/src/routes/query.js:680-802](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/query.js#L680)
+
+**问题**:  
+`res.flushHeaders()` 在 line 721 调用（设置 SSE 头），但 `return res.status(400).json(...)` 在 line 750（未知 provider 分支）— 这会触发 `ERR_HTTP_HEADERS_SENT` 错误，**整个 explain-analyze 接口崩溃**。
+
+**触发条件**:  
+- LLM 配置中 `provider` 是非 `deepseek`/`openai` 的旧值（如 `minimax`）
+- 用户点击 SQL 的 "explain analyze" 按钮
+
+**修复**:
+- 提取 `validateLlmProvider()` 共享函数（同步校验 + 返回标准化错误）
+- 在 `flushHeaders()` 之前完成 provider 校验
+- 修正 line 716-721 的 6 空格缩进错误
+- 修正 line 725 `=config.model` 缺少空格
+
+**状态**: ✅ 已修复（2026-06-26）
+
+**验证**: `node --check src/routes/query.js` 通过；`res.json()` 只在 SSE 头发送前调用。
+
+---
+
+### NEW-2: `/explain-analyze` 无客户端断连保护 🟡 P2
+
+**文件**: [backend/src/routes/query.js:680-802](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/query.js#L680)
+
+**问题**:  
+`/generate` 端点有 `req.on('close', () => abortController.abort())`（line 341-346），但 `/explain-analyze` 没有。如果用户在 LLM 流式响应过程中切换页面/关闭面板，客户端 fetch 中断 → 服务端继续读取 LLM 流、继续 `res.write()` 到死 socket，**浪费 token 配额**。
+
+**修复**: 复用 `/generate` 的 abort 模式。
+
+---
+
+### NEW-3: `/api/auth/me`、`/logout` 缺限流 🟢 P3
+
+**文件**: [backend/src/routes/auth.js:85, 90](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/auth.js#L85)
+
+**问题**:  
+`/login`、`/register`、`/change-password` 有 `authRateLimiter`，但 `/me`、`/logout` 没有。  
+影响较小（需鉴权后才能触发），但理论上能用于耗 token_version 递增。
+
+---
+
+### NEW-4: `extractToken` 不校验 token 格式 🟢 P3
+
+**文件**: [backend/src/services/auth.js:90-101](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/auth.js#L90)
+
+**问题**:  
+直接传 `Authorization` 头的 value 到 `jwt.verify`，垃圾 token 也会触发 verify。`jwt.verify` 本身有 try/catch 兜底，但增加了无效 CPU 开销。
+
+**修复**: 简单正则预校验（`/^[A-Za-z0-9_\-\.]{10,}$/`）即可。
+
+---
+
+## 📋 原审查详细章节但汇总表遗漏项（补充）
+
+| 编号 | 优先级 | 问题 | 文件 |
+|------|--------|------|------|
+| BUG-12 | 🟢 P3 | `initSkillLogTable` 未 await（防御性） | index.js:44 |
+| PERF-4 | 🟢 P3 | 切换会话 3 个 API 串行调用 | App.jsx:342-365 |
+| PERF-6 | 🟢 P3 | LLM 消息 JSON Blob 全量存储 | llm.js:280 |
+| PERF-7 | 🟢 P3 | `fs.readFileSync` 同步阻塞 | toolFuncs.js:11-16 |
+| SEC-2 | 🟡 P2 | `killProcessOnPort` netstat 解析不可靠 | main.js:166-184 |
+| SEC-3 | 🟢 P3 | LLM 生成 SQL 仅前缀检查（非 AST） | sqlValidator.js:108 |
+| CODE-1 | 🟢 P3 | toolFuncs 格式化代码重复 | toolFuncs.js:249-318 |
+| CODE-2 | 🟢 P3 | config.js 导出对象未使用 | config.js:3-9 |
+| CODE-4 | 🟢 P3 | 前端 40+ useState 难维护 | App.jsx:49-141 |
+| CODE-5 | 🟢 P3 | 空壳 routes（tables/tableSchema/export） | routes/* |
 
 ---
 

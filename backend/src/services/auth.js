@@ -87,15 +87,20 @@ export function verifyToken(token) {
 // 从请求头或 Cookie 提取 token：
 // 1) Authorization: Bearer xxx  （用于命令行/非浏览器客户端）
 // 2) httpOnly cookie: xtsql_auth （用于浏览器，httpOnly 防 XSS 窃取）
+// JWT 格式预校验：必须是 3 段 base64url（header.payload.signature）
+// 减少垃圾 token 触发 jwt.verify 消耗 CPU；同时防御畸形 token 注入
+const JWT_FORMAT_RE = /^[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+$/;
+
 function extractToken(req) {
   const auth = req.headers['authorization'] || req.headers['Authorization'];
   if (auth) {
     const parts = String(auth).split(' ');
     const t = parts.length === 2 ? parts[1] : parts[0];
-    if (t) return t;
+    if (t && JWT_FORMAT_RE.test(t)) return t;
   }
   if (req.cookies && req.cookies[AUTH_COOKIE]) {
-    return req.cookies[AUTH_COOKIE];
+    const ct = req.cookies[AUTH_COOKIE];
+    if (ct && JWT_FORMAT_RE.test(ct)) return ct;
   }
   return null;
 }
