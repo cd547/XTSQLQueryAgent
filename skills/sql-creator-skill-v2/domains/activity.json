@@ -7,6 +7,7 @@
     "cms_article_event",
     "cms_section",
     "cms_session_records",
-    "cms_article_sessions"
+    "cms_article_sessions",
+    "admin_my_users"
   ]
 }

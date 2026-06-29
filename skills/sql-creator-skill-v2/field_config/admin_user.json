@@ -4,7 +4,8 @@
   "field_aliases": {
     "parent_id": ["上级ID"],
     "character_id": ["角色ID"],
-    "department_id": ["部门ID", "二级部门ID"]
+    "department_id": ["部门ID", "二级部门ID"],
+    "user":["用户名"]
   },
   
   "field_enums": {

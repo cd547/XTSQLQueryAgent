@@ -26,5 +26,10 @@
   
   "business_constraints": {},
   
-  "business_rules": []
+  "business_rules": [
+    {
+      "name":"is_master字段的作用",
+      "descritpion":"is_master=1表示当前二级部门某种意义上可以代表他所属的一级部门（他们的名称相同），比如这个二级部门的配置负责人就代表着他对应的一级部门的负责人"
+    }
+  ]
 }

@@ -273,12 +273,17 @@
       "related_tables": [
         "cms_section",
         "cms_type",
-        "admin_user"
+        "admin_user",
+        "edu_goods"
       ]
     },
     {
       "name": "cms_apply",
-      "description": "活动报名表"
+      "description": "活动报名表",
+      "related_tables": [
+        "my_user",
+        "cms_article"
+      ]
     },
     {
       "name": "cms_article_event",
@@ -1440,6 +1445,37 @@
       "tags": [],
       "related_tables": [
         "keqiao_time_table"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "customers_new_sign_returned_info",
+      "description": "新签转化率 线索订单回款明细表",
+      "tags": [],
+      "related_tables": [
+        "customer_clue_info"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "effective_customers",
+      "description": "销售有效数据记录（线索）",
+      "tags": [],
+      "related_tables": [
+        "customer_clue_info"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "admin_my_users",
+      "description": "后台管理员关联用户表",
+      "tags": [],
+      "related_tables": [
+        "admin_user",
+        "my_user"
       ],
       "business_constraints": [],
       "business_rules": []
