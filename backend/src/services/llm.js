@@ -6,9 +6,10 @@ import { countMessagesTokens } from './tokenizer.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
+import { config } from '../config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const LOGS_PATH = process.env.LOG_PATH || './logs';
+const LOGS_PATH = config.logPath;
 
 function writeLlmLog(content) {
   const now = new Date();

@@ -3,10 +3,11 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { logger } from '../logger.js';
+import { config } from '../config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const projectRoot = process.env.PROJECT_ROOT || path.resolve(__dirname, '../../../');
-const SKILL_V2_PATH = path.join(process.env.SKILL_PATH || path.join(projectRoot, 'skills'), 'sql-creator-skill-v2');
+const projectRoot = config.projectRoot;
+const SKILL_V2_PATH = path.join(config.skillPath, 'sql-creator-skill-v2');
 
 export function loadTableIndex() {
   const tableIndexPath = path.join(SKILL_V2_PATH, 'table_index.json');

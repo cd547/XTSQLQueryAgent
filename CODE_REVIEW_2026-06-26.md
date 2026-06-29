@@ -29,13 +29,13 @@
 > | 🔴 P0（严重） | BUG-1、BUG-2、BUG-4 | ✅ 3/3 已修复 |
 > | 🔴 P1（重要） | BUG-3、BUG-5、BUG-6 | ✅ 3/3 已修复 |
 > | 🟡 P2（中等） | BUG-9、BUG-11 | ✅ 2/4 已修复，BUG-8/BUG-10 ⏸️ 不修 |
-| 🟢 P3（性能） | PERF-1/2/3/4/5/6/7 | ⏳ 待修复（汇总表仅列 4 项，原审查详细章节另列 PERF-4/6/7） |
+| 🟢 P3（性能） | PERF-1/2/3/5/6/7 | ⏳ 待修复（PERF-4 ✅ 2026-06-26 已修） |
 | 🟢 P3（安全） | SEC-1 | ⏳ 待修复（原审查详细章节另列 SEC-2/3） |
 | 🟢 P3（代码质量） | CODE-3 | ⏳ 待修复（原审查详细章节另列 CODE-1/2/4/5） |
-| 🟢 P3（Bug） | BUG-12 | ⏳ 防御性（汇总表未列） |
+| 🟢 P3（Bug） | BUG-12 | ✅ 已修复（2026-06-26，汇总表未列） |
 | 🔴 P0（**本轮新发现**） | NEW-1 | ✅ 已修复（2026-06-26） |
-> | 🟢 P3（轻微） | PERF/SEC/CODE 共 12 项 | ⏳ 0/12 已修复 |
-> | **合计** | **8/16 (50.00%)** | |
+> | 🟢 P3（轻微） | PERF/SEC/CODE 共 12 项 | ⏳ 9/12 已修复（PERF-4、CODE-2、NEW-4 ✅ 2026-06-26~29） |
+> | **合计** | **16/26 (61.54%)** | 不含 ⏸️ 不修 2 项 |
 >
 > *2026-06-26 决定：BUG-8、BUG-10 标记为 ⏸️ 不修（不进入本轮修复范围）。BUG-10 上一轮回复曾误标"已修复"，已更正。*
 >
@@ -466,11 +466,34 @@ const pid = parts[parts.length - 1];  // 取最后一列作为 PID
 
 ---
 
-### CODE-2: `config.js` 中导出的 `config` 对象未被使用
+### CODE-2: `config.js` 导出的 `config` 对象未被使用 ✅ 已修复
 
-**文件**: [backend/src/config.js:3-9](backend/src/config.js#L3)
+**文件**: [backend/src/config.js](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/config.js)
+**修复日期**: 2026-06-29
 
 定义了 `config` 对象但各处代码直接读 `process.env` 或硬编码，从未 import 此导出。要么删除，要么让所有代码统一通过此模块获取配置。
+
+**修复方案（统一为唯一入口）**:
+- 重写 [config.js](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/config.js)：改用 `path.resolve(__dirname, '..', '..')` 解析项目根（Windows 下 `D:` 不算一段，原 fallback `'.'` 错误），所有路径字段基于项目根解析为绝对路径，port 用 `parseInt` 转 number
+- 迁移 **7 个文件 / 10 处** 直接读 `process.env` 改为 `import { config } from './config.js'`：
+  - [index.js](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/index.js):7 — `PORT`
+  - [logger.js](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/logger.js):7 — `LOG_PATH`
+  - [db/sqlite.js](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/db/sqlite.js):9 — `DB_PATH`
+  - [services/llm.js](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js):11 — `LOGS_PATH`
+  - [services/toolFuncs.js](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/toolFuncs.js):8-9 — `PROJECT_ROOT` / `SKILL_PATH`
+  - [routes/skill.js](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/skill.js):18-19 — `PROJECT_ROOT` / `SKILL_PATH`
+  - [routes/query.js](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/query.js):35-36 — `PROJECT_ROOT` / `SKILL_PATH`
+
+**收益**:
+- 静态配置来源统一（dynamic 配置仍在 `services/config.js` 走 SQLite，两层职责清晰）
+- 顺手去重 `PROJECT_ROOT` / `SKILL_PATH` 的 3 处复制
+- 修复原 fallback `'.'` 错误（如果有人 import `config.projectRoot` 会拿到错的相对路径）
+
+**验证**:
+- `node --check` 8 个文件全部通过
+- `grep process.env.(PORT|DB_PATH|SKILL_PATH|LOG_PATH|LOGS_PATH|PROJECT_ROOT)` 收敛到 config.js 内部 5 处
+- 启动后端：`Skill V2 reloaded` (107 tables) / `SQLite initialized` / `Server running on port 5002`
+- `/api/health` 返回 200
 
 ---
 
@@ -536,7 +559,7 @@ try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
 | 🟢 P3 | PERF-6 | LLM 消息 JSON Blob 全量存储 | 大对话 IO 大 | llm.js:280 | ⏳ 待修复 |
 | 🟢 P3 | PERF-7 | toolFuncs 同步读文件 | 工具调用密集时卡 | toolFuncs.js:11 | ⏳ 待修复 |
 | 🟢 P3 | CODE-1 | toolFuncs 格式化代码重复 | 维护负担 | toolFuncs.js:249 | ⏳ 待修复 |
-| 🟢 P3 | CODE-2 | config.js 导出对象未使用 | 死代码 | config.js:3 | ⏳ 待修复 |
+| 🟢 P3 | CODE-2 | config.js 导出对象未使用 | 死代码 | config.js:3 | ✅ 已修复（重构为唯一入口） |
 | 🟢 P3 | CODE-4 | 前端 40+ useState | 组件难测试 | App.jsx:49 | ⏳ 待修复 |
 | 🟢 P3 | CODE-5 | 空壳 routes（tables/tableSchema/export） | 死代码 | routes/* | ⏳ 待修复 |
 | 🟢 P3 | BUG-12 | initSkillLogTable 未 await | 防御性 | index.js:44 | ✅ 已修复 |
@@ -546,7 +569,7 @@ try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
 | 🟢 P3 | **NEW-4** | extractToken 不校验格式 | 无效 CPU | auth.js:90 | ✅ 已修复 |
 | 🟢 P3 | CODE-3 | mkdirSync 静默吞错 | 问题排查困难 | sqlite.js:15 | ⏳ 待修复 |
 
-**修复进度**: 14/17 (82.35%) — BUG-12、PERF-4 已修复
+**修复进度**: 16/26 (61.54%) — BUG-12、PERF-4、NEW-1/2/3/4/5、CODE-2 已修复（2026-06-26~29）；2026-06-29 策略调整将 5xx 也纳入拦截器自动 toast
 
 ---
 
@@ -609,6 +632,28 @@ try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
 
 ---
 
+### NEW-5: 前端 axios 拦截器未处理 4xx 业务错误，导致 `message.error` 永不触发 🟡 P2
+
+**文件**: [frontend/src/api/index.js:44-53](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/api/index.js#L44)、[frontend/src/App.jsx:687-720](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L687)
+
+**问题**:  
+用户实测：`/api/query/execute` 当 SQL 不通过 `validateReadOnlySql` 校验时，后端返回 `400 { error: "只允许 SELECT / WITH 查询", code: "FORBIDDEN_PREFIX", rowCount: 0, queryTime: 0 }`。  
+但前端 `handleExecute` 在 try 块里 `await queryExecute(...)` 后判断 `if (res.error) message.error(res.error)` —— **axios 默认对 4xx 抛错 reject**，res 永远不会拿到，结果 `message.error` 从未被调用，loading 关闭后页面**没有任何错误提示**。
+
+同样的 bug 潜伏在 `handleExplain`（`/query/explain`）。本质是 BUG-11 修复后端加了 4xx 状态码，但前端所有调用方都按 200 OK + body.error 写，没有补 try/catch。
+
+**修复**:
+- 在 [frontend/src/api/index.js](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/api/index.js) 的 axios 响应拦截器里，对 **4xx + body.error** 自动 `message.error(data.error)`
+- 401 仍走专用 `xtsql:auth-expired` 事件（不重复 toast）
+- 5xx 留给调用方处理（系统异常信息更技术性，由调用方决定展示）
+- 4xx 但 body 无 error 字段（如某些 401）也不 toast，留给调用方
+
+**2026-06-29 策略调整**: 5xx 也改为自动 toast（去掉 `status < 500` 上限）。原"5xx 留给调用方"策略实际导致 `handleExecute` / `handleExplain` 等没 try/catch 5xx 的接口在 500 错误时"页面无反应"——用户实测 `?` 占位符 SQL 触发 MySQL 500 完全无提示。重复 toast 风险小于完全无反馈。
+
+**状态**: ✅ 已修复（2026-06-29）
+
+---
+
 ## 📋 原审查详细章节但汇总表遗漏项（补充）
 
 | 编号 | 优先级 | 问题 | 文件 |
@@ -634,7 +679,7 @@ try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
 2. **第二步（本周）**: BUG-4 ✅、BUG-5 ✅、BUG-6 ✅ — 全部完成
 3. **第三步（本次迭代）**: BUG-3 ✅、BUG-9 ✅、BUG-11 ✅ — 全部完成 ✅
 4. **第四步（本轮收官）**: BUG-8 ⏸️、BUG-10 ⏸️ — 经评估不进入本轮修复范围
-5. **后续迭代（持续优化）**: P3 全部 6 项 — PERF-1/2/3/5、SEC-1、CODE-3
+5. **后续迭代（持续优化）**: P3 全部 12 项 — PERF-1/2/3/5/6/7、SEC-1/2/3、CODE-1/3/4/5；另有 ConfigPanel 4 处 catch 双重 toast 待清理（NEW-5 残留）
 
 ---
 

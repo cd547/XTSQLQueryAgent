@@ -3,10 +3,11 @@ import bcrypt from 'bcryptjs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { logger } from '../logger.js';
+import { config } from '../config.js';
 import { mkdirSync } from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const dbPath = process.env.DB_PATH || path.join(__dirname, '../../../data/app.db');
+const dbPath = config.dbPath;
 
 // 确保数据库目录存在
 const dbDir = path.dirname(dbPath);

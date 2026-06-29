@@ -2,9 +2,10 @@ import winston from 'winston';
 import path from 'path';
 import fs from 'fs';
 import { fileURLToPath } from 'url';
+import { config } from './config.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const LOG_PATH = process.env.LOG_PATH || './logs';
+const LOG_PATH = config.logPath;
 
 // 确保日志目录存在（双保险：startup 时也建）
 try { fs.mkdirSync(LOG_PATH, { recursive: true }); } catch (e) {}

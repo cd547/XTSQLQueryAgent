@@ -168,7 +168,7 @@ function ConfigPanel() {
         </Space>
         <Space>
           <span style={{ width: 100 }}>token警告上限</span>
-          <InputNumber value={parseInt(agentConfig.token_warning_level)} onChange={v => setAgentConfig({...agentConfig, token_warning_level: String(v || 30000)})} min={1000} max={100000} style={{ fontSize: 12 }} />
+          <InputNumber value={parseInt(agentConfig.token_warning_level)} onChange={v => setAgentConfig({...agentConfig, token_warning_level: String(v || 30000)})} min={1000} max={300000} style={{ fontSize: 12 }} />
         </Space>
         <Button onClick={saveAgent} loading={savingAgent} style={{ fontSize: 12 }}>保存Agent配置</Button>
       </div>

@@ -7,6 +7,7 @@ import { getConfig } from '../services/config.js';
 import { authRequired } from '../services/auth.js';
 import { logger } from '../logger.js';
 import { getPool } from '../services/mysqlPool.js';
+import { config } from '../config.js';
 
 const router = Router();
 
@@ -15,8 +16,8 @@ router.use(authRequired);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const projectRoot = process.env.PROJECT_ROOT || path.resolve(__dirname, '../../../');
-const skillsPath = process.env.SKILL_PATH || path.join(projectRoot, 'skills');
+const projectRoot = config.projectRoot;
+const skillsPath = config.skillPath;
 const skillBackPath = path.join(skillsPath, 'skill_back');
 const SKILL_V2_PATH = path.join(skillsPath, 'sql-creator-skill-v2');
 

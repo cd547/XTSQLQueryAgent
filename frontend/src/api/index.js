@@ -1,4 +1,5 @@
 import axios from 'axios';
+import { message } from 'antd';
 
 const isElectron = window.location.protocol === 'file:';
 const baseURL = isElectron ? 'http://localhost:5002/api' : '/api';
@@ -40,13 +41,20 @@ export function setStoredUser(user) {
   else localStorage.removeItem(USER_KEY);
 }
 
-// 响应拦截器：401 时清理本地用户信息并触发全局事件
+// 响应拦截器：401 时清理本地用户信息并触发全局事件；
+// 4xx/5xx 业务错误（后端返回 { error, code, ... }）自动 toast，调用方无需 try/catch 重复处理。
+// 之前 5xx 留给调用方，但很多调用方没 try/catch 5xx，导致 500 类错误"页面无反应"，
+// 反馈体验比重复 toast 更差。
 api.interceptors.response.use(
   (resp) => resp,
   (error) => {
-    if (error.response && error.response.status === 401) {
+    const status = error.response?.status;
+    const data = error.response?.data;
+    if (status === 401) {
       setStoredUser(null);
       window.dispatchEvent(new CustomEvent('xtsql:auth-expired'));
+    } else if (status >= 400 && data && data.error) {
+      message.error(data.error);
     }
     return Promise.reject(error);
   }

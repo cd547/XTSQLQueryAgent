@@ -2,9 +2,10 @@ import express from 'express';
 import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { initDatabase, initSkillLogTable } from './db/sqlite.js';
+import { config } from './config.js';
 
 const app = express();
-const PORT = process.env.PORT || 5002;
+const PORT = config.port;
 
 app.use(cors({
   origin: (origin, cb) => cb(null, true), // 任意 origin；通过 cookie+SameSite 保护

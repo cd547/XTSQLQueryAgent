@@ -10,6 +10,7 @@ import { logger } from '../logger.js';
 import { generateSQLWithLangChainStreamGen_BAK, loadSkillMd, getLastMessages, loadMessagesFromDb, clearSessionRegistry } from '../services/llm.js';
 import { validateReadOnlySql } from '../services/sqlValidator.js';
 import { getPool } from '../services/mysqlPool.js';
+import { config } from '../config.js';
 
 // /execute 端点：只允许查询，不允许 EXPLAIN
 const EXECUTE_SQL_OPTIONS = { allowedPrefixes: ['SELECT', 'WITH'] };
@@ -32,8 +33,8 @@ function ensureSession(userId) {
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const projectRoot = process.env.PROJECT_ROOT || path.resolve(__dirname, '../../../');
-const SKILL_V2_PATH = path.join(process.env.SKILL_PATH || path.join(projectRoot, 'skills'), 'sql-creator-skill-v2');
+const projectRoot = config.projectRoot;
+const SKILL_V2_PATH = path.join(config.skillPath, 'sql-creator-skill-v2');
 
 let cachedSkill = {
   tableIndex: null,
