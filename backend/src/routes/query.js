@@ -315,7 +315,7 @@ router.post('/generate', async (req, res) => {
       }
     }
 
-    const skillMd = loadSkillMd();
+    const skillMd = await loadSkillMd();
     logger.info('Skill.md loaded at generate request', { length: skillMd.length });
 
     let schema = '';

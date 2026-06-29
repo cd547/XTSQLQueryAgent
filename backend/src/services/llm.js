@@ -331,7 +331,7 @@ export async function* generateSQLWithLangChainStreamGen_BAK(question, history =
   const baseURL = providerCfg.baseURL;
   const llmModel = providerCfg.llmModel;
   
-  const skillMd = loadSkillMd();
+  const skillMd = await loadSkillMd();
 
   const toolsDefinition = tools.map(t => ({
     type: 'function',

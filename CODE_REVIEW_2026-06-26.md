@@ -349,6 +349,18 @@ const messages = db.prepare(
 
 **建议**: 默认返回最近 100 条，支持 `?limit=&offset=` 参数。
 
+**2026-06-29 决策 — 暂不实施**:
+- 当前无长会话场景的真实性能反馈（用户实测切换会话流畅）
+- LLM 上下文通过单独的 `llm_messages` 表（JSON blob 完整存储）保证，**分页 `messages` 表不影响 DeepSeek 上下文**
+- 实施需要决策：分页单位（按 turn 还是按行）、turn 边界锚点（user 行 id）、scroll 位置保留 UX
+- 触发条件：用户反馈"切 200+ turn 会话卡"或前端 dashboard 出现可观测的 P99 延迟时再启动
+- 实施时完整方案已讨论存档（本对话 2026-06-29 末段）：
+  - 默认 `limit=100`、上限 200
+  - 锚点：`SELECT id FROM messages WHERE session_id=? AND role='user' ORDER BY id DESC LIMIT 1 OFFSET 99`
+  - 取该 id 及之后所有行（保证 turn 完整性，不会切到中间）
+  - 前端零改动（默认 100 已能覆盖绝大多数场景）
+  - 真要"向上加载更多"再走 Phase 2：游标 `before=<oldest_user_msg_id>` + scroll 位置保留
+
 ---
 
 ### PERF-4: 前端多次串行 API 调用
@@ -405,6 +417,38 @@ return JSON.parse(fs.readFileSync(tableIndexPath, 'utf-8'));
 对于桌面单用户场景影响不大，但在工具调用密集时（30 轮循环）累积的同步 IO 会增加响应延迟。
 
 **建议**: 使用启动时加载到内存的缓存，配合文件变更检测失效。
+
+**2026-06-29 修复 — 异步化（保留实时读取）**:
+用户明确要求"读取文件必须是实时读取最新的，因为这里的文件内容会变化"（schema 重建、tag 修改、DDL 变更等），**不能**用缓存。改为 `fs.promises.readFile` 异步化：
+
+- 新增 `readFileIfExists(path)` 辅助函数：单次系统调用 + ENOENT 兜底（避免 `existsSync + readFileSync` 双重调用 + TOCTOU 竞态）
+- **9 个函数改为 async**：`loadTableIndex` / `loadDomainRouterIndex` / `sliceTableIndex` / `sliceTableIndexByDomains` / `loadSkillMd` / `getTableSchema` / `getTableDDL` / `getOutputFormat` / `getMysqlLimits`
+- **6 个工具的 `func` 回调改为 async**：`get_tables` / `get_table_schema` / `get_table_ddl` / `get_domain_index` / `get_sliced_index`（`request_tag_confirmation` 纯字符串，无需改）
+- **调用方更新**：
+  - `llm.js:334` `loadSkillMd()` → `await loadSkillMd()`（generateSQL 路径）
+  - `query.js:318` `loadSkillMd()` → `await loadSkillMd()`（/generate 路径）
+- **新增内部并行**（配合 NEW-6 工具并行化）：
+  - `sliceTableIndexByDomains`：多域文件读取并行
+  - `getTableSchema`：多表 field_config 并行
+  - `getTableDDL`：多表 DDL 并行
+
+**未改（不在 LLM 工具调用路径）**:
+- `routes/skill.js` 自己的 `loadTableIndex`（admin 路径，技能树/文件编辑）
+- `routes/query.js:50-55, 83-90` `loadSkillV2` / `loadFieldConfig`（启动 + `/execute` 路径，加载慢但非 agent loop 热点）
+- `tokenizer.js:14` BPE 加载（PERF-1 单独跟踪）
+
+**状态**: ✅ 已修复（2026-06-29）
+
+**验证**:
+- `node --check` 通过：toolFuncs.js / llm.js / query.js
+- Agent loop 兼容：`await Promise.resolve(p.tool.func(...))` 早已支持 async 工具函数
+- 行为不变：每次调用都重新读盘；文件不存在时返回原 fallback（`'输出格式模板不存在'` 等）
+- 无 TOCTOU 竞态：单次 `readFile` + ENOENT 捕获
+
+**收益**:
+- 工具调用期间事件循环不再被阻塞
+- 单 `get_table_schema × 3` 内部并行：~3×100ms → ~100ms
+- 与 NEW-6 工具并行化叠加：3 个 `get_table_schema` × 3 表 = 9 读 → 3 并发 × 3 内部并行 ≈ 1 次往返
 
 ---
 
@@ -550,14 +594,14 @@ try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
 | 🟡 P2 | BUG-11 | 错误响应返回 HTTP 200 | 前端无法区分错误 | session.js/query.js 共 25 处 | ✅ 已修复 |
 | 🟡 P2 | PERF-2 | findLastIndex 重复扫描 | 流式响应卡顿 | App.jsx:536 | ⏳ 待修复 |
 | 🟢 P3 | PERF-1 | BPE 同步阻塞 | 大消息量时短暂冻结 | tokenizer.js:68 | ⏳ 待修复 |
-| 🟢 P3 | PERF-3 | 消息无分页 | 长会话加载慢 | session.js:80 | ⏳ 待修复 |
+| 🟢 P3 | PERF-3 | 消息无分页 | 长会话加载慢 | session.js:80 | ⏸️ 暂不实施（无长会话场景反馈） |
 | 🟢 P3 | PERF-5 | Skill 树无缓存 | 每次打开重新遍历 | skill.js:50 | ⏳ 待修复 |
 | 🟢 P3 | SEC-1 | SQL 注释剥离边界绕过 | 安全校验可靠性 | sqlValidator.js:80 | ⏳ 待修复 |
 | 🟢 P3 | SEC-2 | netstat 解析 PID 列位置不可靠 | 误杀进程 | main.js:166 | ⏳ 待修复 |
 | 🟢 P3 | SEC-3 | LLM 生成 SQL 仅前缀检查 | 子查询绕过 | sqlValidator.js:108 | ⏳ 待修复 |
 | 🟢 P3 | PERF-4 | 切换会话 3 个 API 串行 | 多余 2 RTT | App.jsx:342 | ✅ 已修复 |
 | 🟢 P3 | PERF-6 | LLM 消息 JSON Blob 全量存储 | 大对话 IO 大 | llm.js:280 | ⏳ 待修复 |
-| 🟢 P3 | PERF-7 | toolFuncs 同步读文件 | 工具调用密集时卡 | toolFuncs.js:11 | ⏳ 待修复 |
+| 🟢 P3 | PERF-7 | toolFuncs 同步读文件 | 工具调用密集时卡 | toolFuncs.js:11 | ✅ 已修复（async 化 + 内部并行） |
 | 🟢 P3 | CODE-1 | toolFuncs 格式化代码重复 | 维护负担 | toolFuncs.js:249 | ⏳ 待修复 |
 | 🟢 P3 | CODE-2 | config.js 导出对象未使用 | 死代码 | config.js:3 | ✅ 已修复（重构为唯一入口） |
 | 🟢 P3 | CODE-4 | 前端 40+ useState | 组件难测试 | App.jsx:49 | ⏳ 待修复 |
@@ -570,7 +614,7 @@ try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
 | 🟡 P2 | **NEW-6** | agent loop 工具调用串行 | agent loop 慢 | llm.js:557 | ✅ 已修复（3 阶段并行） |
 | 🟢 P3 | CODE-3 | mkdirSync 静默吞错 | 问题排查困难 | sqlite.js:15 | ⏳ 待修复 |
 
-**修复进度**: 17/27 (62.96%) — BUG-12、PERF-4、NEW-1/2/3/4/5/6、CODE-2 已修复（2026-06-26~29）；NEW-6 工具并行化每轮 agent loop 省 0.5-2s
+**修复进度**: 18/27 (66.67%) — BUG-12、PERF-4/7、NEW-1/2/3/4/5/6、CODE-2 已修复（2026-06-26~29）；PERF-7 异步化消除事件循环阻塞，叠加 NEW-6 工具并行化
 
 ---
 

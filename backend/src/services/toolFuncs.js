@@ -9,23 +9,31 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = config.projectRoot;
 const SKILL_V2_PATH = path.join(config.skillPath, 'sql-creator-skill-v2');
 
-export function loadTableIndex() {
+// 读取文件（如不存在返回 null）。单次系统调用，无 TOCTOU 竞态。
+// 每次调用都重新读盘——文件内容可能变化（schema 重建、tag 修改、DDL 变更等），
+// 禁止缓存。
+async function readFileIfExists(filePath, encoding = 'utf-8') {
+  try {
+    return await fs.promises.readFile(filePath, encoding);
+  } catch (e) {
+    if (e.code === 'ENOENT') return null;
+    throw e;
+  }
+}
+
+export async function loadTableIndex() {
   const tableIndexPath = path.join(SKILL_V2_PATH, 'table_index.json');
-  if (fs.existsSync(tableIndexPath)) {
-    return JSON.parse(fs.readFileSync(tableIndexPath, 'utf-8'));
-  }
-  return null;
+  const content = await readFileIfExists(tableIndexPath);
+  return content ? JSON.parse(content) : null;
 }
 
-export function loadDomainRouterIndex() {
+export async function loadDomainRouterIndex() {
   const domainIndexPath = path.join(SKILL_V2_PATH, 'domain_router_index.json');
-  if (fs.existsSync(domainIndexPath)) {
-    return JSON.parse(fs.readFileSync(domainIndexPath, 'utf-8'));
-  }
-  return null;
+  const content = await readFileIfExists(domainIndexPath);
+  return content ? JSON.parse(content) : null;
 }
 
-export function sliceTableIndex(tableNames) {
+export async function sliceTableIndex(tableNames) {
   // 1. 规范化输入：转数组、去重、过滤空值和非字符串
   const arr = Array.isArray(tableNames) ? tableNames : [tableNames];
   const uniqueNames = [...new Set(
@@ -33,7 +41,7 @@ export function sliceTableIndex(tableNames) {
   )];
 
   // 2. 加载全量索引
-  const full = loadTableIndex();
+  const full = await loadTableIndex();
   if (!full || !Array.isArray(full.tables) || full.tables.length === 0) {
     logger.warn('sliceTableIndex: 全量索引为空或加载失败', { tableNames });
     return {
@@ -77,37 +85,37 @@ export function sliceTableIndex(tableNames) {
   return result;
 }
 
-export function sliceTableIndexByDomains(domainIds) {
+export async function sliceTableIndexByDomains(domainIds) {
   // 1. 规范化输入
   const arr = Array.isArray(domainIds) ? domainIds : [domainIds];
   const uniqueIds = [...new Set(
     arr.filter(id => typeof id === 'string' && id.trim())
   )];
 
-  // 2. 加载每个域的表名
+  // 2. 并行加载每个域的表名（多域时不再串行读盘）
+  const domainEntries = await Promise.all(uniqueIds.map(async (id) => {
+    const domainPath = path.join(SKILL_V2_PATH, 'domains', `${id}.json`);
+    const content = await readFileIfExists(domainPath);
+    if (!content) return { id, status: 'missing' };
+    const domain = JSON.parse(content);
+    if (!domain.tables || domain.tables.length === 0) return { id, status: 'empty' };
+    return { id, status: 'ok', tables: domain.tables };
+  }));
+
   const tableNames = [];
   const missingDomains = [];
   const emptyDomains = [];
-
-  for (const id of uniqueIds) {
-    const domainPath = path.join(SKILL_V2_PATH, 'domains', `${id}.json`);
-    if (!fs.existsSync(domainPath)) {
-      missingDomains.push(id);
-      continue;
-    }
-    const domain = JSON.parse(fs.readFileSync(domainPath, 'utf-8'));
-    if (!domain.tables || domain.tables.length === 0) {
-      emptyDomains.push(id);
-      continue;
-    }
-    tableNames.push(...domain.tables);
+  for (const { id, status, tables } of domainEntries) {
+    if (status === 'missing') missingDomains.push(id);
+    else if (status === 'empty') emptyDomains.push(id);
+    else tableNames.push(...tables);
   }
 
   // 3. 去重
   const uniqueTableNames = [...new Set(tableNames)];
 
   // 4. 复用 sliceTableIndex 拿完整卡片
-  const sliced = sliceTableIndex(uniqueTableNames);
+  const sliced = await sliceTableIndex(uniqueTableNames);
 
   // 5. 补充域层信息
   sliced.request_domains = uniqueIds;
@@ -117,13 +125,13 @@ export function sliceTableIndexByDomains(domainIds) {
 
   return sliced;
 }
-export function loadSkillMd() {
+export async function loadSkillMd() {
   const skillMdPath = path.join(SKILL_V2_PATH, 'SKILL.md');
-  if (!fs.existsSync(skillMdPath)) {
+  const content = await readFileIfExists(skillMdPath);
+  if (!content) {
     throw new Error('SKILL.md 未找到，请确保目录存在 skills/sql-creator-skill-v2/SKILL.md');
   }
-
-  return fs.readFileSync(skillMdPath, 'utf-8');
+  return content;
 }
 
 function removeEmptyProperties(obj) {
@@ -149,19 +157,20 @@ function removeEmptyProperties(obj) {
   return Object.keys(result).length === 0 ? undefined : result;
 }
 
-export function getTableSchema(tableNames) {
+export async function getTableSchema(tableNames) {
   const names = Array.isArray(tableNames) ? tableNames : [tableNames];
-  const result = {};
-  for (const name of names) {
+  // 并行读所有表的 field_config（多表时不再串行读盘）
+  const entries = await Promise.all(names.map(async (name) => {
     const fieldConfigPath = path.join(SKILL_V2_PATH, 'field_config', `${name}.json`);
-    if (fs.existsSync(fieldConfigPath)) {
-      const config = JSON.parse(fs.readFileSync(fieldConfigPath, 'utf-8'));
+    const content = await readFileIfExists(fieldConfigPath);
+    if (content) {
+      const config = JSON.parse(content);
       const simplified = removeEmptyProperties(config);
-      result[name] = simplified || {};
-    } else {
-      result[name] = { error: `表 ${name} 的配置不存在` };
+      return [name, simplified || {}];
     }
-  }
+    return [name, { error: `表 ${name} 的配置不存在` }];
+  }));
+  const result = Object.fromEntries(entries);
   return names.length === 1 ? result[names[0]] : result;
 }
 
@@ -207,36 +216,32 @@ function simplifyDDL(ddlContent) {
   return filtered.join('\n');
 }
 
-export function getTableDDL(tableNames, options = {}) {
+export async function getTableDDL(tableNames, options = {}) {
   const names = Array.isArray(tableNames) ? tableNames : [tableNames];
   const short = options.short == 1;
-  return names.map(name => {
+  // 并行读所有表的 DDL（多表时不再串行读盘）
+  const blocks = await Promise.all(names.map(async (name) => {
     const ddlPath = path.join(SKILL_V2_PATH, 'ddl', `${name}.sql`);
-    if (fs.existsSync(ddlPath)) {
-      let ddl = fs.readFileSync(ddlPath, 'utf-8');
-      if (short) {
-        ddl = simplifyDDL(ddl);
-      }
+    const content = await readFileIfExists(ddlPath);
+    if (content) {
+      const ddl = short ? simplifyDDL(content) : content;
       return `-- @@TABLE ${name}\n${ddl}`;
     }
     return `-- @@TABLE ${name}\n-- 表 ${name} 的DDL不存在`;
-  }).join('\n\n');
+  }));
+  return blocks.join('\n\n');
 }
 
-export function getOutputFormat() {
+export async function getOutputFormat() {
   const outputFormatPath = path.join(SKILL_V2_PATH, 'templates', 'output_format.md');
-  if (fs.existsSync(outputFormatPath)) {
-    return fs.readFileSync(outputFormatPath, 'utf-8');
-  }
-  return '输出格式模板不存在';
+  const content = await readFileIfExists(outputFormatPath);
+  return content || '输出格式模板不存在';
 }
 
-export function getMysqlLimits() {
+export async function getMysqlLimits() {
   const mysqlLimitsPath = path.join(SKILL_V2_PATH, 'docs', 'mysql57_limits.md');
-  if (fs.existsSync(mysqlLimitsPath)) {
-    return fs.readFileSync(mysqlLimitsPath, 'utf-8');
-  }
-  return 'MySQL 5.7 限制信息不存在';
+  const content = await readFileIfExists(mysqlLimitsPath);
+  return content || 'MySQL 5.7 限制信息不存在';
 }
 
 export function requestTagConfirmation(term, table, description) {
@@ -286,8 +291,8 @@ export const tools = [
       properties: {},
       required: []
     },
-    func: () => {
-      const tableIndex = loadTableIndex();
+    func: async () => {
+      const tableIndex = await loadTableIndex();
       if (!tableIndex || !tableIndex.tables) return '暂无表数据';
 
       return tableIndex.tables.map(t => {
@@ -329,7 +334,7 @@ export const tools = [
       },
       required: ['table_names']
     },
-    func: (input) => {
+    func: async (input) => {
       let tableNames = [];
       try {
         if (typeof input === 'object' && input !== null) {
@@ -340,7 +345,7 @@ export const tools = [
         }
       } catch (e) { logger.debug('Parse tableNames failed', { error: e.message }); }
       if (!Array.isArray(tableNames) || tableNames.length === 0) return '请提供 table_names 参数（表名数组）';
-      return JSON.stringify(getTableSchema(tableNames), null, 2);
+      return JSON.stringify(await getTableSchema(tableNames), null, 2);
     }
   }),
   new DynamicTool({
@@ -354,7 +359,7 @@ export const tools = [
       },
       required: ['table_names']
     },
-    func: (input) => {
+    func: async (input) => {
       let tableNames = [];
       let short = 1;
       try {
@@ -368,7 +373,7 @@ export const tools = [
         }
       } catch (e) { logger.debug('Parse tableNames failed', { error: e.message }); }
       if (!Array.isArray(tableNames) || tableNames.length === 0) return '请提供 table_names 参数（表名数组）';
-      return getTableDDL(tableNames, { short });
+      return await getTableDDL(tableNames, { short });
     }
   }),
   new DynamicTool({
@@ -413,8 +418,8 @@ export const tools = [
       properties: {},
       required: []
     },
-    func: () => {
-      const domainIndex = loadDomainRouterIndex();
+    func: async () => {
+      const domainIndex = await loadDomainRouterIndex();
       if (!domainIndex || !domainIndex.domains) return '暂无业务域数据';
       return domainIndex.domains.map(d =>
         `- ${d.id} (${d.name}): ${d.description}`
@@ -431,7 +436,7 @@ export const tools = [
       },
       required: ['domain_ids']
     },
-    func: (input) => {
+    func: async (input) => {
       let domainIds = [];
       try {
         if (typeof input === 'object' && input !== null) {
@@ -444,7 +449,7 @@ export const tools = [
       if (!Array.isArray(domainIds) || domainIds.length === 0) {
         return '请提供 domain_ids 参数（业务域 id 数组）';
       }
-      const sliced = sliceTableIndexByDomains(domainIds);
+      const sliced = await sliceTableIndexByDomains(domainIds);
       if (!sliced.tables || sliced.tables.length === 0) {
         return '指定域下未找到任何表';
       }
