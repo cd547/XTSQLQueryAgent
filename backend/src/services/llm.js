@@ -555,15 +555,14 @@ while (true) {
       }
 
       if (validToolCalls.length > 0) {
-        for (const toolCall of validToolCalls) {
+        // 阶段 1：同步预处理（参数解析 + 重复调用检查）
+        // 必须在并行执行前一次性完成，避免同一会话内两个相同工具的检查互相穿透
+        const prepared = validToolCalls.map((toolCall) => {
           const toolName = toolCall.function.name;
           const toolArgs = toolCall.function.arguments || '{}';
           const toolCallId = toolCall.id || `call_${Date.now()}_${validToolCalls.indexOf(toolCall)}`;
-
           const tool = toolsMap.get(toolName);
-          if (!tool) continue;
 
-          // 尝试解析参数，如果失败则使用空对象
           let parsedArgs = {};
           try {
             parsedArgs = JSON.parse(toolArgs);
@@ -571,46 +570,65 @@ while (true) {
             console.warn(`工具 ${toolName} 参数解析失败: ${e.message}, 参数: ${toolArgs}`);
           }
 
-          // 规则 10：程序化去重检查（会话级）
+          if (!tool) {
+            return { toolCall, toolName, toolCallId, tool: null, dupCheck: null };
+          }
           const dupCheck = checkAndFilterDuplicateCall(toolName, parsedArgs, sessionId);
-          if (dupCheck.block) {
-            queueLog(`🚫 拦截重复调用: ${toolName} sessionId=${sessionId} args=${toolArgs}`, true);
-            yield { type: 'tool_return', log: `🚫 拦截重复调用: ${toolName}\n参数: ${toolArgs}\n${dupCheck.message}` };
-            messages.push({
-              role: 'tool',
-              tool_call_id: toolCallId,
-              content: dupCheck.message
-            });
-            continue; // 不执行工具函数，也不登记
+          return { toolCall, toolName, toolCallId, tool, dupCheck };
+        });
+
+        // 阶段 2：并行执行工具（互不依赖的 IO 密集型操作）
+        //   同步工具也会被 await 正确处理（Promise.resolve 包装）
+        const execResults = await Promise.all(prepared.map(async (p) => {
+          if (!p.tool || (p.dupCheck && p.dupCheck.block)) {
+            return { ...p, rawResult: null, execError: null };
           }
-
-          // 使用过滤后的参数（部分重复时已被剥除重复表/术语）
-          const effectiveArgs = dupCheck.args;
-          const notice = dupCheck.notice;
-
           try {
-            const paramValue = effectiveArgs.table_name || effectiveArgs[Object.keys(effectiveArgs)[0]] || '';
-            const rawResult = tool.func(effectiveArgs);
-
-            // 真正执行成功后才登记到会话注册表
-            recordToolCall(toolName, effectiveArgs, sessionId);
-
-            const resultContent = notice ? `${notice}\n\n${rawResult}` : rawResult;
-
-            yield { type: 'tool_return', log: `📋 工具 ${toolName} 返回:\n${resultContent}` };
-
-            messages.push({
-              role: 'tool',
-              tool_call_id: toolCallId,
-              content: resultContent
-            });
+            const effectiveArgs = p.dupCheck.args;
+            const notice = p.dupCheck.notice;
+            const rawResult = await Promise.resolve(p.tool.func(effectiveArgs));
+            recordToolCall(p.toolName, effectiveArgs, sessionId);
+            return { ...p, rawResult, execError: null, notice };
           } catch (e) {
+            return { ...p, rawResult: null, execError: e };
+          }
+        }));
+
+        // 阶段 3：按原始 tool_calls 顺序写回 messages（保证 LLM 看到的 tool 顺序与调用顺序一致）
+        for (const p of execResults) {
+          if (!p.tool) continue;
+          const toolCall = p.toolCall;
+          const toolName = p.toolName;
+          const toolCallId = p.toolCallId;
+          const toolArgs = toolCall.function.arguments || '{}';
+
+          if (p.dupCheck && p.dupCheck.block) {
+            queueLog(`🚫 拦截重复调用: ${toolName} sessionId=${sessionId} args=${toolArgs}`, true);
+            yield { type: 'tool_return', log: `🚫 拦截重复调用: ${toolName}\n参数: ${toolArgs}\n${p.dupCheck.message}` };
             messages.push({
               role: 'tool',
               tool_call_id: toolCallId,
-              content: `Error: ${e.message}`
+              content: p.dupCheck.message
             });
+            continue;
           }
+
+          if (p.execError) {
+            messages.push({
+              role: 'tool',
+              tool_call_id: toolCallId,
+              content: `Error: ${p.execError.message}`
+            });
+            continue;
+          }
+
+          const resultContent = p.notice ? `${p.notice}\n\n${p.rawResult}` : p.rawResult;
+          yield { type: 'tool_return', log: `📋 工具 ${toolName} 返回:\n${resultContent}` };
+          messages.push({
+            role: 'tool',
+            tool_call_id: toolCallId,
+            content: resultContent
+          });
         }
 
         maxToolCalls--;

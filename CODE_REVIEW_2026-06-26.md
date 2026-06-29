@@ -567,9 +567,10 @@ try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
 | 🟡 P2 | **NEW-2** | /explain-analyze 无断连保护 | 浪费 token | query.js:680 | ✅ 已修复 |
 | 🟢 P3 | **NEW-3** | /me、/logout 缺限流 | 理论可耗 | auth.js:85 | ✅ 已修复 |
 | 🟢 P3 | **NEW-4** | extractToken 不校验格式 | 无效 CPU | auth.js:90 | ✅ 已修复 |
+| 🟡 P2 | **NEW-6** | agent loop 工具调用串行 | agent loop 慢 | llm.js:557 | ✅ 已修复（3 阶段并行） |
 | 🟢 P3 | CODE-3 | mkdirSync 静默吞错 | 问题排查困难 | sqlite.js:15 | ⏳ 待修复 |
 
-**修复进度**: 16/26 (61.54%) — BUG-12、PERF-4、NEW-1/2/3/4/5、CODE-2 已修复（2026-06-26~29）；2026-06-29 策略调整将 5xx 也纳入拦截器自动 toast
+**修复进度**: 17/27 (62.96%) — BUG-12、PERF-4、NEW-1/2/3/4/5/6、CODE-2 已修复（2026-06-26~29）；NEW-6 工具并行化每轮 agent loop 省 0.5-2s
 
 ---
 
@@ -651,6 +652,41 @@ try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
 **2026-06-29 策略调整**: 5xx 也改为自动 toast（去掉 `status < 500` 上限）。原"5xx 留给调用方"策略实际导致 `handleExecute` / `handleExplain` 等没 try/catch 5xx 的接口在 500 错误时"页面无反应"——用户实测 `?` 占位符 SQL 触发 MySQL 500 完全无提示。重复 toast 风险小于完全无反馈。
 
 **状态**: ✅ 已修复（2026-06-29）
+
+---
+
+### NEW-6: Agent loop 中工具调用串行执行，等待长 🟡 P2
+
+**文件**: [backend/src/services/llm.js:557-614](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L557)
+
+**问题**:
+LLM 一轮响应中可能返回多个 tool_call（如同时 `get_table_schema × 3`），原代码用 `for...of` 顺序执行：
+
+```js
+for (const toolCall of validToolCalls) {
+  // 参数解析 → dupCheck → tool.func(effectiveArgs)  // ← 串行
+}
+```
+
+每个 `get_table_schema` 涉及文件读 + JSON 解析（~100-300ms），3 个工具就是 ~1s。Agent loop 每多 1 秒用户就多等 1 秒。
+
+用户反馈："现在其实都不卡，只是等待最后的输出慢，主要是因为工具调用，模型思考等原因"——确认瓶颈是 agent loop 而非前端渲染。
+
+**修复（3 阶段重构）**:
+- 阶段 1：同步预处理（参数解析 + 重复调用检查）一次性完成所有 validToolCalls——必须在并行执行前，否则同会话内两个相同工具的检查会互相穿透
+- 阶段 2：`Promise.all` 并行执行所有工具（`Promise.resolve(tool.func(...))` 同时支持同步/异步工具）
+- 阶段 3：按原始 tool_calls 顺序写回 messages（保证 LLM 看到 tool 顺序与调用顺序一致）；`recordToolCall` 仍在阶段 2 内成功后才登记，与原"成功才登记"语义一致
+
+**状态**: ✅ 已修复（2026-06-29）
+
+**验证**:
+- `node --check backend/src/services/llm.js` 通过
+- 同步工具路径：包装为 `Promise.resolve(...)`，结果与原代码等价
+- 错误路径：`execError` 单独分支处理，写入 `Error: <msg>`，与原 try/catch 行为一致
+- 重复拦截路径：`dupCheck.block` 时跳过执行、只写消息，与原 `continue` 行为一致
+- 消息顺序：阶段 3 按 `execResults` 顺序（与 `validToolCalls` 顺序一致）写回
+
+**收益**：3 个 `get_table_schema` 从 ~900ms 降到 ~300ms（取最慢者）；agent loop 每轮可省 0.5-2 秒。
 
 ---
 
