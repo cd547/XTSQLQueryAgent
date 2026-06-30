@@ -1,5 +1,42 @@
 # 更新日志
 
+## 2026-06-30
+
+### 新增功能：添加表格 - 业务域选择
+
+#### 设计文档
+- [2026-06-30-skill-add-table-domain-selection.md](../specs/2026-06-30-skill-add-table-domain-selection.md)
+- [2026-06-30-skill-add-table-domain-selection.md](../plans/2026-06-30-skill-add-table-domain-selection.md)
+
+#### 需求
+在「添加表格」流程的 step 3 中，业务域多选控件为**必填**项。用户创建或覆盖 DDL 时必须选择 1+ 个业务域，后端将表名追加到对应 `domains/{id}.json` 的 `tables` 数组。
+
+#### 关键决策
+| # | 决策 | 选择 |
+|---|------|------|
+| 1 | 多选 vs 单选 | 多选（业务表可归属多域） |
+| 2 | 覆盖 DDL 时是否需要选域 | **需要**（与新建保持一致） |
+| 3 | 域文件不存在行为 | **报错 400**（不自动创建） |
+| 4 | description 展示 | hover 弹气泡 |
+| 5 | 写域失败是否回滚 | **不回滚**（与现有风格一致） |
+
+#### 新增/修改的 API
+- **新增**: `GET /api/skill/domains` — 读取 `domain_router_index.json` 中所有域
+- **修改**: `POST /api/skill/create-table-files`
+  - 新增必填字段 `domains: string[]`
+  - 5 个新错误码：`DOMAINS_REQUIRED` / `DOMAIN_NOT_FOUND` / `DOMAIN_FILE_MISSING` / `DOMAIN_INDEX_MISSING` / `INVALID_DOMAIN_ID`
+
+#### 涉及文件
+- `backend/src/routes/skill.js`（修改：+ ~80 行）
+- `frontend/src/api/index.js`（修改：+ `getDomains`）
+- `frontend/src/App.jsx`（修改：+ 3 useState + useEffect + UI）
+- `backend/test-skill-domains.mjs`（新建：10 条测试）
+
+#### 实施工作量
+约 2 小时（后端 30min + 后端测试 20min + 前端 40min + 端到端 15min + 文档 10min）
+
+---
+
 ## 2026-06-26
 
 ### 代码审查与 P0 修复

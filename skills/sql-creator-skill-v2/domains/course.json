@@ -26,6 +26,8 @@
     "keqiao_time_table_section",
     "keqiao_surface_subject",
     "keqiao_surface_table",
-    "keqiao_surface_subject_teacher"
+    "keqiao_surface_subject_teacher",
+    "edu_activities",
+    "edu_activities_student"
   ]
 }

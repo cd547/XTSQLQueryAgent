@@ -1483,7 +1483,9 @@
     {
       "name": "order_student_consume",
       "description": "订单消耗记录",
-      "tags": ["课耗"],
+      "tags": [
+        "课耗"
+      ],
       "related_tables": [
         "order_student",
         "edu_study",
@@ -1491,6 +1493,30 @@
         "admin_user",
         "edu_student_type",
         "edu_student_type_project"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_activities",
+      "description": "课外活动",
+      "tags": [],
+      "related_tables": [
+        "edu_campus_school_class",
+        "edu_course_exam_subject_name",
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_activities_student",
+      "description": "课外活动学生关联表",
+      "tags": [],
+      "related_tables": [
+        "edu_activities",
+        "edu_student",
+        "admin_user"
       ],
       "business_constraints": [],
       "business_rules": []

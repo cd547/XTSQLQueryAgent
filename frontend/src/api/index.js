@@ -184,8 +184,12 @@ export function fetchTableDDL(tableName) {
   return api.post('/skills/fetch-ddl', { tableName }).then(r => r.data);
 }
 
-export function createTableFiles(tableName, ddl, description) {
-  return api.post('/skills/create-table-files', { tableName, ddl, description }).then(r => r.data);
+export function createTableFiles(tableName, ddl, description, domains) {
+  return api.post('/skills/create-table-files', { tableName, ddl, description, domains }).then(r => r.data);
+}
+
+export function getDomains() {
+  return api.get('/skills/domains').then(r => r.data);
 }
 
 export function addTagToTable(tableName, tag) {

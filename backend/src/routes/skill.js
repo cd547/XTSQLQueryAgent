@@ -9,6 +9,7 @@ import { logger } from '../logger.js';
 import { getPool } from '../services/mysqlPool.js';
 import { config } from '../config.js';
 import { createSkillTreeCache } from '../services/skillCache.js';
+import { addTableToDomains as addTableToDomainsImpl } from '../services/skillDomains.js';
 
 const router = Router();
 
@@ -139,6 +140,20 @@ router.get('/read', (req, res) => {
     res.json({ success: true, content, language });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
+  }
+});
+
+router.get('/domains', (req, res) => {
+  try {
+    const indexPath = path.join(SKILL_V2_PATH, 'domain_router_index.json');
+    if (!fs.existsSync(indexPath)) {
+      return res.json({ success: true, domains: [] });
+    }
+    const data = JSON.parse(fs.readFileSync(indexPath, 'utf-8'));
+    res.json({ success: true, domains: data.domains || [] });
+  } catch (e) {
+    logger.error('Fetch domains failed', { error: e.message });
+    res.status(500).json({ success: false, message: '获取业务域失败', code: 'DOMAIN_INDEX_READ_ERROR' });
   }
 });
 
@@ -402,10 +417,32 @@ router.post('/fetch-ddl', async (req, res) => {
   }
 });
 
+// 将表名追加到指定业务域的 tables 数组（去重）；不存在则抛带 code 的 Error
+function addTableToDomains(tableName, domainIds) {
+  return addTableToDomainsImpl(tableName, domainIds, SKILL_V2_PATH, isPathSafe, getDb);
+}
+
 router.post('/create-table-files', (req, res) => {
-  const { tableName, ddl, description } = req.body;
+  const { tableName, ddl, description, domains } = req.body;
   if (!tableName || !ddl) {
     return res.status(400).json({ success: false, message: 'Missing tableName or ddl' });
+  }
+  if (!Array.isArray(domains) || domains.length === 0) {
+    return res.status(400).json({
+      success: false,
+      message: '请至少选择一个业务域',
+      code: 'DOMAINS_REQUIRED'
+    });
+  }
+  try {
+    addTableToDomains(tableName, domains);
+  } catch (e) {
+    logger.warn('Add table to domains failed', { tableName, domains, code: e.code, error: e.message });
+    return res.status(e.code === 'DOMAIN_INDEX_MISSING' ? 500 : 400).json({
+      success: false,
+      message: e.message,
+      code: e.code
+    });
   }
 
   try {
@@ -499,7 +536,8 @@ router.post('/create-table-files', (req, res) => {
 
     res.json({
       success: true,
-      files: ['table_index.json', `ddl/${tableName}.sql`, `field_config/${tableName}.json`]
+      files: ['table_index.json', `ddl/${tableName}.sql`, `field_config/${tableName}.json`],
+      domains
     });
     invalidateAfterWrite();
   } catch (e) {

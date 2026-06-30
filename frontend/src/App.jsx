@@ -19,7 +19,7 @@ import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
 import './utils/monacoEnv';
 import { createMarkdownRenderers } from './components/markdownRenderers.jsx';
-import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages } from './api';
+import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles, getDomains, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages } from './api';
 
 const { TextArea } = Input;
 const { Sider, Content } = Layout;
@@ -98,6 +98,9 @@ function AuthenticatedApp({ user, logout }) {
   const [addTableExists, setAddTableExists] = useState(false);
   const [addTableDDL, setAddTableDDL] = useState('');
   const [addTableDescription, setAddTableDescription] = useState('');
+  const [addTableDomains, setAddTableDomains] = useState([]);
+  const [addTableSelectedDomains, setAddTableSelectedDomains] = useState([]);
+  const [addTableDomainsLoading, setAddTableDomainsLoading] = useState(false);
   const [addTableRelatedTables, setAddTableRelatedTables] = useState([]);
   const [addTableCreating, setAddTableCreating] = useState(false);
   const [explainAnalyzeModalOpen, setExplainAnalyzeModalOpen] = useState(false);
@@ -918,7 +921,7 @@ const exportToExcel = async (data, cols) => {
   const handleAddTableStep3 = async () => {
     setAddTableCreating(true);
     try {
-      const data = await createTableFiles(addTableName.trim(), addTableDDL, addTableDescription);
+      const data = await createTableFiles(addTableName.trim(), addTableDDL, addTableDescription, addTableSelectedDomains);
       if (data.success) {
         message.success(data.existed ? 'DDL文件已覆盖' : '表格文件创建成功');
         setAddTableModalOpen(false);
@@ -941,6 +944,7 @@ const exportToExcel = async (data, cols) => {
     setAddTableDescription('');
     setAddTableRelatedTables([]);
     setAddTableExists(false);
+    setAddTableSelectedDomains([]);
   };
 
   const handleAddTableModalClose = () => {
@@ -990,6 +994,20 @@ const explainColumns = useMemo(() => explainResults.length > 0
       loadMessages(currentSessionId);
     }
   }, [currentSessionId]);
+
+  // 业务域：进入 step 3 时拉取一次
+  useEffect(() => {
+    if (addTableStep === 3 && addTableDomains.length === 0 && !addTableDomainsLoading) {
+      setAddTableDomainsLoading(true);
+      getDomains()
+        .then(d => {
+          if (d.success) setAddTableDomains(d.domains || []);
+          else message.error(d.message || '加载业务域失败');
+        })
+        .catch(e => message.error('加载业务域失败: ' + (e.message || e)))
+        .finally(() => setAddTableDomainsLoading(false));
+    }
+  }, [addTableStep]);
 
   // 组件卸载时清理 Monaco hover 隐藏定时器，覆盖 editor.onDidDispose 未触发的边界场景
   // （如 React 卸载先于 Monaco 异步销毁、Strict Mode 二次挂载等）
@@ -1845,13 +1863,44 @@ children: currentResults.length > 0 ? (
                     )}
                   </>
                 )}
+                <div style={{ marginBottom: 8 }}>
+                  <div style={{ marginBottom: 4, fontSize: 12 }}>
+                    业务域 <span style={{ color: '#ff4d4f' }}>*</span>
+                    <span style={{ color: '#999', marginLeft: 8, fontSize: 11 }}>
+                      悬停查看说明，至少选 1 个
+                    </span>
+                  </div>
+                  <Select
+                    mode="multiple"
+                    placeholder="请选择业务域"
+                    value={addTableSelectedDomains}
+                    onChange={setAddTableSelectedDomains}
+                    loading={addTableDomainsLoading}
+                    style={{ width: '100%' }}
+                    optionLabelProp="label"
+                    size="small"
+                  >
+                    {addTableDomains.map(d => (
+                      <Select.Option key={d.id} value={d.id} label={d.name}>
+                        <Tooltip title={d.description} placement="right">
+                          <span style={{ cursor: 'help' }}>{d.name}</span>
+                        </Tooltip>
+                      </Select.Option>
+                    ))}
+                  </Select>
+                </div>
               </div>
               <div style={{ marginBottom: 16, maxHeight: 200, overflow: 'auto', background: 'var(--xtsql-code-bg)', padding: 8, borderRadius: 4, fontSize: 11 }}>
                 <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{addTableDDL}</pre>
               </div>
               <div style={{ textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
                 <Button onClick={() => setAddTableStep(2)} disabled={addTableCreating}>上一步</Button>
-                <Button type="primary" onClick={handleAddTableStep3} loading={addTableCreating}>
+                <Button
+                  type="primary"
+                  onClick={handleAddTableStep3}
+                  loading={addTableCreating}
+                  disabled={addTableSelectedDomains.length === 0}
+                >
                   {addTableExists ? '覆盖DDL' : '生成文件'}
                 </Button>
               </div>
