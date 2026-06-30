@@ -8,6 +8,7 @@ import { authRequired } from '../services/auth.js';
 import { logger } from '../logger.js';
 import { getPool } from '../services/mysqlPool.js';
 import { config } from '../config.js';
+import { createSkillTreeCache } from '../services/skillCache.js';
 
 const router = Router();
 
@@ -20,6 +21,10 @@ const projectRoot = config.projectRoot;
 const skillsPath = config.skillPath;
 const skillBackPath = path.join(skillsPath, 'skill_back');
 const SKILL_V2_PATH = path.join(skillsPath, 'sql-creator-skill-v2');
+
+const skillTreeCache = createSkillTreeCache(skillsPath, buildTree);
+const invalidateAfterWrite = () => skillTreeCache.invalidateAfterWrite();
+const getCachedTree = () => skillTreeCache.get();
 
 function getFileLanguage(filename) {
   const ext = path.extname(filename).toLowerCase();
@@ -100,10 +105,7 @@ router.get('/debug', (req, res) => {
 
 router.get('/list', (req, res) => {
   try {
-    if (!fs.existsSync(skillsPath)) {
-      return res.json({ success: true, tree: [] });
-    }
-    const tree = buildTree(skillsPath);
+    const { tree } = getCachedTree();
     res.json({ success: true, tree });
   } catch (e) {
     res.status(500).json({ success: false, message: e.message });
@@ -199,6 +201,7 @@ router.post('/add-tag', (req, res) => {
     fs.writeFileSync(tableIndexPath, JSON.stringify(tableIndex, null, 2), 'utf-8');
     
     logger.info('Tag added', { tableName, tags: addedTags });
+    invalidateAfterWrite();
     return res.json({ success: true, message: `已将 "${addedTags.join(', ')}" 添加到 ${tableName} 的标签`, addedTags });
   } catch (e) {
     logger.error('Add tag failed', { error: e.message, tableName, tag });
@@ -263,12 +266,13 @@ router.post('/save', (req, res) => {
       null
     );
 
-    res.json({ 
-      success: true, 
+    res.json({
+      success: true,
       message: 'File saved successfully',
       backupPath: backupFilePath,
       backupFolder: backupFolderName
     });
+    invalidateAfterWrite();
   } catch (e) {
     // 记录失败日志
     try {
@@ -435,6 +439,7 @@ router.post('/create-table-files', (req, res) => {
       );
 
       logger.info('Table already exists, only DDL overwritten', { tableName });
+      invalidateAfterWrite();
       return res.json({
         success: true,
         files: [`ddl/${tableName}.sql`],
@@ -496,6 +501,7 @@ router.post('/create-table-files', (req, res) => {
       success: true,
       files: ['table_index.json', `ddl/${tableName}.sql`, `field_config/${tableName}.json`]
     });
+    invalidateAfterWrite();
   } catch (e) {
     logger.error('Create table files failed', { error: e.message, tableName });
     res.status(500).json({ success: false, message: e.message });

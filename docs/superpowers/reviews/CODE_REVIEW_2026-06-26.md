@@ -29,20 +29,20 @@
 > | 🔴 P0 严重 Bug | 3/3 | 0 | 0 | BUG-1、BUG-2、BUG-4 |
 > | 🔴 P1 重要 Bug | 3/3 | 0 | 0 | BUG-3、BUG-5、BUG-6 |
 > | 🟡 P2 中等 Bug | 3/4 | 0 | 2 ⏸️ | BUG-7、BUG-9、BUG-11 已修；BUG-8、BUG-10 不修 |
-> | 🟢 P3 性能 | 2/6 | 4 | 1 ⏸️ | PERF-4、PERF-7 已修；PERF-1/2/5/6 待修；PERF-3 暂不实施 |
+> | 🟢 P3 性能 | 3/6 | 3 | 1 ⏸️ | PERF-4、PERF-5、PERF-7 已修；PERF-1/2/6 待修；PERF-3 暂不实施 |
 > | 🟢 P3 安全 | 1/3 | 1 | 1 ⏸️ | **SEC-1 ✅ 已修复**；SEC-2 待修；SEC-3 暂缓（计划由 LLM 验证替代） |
-> | 🟢 P3 代码质量 | 1/5 | 4 | 0 | CODE-2 已修；CODE-1、CODE-3、CODE-4、CODE-5 待修 |
+> | 🟢 P3 代码质量 | 2/5 | 3 | 0 | CODE-2、CODE-3 已修；CODE-1、CODE-4、CODE-5 待修 |
 > | 🟢 P3 Bug 其他 | 1/1 | 0 | 0 | BUG-12 已修（防御性 await） |
 > | 🔴 P0 本轮新发现 | 1/1 | 0 | 0 | NEW-1 |
 > | 🟡 P2 本轮新发现 | 2/2 | 0 | 0 | NEW-2、NEW-6 |
 > | 🟢 P3 本轮新发现 | 3/3 | 0 | 0 | NEW-3、NEW-4、NEW-5 |
-> | **合计** | **20/30 (66.7%)** | **9** | **4** | 含 ⏸️ 不修/暂缓 4 项时为 **20/34 (58.8%)** |
+> | **合计** | **22/30 (73.3%)** | **7** | **4** | 含 ⏸️ 不修/暂缓 4 项时为 **22/34 (64.7%)** |
 >
 > *2026-06-26 决定：BUG-8、BUG-10 标记为 ⏸️ 不修（不进入本轮修复范围）。BUG-10 上一轮回复曾误标"已修复"，已更正。*
 >
 > *2026-06-29 增量修复：PERF-7（fs.readFileSync 异步化）、NEW-5（axios 4xx/5xx 拦截器）、NEW-6（agent loop 工具并行）。*
 >
-> *2026-06-30 增量修复：SEC-1（stripSqlComments 状态机重写 + 两阶段校验）、BUG-7（三层超时：T2 fetch 120s / T3 整体 5min / T4 reader 30s + withTimeout helper）。SEC-3 暂缓（计划由 LLM 验证替代，当前部署只读 MySQL 用户，威胁面已收窄）。*
+> *2026-06-30 增量修复：SEC-1（stripSqlComments 状态机重写 + 两阶段校验）、BUG-7（三层超时：T2 fetch 120s / T3 整体 5min / T4 reader 30s + withTimeout helper）、PERF-5（Skill 树缓存：fs.watch 300ms 防抖 + mtime 兜底 + 写操作显式失效，缓存逻辑抽离至 skillCache.js 独立模块便于测试）、CODE-3（mkdirSync 静默吞错：抽离 ensureDir helper 至 utils/fs.js，区分 EEXIST 静默 vs 其他错误 log + rethrow，sqlite.js 与 logger.js 接入）。SEC-3 暂缓（计划由 LLM 验证替代，当前部署只读 MySQL 用户，威胁面已收窄）。*
 >
 > *复核日期：2026-06-30（消除汇总表 / 优先级表 / 详细章节之间的不一致）*
 
@@ -420,11 +420,43 @@ const msgData = await getQueryMessages(session.id);    // 第 3 次
 
 ---
 
-### PERF-5: Skill 文件树每次请求都完整重建
+### PERF-5: Skill 文件树每次请求都完整重建 ✅ 已修复
 
-**文件**: [backend/src/routes/skill.js:50-88](backend/src/routes/skill.js#L50)
+**文件**:
+- [backend/src/services/skillCache.js](backend/src/services/skillCache.js) — 新建独立缓存模块（可注入 skillsPath + buildTree）
+- [backend/src/routes/skill.js:25-27](backend/src/routes/skill.js#L25) — 接入缓存
+- [backend/test-skill-cache.mjs](backend/test-skill-cache.mjs) — 10 条测试
 
+**优先级**: 🟢 P3 — 性能
+**修复日期**: 2026-06-30
+
+**原始问题**:
 `buildTree()` 递归遍历整个 skills 目录且无缓存。每次打开 Skill 侧边栏都要重新遍历。
+
+**修复方案（双保险：fs.watch 主动 + mtime 兜底）**:
+
+| 失效源 | 触发条件 | 失效时机 |
+|--------|----------|----------|
+| fs.watch recursive | 新增 / 修改 / 删除任何子目录文件 | 300ms 防抖合并 |
+| 显式 invalidateAfterWrite | `/save` / `/add-tag` / `/create-table-files` 写后 | 立即 |
+| mtime 兜底 | 上述两者都漏事件（极少） | 下次请求时校验 |
+
+**关键设计点**:
+- 缓存逻辑抽离到独立模块 `skillCache.js`（`createSkillTreeCache(skillsPath, buildTree)`），便于单元测试
+- fs.watch `recursive: true` 在 Node 24 全平台支持
+- 写操作显式失效 + `clearTimeout` 防抖合并，避免一次写触发多次 rebuild
+- 失败降级：fs.watch 出错自动 fallback 到 mtime 模式，功能不丢
+- 服务重启 = 缓存丢失 = 首次请求重建（符合预期）
+
+**测试覆盖**（test-skill-cache.mjs 10 条）：
+- A. 连续 3 次 get 返回同一对象（命中缓存）
+- B. 新增文件 → fs.watch 触发失效
+- C. 修改文件 → fs.watch 触发失效
+- D. 删除文件 → fs.watch 触发失效
+- E. invalidateAfterWrite 显式失效
+- F. mtime 兜底：fs.watch 漏事件时下次请求也能 rebuild
+
+**状态**: 已修复。cache 测试 10/10 通过，sqlValidator 86/86 通过，timeout 22/22 通过。
 
 **建议**: 添加内存缓存（带 TTL 或文件变更检测）。
 
@@ -601,19 +633,55 @@ const pid = parts[parts.length - 1];  // 取最后一列作为 PID
 
 ---
 
-### CODE-3: 多处 `try { fs.mkdirSync() } catch (e) {}` 静默吞掉非"目录已存在"的错误
+### CODE-3: 多处 `try { fs.mkdirSync() } catch (e) {}` 静默吞掉非"目录已存在"的错误 ✅ 已修复
 
-**文件**: 
-- [backend/src/db/sqlite.js:15-17](backend/src/db/sqlite.js#L15)
-- [backend/src/logger.js:10](backend/src/logger.js#L10)
+**文件**:
+- [backend/src/utils/fs.js](backend/src/utils/fs.js) — 新建共享工具模块，导出 `ensureDir(dir, label)` helper
+- [backend/src/db/sqlite.js:7,14](backend/src/db/sqlite.js#L7) — 接入 `ensureDir(dbDir, 'database')`
+- [backend/src/logger.js:6,12](backend/src/logger.js#L6) — 接入 `ensureDir(LOG_PATH, 'log')`
+- [backend/test-fs-utils.mjs](backend/test-fs-utils.mjs) — 13 条测试
+
+**优先级**: 🟢 P3 — 代码质量
+**修复日期**: 2026-06-30
+
+**原始问题**:
+两处 `try { mkdirSync(..., { recursive: true }) } catch (e) {}` 模式完全空 catch 块，会吞掉所有错误：
+- EEXIST（目录已存在）—— 预期静默
+- EACCES（权限不足）—— 实际静默
+- ENOSPC（磁盘满）—— 实际静默
+- EROFS（只读 FS）—— 实际静默
+
+排查时无法知道为什么 DB 目录创建失败。
+
+**修复方案**:
+抽到独立 util（`backend/src/utils/fs.js`）：
 
 ```javascript
-try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
-  // 目录已存在，忽略  ← 也会忽略权限错误、磁盘满等
+export function ensureDir(dir, label = 'directory') {
+  try {
+    mkdirSync(dir, { recursive: true });
+  } catch (e) {
+    if (e.code === 'EEXIST') return;  // 预期场景
+    logger.error(`Failed to create ${label} directory`, { dir, code: e.code, error: e.message });
+    throw e;  // 真实错误：log + 显式抛出
+  }
 }
 ```
 
-**建议**: 检查 `e.code === 'EEXIST'`，其余错误应向上抛出或至少 log。
+**关键设计点**:
+- 抽到独立 util 便于未来 skill.js 等其他场景复用
+- 区分 EEXIST（静默）vs 其他（log + rethrow）
+- 启动期 DB/日志目录创建失败必须显式失败（fail-fast），不能再"启动看似正常但运行异常"
+- 边界处理：`null`/非字符串参数也会被 Node 原生 mkdirSync 抛 ERR_INVALID_ARG_TYPE → 同样被 rethrow
+
+**测试覆盖**（test-fs-utils.mjs 13 条）：
+- A. 嵌套不存在的目录成功创建
+- B. 已存在目录不抛错
+- C. 传入 null 抛错
+- D. 边界：数字/数组/对象/布尔均抛错
+- E. 关键：在文件路径下创建子目录（ENOTDIR）log + rethrow，验证不再静默吞错
+
+**状态**: 已修复。fs-utils 测试 13/13 通过，sqlValidator 86/86 通过，timeout 22/22 通过，skillCache 10/10 通过。
 
 ---
 
@@ -656,7 +724,7 @@ try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
 | 🟡 P2 | PERF-2 | findLastIndex 重复扫描 | 流式响应卡顿 | App.jsx:536 | ⏳ 待修复 |
 | 🟢 P3 | PERF-1 | BPE 同步阻塞 | 大消息量时短暂冻结 | tokenizer.js:68 | ⏳ 待修复 |
 | 🟢 P3 | PERF-3 | 消息无分页 | 长会话加载慢 | session.js:80 | ⏸️ 暂不实施（无长会话场景反馈） |
-| 🟢 P3 | PERF-5 | Skill 树无缓存 | 每次打开重新遍历 | skill.js:50 | ⏳ 待修复 |
+| 🟢 P3 | PERF-5 | Skill 树无缓存 | 每次打开重新遍历 | skill.js:50 | ✅ 已修复（2026-06-30，fs.watch + mtime 兜底 + 显式失效） |
 | 🟢 P3 | SEC-1 | SQL 注释剥离边界绕过 | 安全校验可靠性 | sqlValidator.js:104 | ✅ 已修复（2026-06-30，状态机 + 两阶段） |
 | 🟢 P3 | SEC-2 | netstat 解析 PID 列位置不可靠 | 误杀进程 | main.js:166 | ⏳ 待修复 |
 | 🟢 P3 | SEC-3 | LLM 生成 SQL 仅前缀检查 | 子查询绕过 | sqlValidator.js:108 | ⏸️ 暂缓（计划由 LLM 验证替代） |
@@ -674,9 +742,9 @@ try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
 | 🟢 P3 | **NEW-4** | extractToken 不校验格式 | 无效 CPU | auth.js:90 | ✅ 已修复 |
 | 🟡 P2 | **NEW-5** | axios 拦截器未处理 4xx 业务错误 | 用户无错误提示 | api/index.js:44 | ✅ 已修复 |
 | 🟡 P2 | **NEW-6** | agent loop 工具调用串行 | agent loop 慢 | llm.js:557 | ✅ 已修复（3 阶段并行） |
-| 🟢 P3 | CODE-3 | mkdirSync 静默吞错 | 问题排查困难 | sqlite.js:15 | ⏳ 待修复 |
+| 🟢 P3 | CODE-3 | mkdirSync 静默吞错 | 问题排查困难 | sqlite.js:15 | ✅ 已修复（2026-06-30，ensureDir helper + EEXIST 白名单 + rethrow） |
 
-**修复进度**: **20/30 (66.7%)** — 含 ⏸️ 不修/暂缓 4 项时为 20/34 (58.8%)。已修项：BUG-1/2/3/4/5/6/7/9/11/12、PERF-4/7、SEC-1、CODE-2、NEW-1/2/3/4/5/6。⏸️ 不修/暂缓：BUG-8、BUG-10、PERF-3、SEC-3。⏳ 待修 9 项：PERF-1/2/5/6、SEC-2、CODE-1/3/4/5。SEC-1 通过状态机 + 两阶段校验堵住 MySQL 条件注释注入与字符串/反引号边界绕过；SEC-3 暂缓改由 LLM 验证替代；BUG-7 通过三层超时（fetch 120s / 整体 5min / reader 30s）+ withTimeout helper 防御 LLM API 挂起
+**修复进度**: **22/30 (73.3%)** — 含 ⏸️ 不修/暂缓 4 项时为 22/34 (64.7%)。已修项：BUG-1/2/3/4/5/6/7/9/11/12、PERF-4/5/7、SEC-1、CODE-2/3、NEW-1/2/3/4/5/6。⏸️ 不修/暂缓：BUG-8、BUG-10、PERF-3、SEC-3。⏳ 待修 7 项：PERF-1/2/6、SEC-2、CODE-1/4/5。SEC-1 通过状态机 + 两阶段校验堵住 MySQL 条件注释注入与字符串/反引号边界绕过；SEC-3 暂缓改由 LLM 验证替代；BUG-7 通过三层超时（fetch 120s / 整体 5min / reader 30s）+ withTimeout helper 防御 LLM API 挂起；PERF-5 通过 fs.watch + mtime 兜底 + 显式失效三重保险消除 Skill 树每次请求全量重建；CODE-3 通过 ensureDir helper（EEXIST 白名单 + 其他错误 log + rethrow）让启动期目录创建失败显式可见
 
 ---
 

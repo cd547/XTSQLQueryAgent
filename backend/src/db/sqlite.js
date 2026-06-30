@@ -4,18 +4,14 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { logger } from '../logger.js';
 import { config } from '../config.js';
-import { mkdirSync } from 'fs';
+import { ensureDir } from '../utils/fs.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const dbPath = config.dbPath;
 
 // 确保数据库目录存在
 const dbDir = path.dirname(dbPath);
-try {
-  mkdirSync(dbDir, { recursive: true });
-} catch (e) {
-  // 目录已存在，忽略
-}
+ensureDir(dbDir, 'database');
 
 let db = null;
 let initialized = false;
