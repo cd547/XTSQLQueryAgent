@@ -125,6 +125,10 @@ function AuthenticatedApp({ user, logout }) {
   const contentRef = useRef('');
   const messageCountRef = useRef(0);
   const messagesEndRef = useRef(null);
+  // Per-session scrollTop 记忆：sessionId -> scrollTop。
+  // 用 ref 而非 state，避免 onScroll 频繁触发重渲染。
+  // 切换会话时优先恢复该会话上次的位置；无记忆时回退到"滚到最新消息"。
+  const sessionScrollTopsRef = useRef(new Map());
   const inputResizerRef = useRef(null);
   const resizerRef = useRef(null);
   const initialLoadRef = useRef(false);
@@ -311,11 +315,30 @@ function AuthenticatedApp({ user, logout }) {
   };
   
   useEffect(() => {
-    if (messages.length > messageCountRef.current) {
-      messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+    if (messages.length > messageCountRef.current && currentSessionId) {
+      const saved = sessionScrollTopsRef.current.get(currentSessionId);
       messageCountRef.current = messages.length;
+      // rAF 等 DOM 更新完成再操作 scrollTop，避免消息尚未渲染时 scrollHeight 还是旧值
+      requestAnimationFrame(() => {
+        if (!chatContentRef.current) return;
+        if (saved !== undefined) {
+          // 有记忆：恢复该会话上次浏览的位置（用户可能在中间/顶部/底部）
+          chatContentRef.current.scrollTop = saved;
+        } else {
+          // 无记忆（首次访问该会话）：滚到最新消息位置
+          messagesEndRef.current?.scrollIntoView({ behavior: 'instant' });
+        }
+      });
     }
-  }, [messages.length]);
+  }, [messages.length, currentSessionId]);
+
+  // onScroll 实时记录当前会话的 scrollTop
+  // 用 ref.set 不触发重渲染，性能开销可忽略
+  const handleChatScroll = useCallback(() => {
+    if (currentSessionId && chatContentRef.current) {
+      sessionScrollTopsRef.current.set(currentSessionId, chatContentRef.current.scrollTop);
+    }
+  }, [currentSessionId]);
   
   const handleNewSession = async () => {
     try {
@@ -1190,7 +1213,7 @@ const explainColumns = useMemo(() => explainResults.length > 0
               </Tooltip>
             </div>
 
-            <div ref={chatContentRef} className="xtsql-chat-area">
+            <div ref={chatContentRef} className="xtsql-chat-area" onScroll={handleChatScroll}>
               {activeTabKey === 'chat' ? (
                 messages.length === 0 ? (
                   <div className="xtsql-empty">
@@ -1545,7 +1568,7 @@ children: currentResults.length > 0 ? (
                   />
                   <div className="xtsql-input-footer">
                     <div className="xtsql-input-meta">
-                      {currentModel && <span className="xtsql-input-model-tag"><AppIcon size={14} /> {currentModel}</span>}
+                      {currentModel && <span className="xtsql-input-model-tag">{currentModel}</span>}
                       {currentTokens > 0 && <span>{currentTokens} tokens</span>}
                       <div
                         className="xtsql-token-bar"
