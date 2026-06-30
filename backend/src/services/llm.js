@@ -11,6 +11,104 @@ import { config } from '../config.js';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOGS_PATH = config.logPath;
 
+/* ============================ 超时配置（BUG-7 修复） ============================ */
+
+/**
+ * 三层超时（详见 CODE_REVIEW_2026-06-26.md BUG-7）：
+ *   T1 客户端断开 —— 已有，query.js res.on('close') 触发
+ *   T2 单轮 LLM fetch 上限（120s）—— 本文件实现
+ *   T3 整体 SSE 上限（5min）—— query.js 实现
+ *   T4 单次 reader.read 上限（30s）—— 本文件实现
+ *
+ * 设计理由：
+ *   - 工具循环最多 30 轮，每轮独立计时（单轮挂死不会让整体跟着挂）
+ *   - T2 (120s) 覆盖 LLM 思考 + 流式返回总时间；主流 API 慢响应 60-90s
+ *   - T4 (30s) 防御 stream 中途不发 chunk 的"半挂起"
+ *   - T3 (5min) 防御 30 轮全部接近超时边界的极端情况
+ */
+export const LLM_TIMEOUTS = {
+  FETCH_MS: 120_000,    // T2: 单轮 LLM API 调用上限
+  READ_MS:   30_000,    // T4: 单次流式 read 上限
+};
+
+/**
+ * 合并外部 abort signal 与单次操作超时。
+ *
+ * @param {AbortSignal} externalSignal - 来自外层（客户端断开、整体超时）
+ * @param {number}      timeoutMs      - 本次操作超时（毫秒）
+ * @param {string}      label          - 日志与错误消息标识
+ * @returns {{
+ *   signal: AbortSignal,        // 合并后的 signal，传给 fetch / reader.read
+ *   cancel: () => void,         // 操作完成后调用，清理 timer 与 listener
+ *   isExternalAbort: () => boolean,  // 区分 abort 是外部触发还是超时触发
+ * }}
+ */
+export function withTimeout(externalSignal, timeoutMs, label) {
+  const controller = new AbortController();
+  const startedAt = Date.now();
+
+  const timeoutId = setTimeout(() => {
+    controller.abort(new Error(`${label} timeout after ${timeoutMs}ms`));
+    logger.warn(`${label} timed out`, { timeoutMs, elapsedMs: Date.now() - startedAt });
+  }, timeoutMs);
+
+  const onExternalAbort = () => {
+    clearTimeout(timeoutId);
+    controller.abort(externalSignal.reason);
+  };
+  externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+
+  return {
+    signal: controller.signal,
+    cancel: () => {
+      clearTimeout(timeoutId);
+      externalSignal.removeEventListener('abort', onExternalAbort);
+    },
+    isExternalAbort: () => externalSignal.aborted,
+  };
+}
+
+/**
+ * 给一个不接受 signal 的异步操作（如 reader.read()）加超时。
+ * 超时或外部 abort 时会调用 onAbort 钩子（用于释放资源，比如 reader.cancel()）。
+ *
+ * @template T
+ * @param {() => Promise<T>} fn            - 待包装的异步操作
+ * @param {AbortSignal}     externalSignal - 外部 abort signal
+ * @param {number}          timeoutMs      - 超时（毫秒）
+ * @param {string}          label          - 日志与错误消息标识
+ * @param {() => void}      [onAbort]      - 外部 abort / 超时触发时调用（清理资源）
+ * @returns {Promise<T>}
+ */
+export async function withPromiseTimeout(fn, externalSignal, timeoutMs, label, onAbort) {
+  let timeoutId;
+  let externalListener;
+  const cleanup = () => {
+    if (timeoutId !== undefined) clearTimeout(timeoutId);
+    if (externalListener) externalSignal.removeEventListener('abort', externalListener);
+  };
+  return new Promise((resolve, reject) => {
+    timeoutId = setTimeout(() => {
+      cleanup();
+      if (onAbort) try { onAbort(); } catch (_) {}
+      logger.warn(`${label} timed out`, { timeoutMs });
+      reject(new Error(`${label} timeout after ${timeoutMs}ms`));
+    }, timeoutMs);
+
+    externalListener = () => {
+      cleanup();
+      if (onAbort) try { onAbort(); } catch (_) {}
+      reject(externalSignal.reason);
+    };
+    externalSignal.addEventListener('abort', externalListener, { once: true });
+
+    fn().then(
+      (v) => { cleanup(); resolve(v); },
+      (e) => { cleanup(); reject(e); }
+    );
+  });
+}
+
 function writeLlmLog(content) {
   const now = new Date();
   const dateStr = now.toISOString().slice(0, 10);
@@ -408,15 +506,29 @@ ${skillMd}
     queueLog('generateSQLWithLangChainStreamGen_BAK Round ' + (31 - maxToolCalls) + ' Request:\n' + JSON.stringify(requestParams, null, 2), true);
 
     try {
-      const fetchResponse = await fetch(`${baseURL}/chat/completions`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${apiKey}`
-        },
-        body: JSON.stringify(requestParams),
-        signal
-      });
+      const tFetch = withTimeout(signal, LLM_TIMEOUTS.FETCH_MS, 'LLM fetch');
+      let fetchResponse;
+      try {
+        fetchResponse = await fetch(`${baseURL}/chat/completions`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'Authorization': `Bearer ${apiKey}`
+          },
+          body: JSON.stringify(requestParams),
+          signal: tFetch.signal
+        });
+      } catch (e) {
+        if (e.name === 'AbortError' || /timeout/i.test(e.message || '')) {
+          if (tFetch.isExternalAbort()) {
+            throw e;  // 外部断开，原样抛出
+          }
+          throw new Error(`LLM 响应超时（>${LLM_TIMEOUTS.FETCH_MS / 1000}s），请稍后重试`);
+        }
+        throw e;
+      } finally {
+        tFetch.cancel();
+      }
 
       if (!fetchResponse.ok) {
         const errorJson = await fetchResponse.json();
@@ -431,8 +543,26 @@ ${skillMd}
       responseText = '';
       let reasoningContent = '';
 while (true) {
-        const { done, value } = await reader.read();
-        
+        let readResult;
+        try {
+          readResult = await withPromiseTimeout(
+            () => reader.read(),
+            signal,
+            LLM_TIMEOUTS.READ_MS,
+            'LLM stream read',
+            () => reader.cancel().catch(() => {})  // 超时/取消时释放 stream 资源
+          );
+        } catch (e) {
+          if (e.name === 'AbortError' || /timeout/i.test(e.message || '')) {
+            if (signal.aborted) {
+              throw e;  // 外部断开，原样抛出
+            }
+            throw new Error(`LLM 流式响应中断（>${LLM_TIMEOUTS.READ_MS / 1000}s 无新数据），请稍后重试`);
+          }
+          throw e;
+        }
+        const { done, value } = readResult;
+
         buffer += decoder.decode(value, { stream: !done });
         const lines = buffer.split('\n');
         if (done) {

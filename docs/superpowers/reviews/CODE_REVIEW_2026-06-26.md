@@ -28,21 +28,21 @@
 > |------|------|------|-----------|------|
 > | 🔴 P0 严重 Bug | 3/3 | 0 | 0 | BUG-1、BUG-2、BUG-4 |
 > | 🔴 P1 重要 Bug | 3/3 | 0 | 0 | BUG-3、BUG-5、BUG-6 |
-> | 🟡 P2 中等 Bug | 2/4 | 0 | 2 ⏸️ | BUG-9、BUG-11 已修；BUG-8、BUG-10 不修 |
+> | 🟡 P2 中等 Bug | 3/4 | 0 | 2 ⏸️ | BUG-7、BUG-9、BUG-11 已修；BUG-8、BUG-10 不修 |
 > | 🟢 P3 性能 | 2/6 | 4 | 1 ⏸️ | PERF-4、PERF-7 已修；PERF-1/2/5/6 待修；PERF-3 暂不实施 |
 > | 🟢 P3 安全 | 1/3 | 1 | 1 ⏸️ | **SEC-1 ✅ 已修复**；SEC-2 待修；SEC-3 暂缓（计划由 LLM 验证替代） |
 > | 🟢 P3 代码质量 | 1/5 | 4 | 0 | CODE-2 已修；CODE-1、CODE-3、CODE-4、CODE-5 待修 |
-> | 🟢 P3 Bug 其他 | 1/2 | 1 | 0 | BUG-12 已修（防御性）；BUG-7 待修（SSE 单轮 LLM 超时） |
+> | 🟢 P3 Bug 其他 | 1/1 | 0 | 0 | BUG-12 已修（防御性 await） |
 > | 🔴 P0 本轮新发现 | 1/1 | 0 | 0 | NEW-1 |
 > | 🟡 P2 本轮新发现 | 2/2 | 0 | 0 | NEW-2、NEW-6 |
 > | 🟢 P3 本轮新发现 | 3/3 | 0 | 0 | NEW-3、NEW-4、NEW-5 |
-> | **合计** | **19/30 (63.3%)** | **10** | **4** | 含 ⏸️ 不修/暂缓 4 项时为 **19/34 (55.9%)** |
+> | **合计** | **20/30 (66.7%)** | **9** | **4** | 含 ⏸️ 不修/暂缓 4 项时为 **20/34 (58.8%)** |
 >
 > *2026-06-26 决定：BUG-8、BUG-10 标记为 ⏸️ 不修（不进入本轮修复范围）。BUG-10 上一轮回复曾误标"已修复"，已更正。*
 >
 > *2026-06-29 增量修复：PERF-7（fs.readFileSync 异步化）、NEW-5（axios 4xx/5xx 拦截器）、NEW-6（agent loop 工具并行）。*
 >
-> *2026-06-30 增量修复：SEC-1（stripSqlComments 状态机重写 + 两阶段校验）。SEC-3 暂缓（计划由 LLM 验证替代，当前部署只读 MySQL 用户，威胁面已收窄）。*
+> *2026-06-30 增量修复：SEC-1（stripSqlComments 状态机重写 + 两阶段校验）、BUG-7（三层超时：T2 fetch 120s / T3 整体 5min / T4 reader 30s + withTimeout helper）。SEC-3 暂缓（计划由 LLM 验证替代，当前部署只读 MySQL 用户，威胁面已收窄）。*
 >
 > *复核日期：2026-06-30（消除汇总表 / 优先级表 / 详细章节之间的不一致）*
 
@@ -196,13 +196,48 @@ const disposeDisposable = editor.onDidDispose(() => {
 
 ## 🟡 中等问题
 
-### BUG-7: SSE 流式生成缺少单轮 LLM 调用超时
+### BUG-7: SSE 流式生成缺少单轮 LLM 调用超时 ✅ 已修复
 
-**文件**: [backend/src/routes/query.js:339-496](backend/src/routes/query.js#L339)
+**文件**:
+- [backend/src/services/llm.js:14-69](backend/src/services/llm.js#L14) — `withTimeout` helper + `LLM_TIMEOUTS`
+- [backend/src/services/llm.js:467-519](backend/src/services/llm.js#L467) — fetch / reader.read 改造
+- [backend/src/routes/query.js:344-351](backend/src/routes/query.js#L344) — 整体 SSE 5min 超时
 
-工具调用循环最多 30 轮，但每轮 LLM API 的 `fetch` 调用没有独立超时。`AbortController` 仅在上层 `res.on('close')` 时触发。如果 LLM API 连接建立后无限挂起（不返回 headers），用户只能关闭标签页来中断。
+**优先级**: 🟡 P2 — 中等 Bug
+**修复日期**: 2026-06-30
 
-**修复**: 在 `fetch` 调用时传入 `signal: AbortSignal.timeout(120000)`（Node 16+），或用 `Promise.race`。
+**原始问题**:
+工具调用循环最多 30 轮，但每轮 LLM API 的 `fetch` 调用没有独立超时。`AbortController` 仅在上层 `res.on('close')` 时触发。如果 LLM API 连接建立后无限挂起（不返回 headers）、stream 中途不发 chunk、整体 SSE 长时间不结束——用户只能关闭标签页来中断。
+
+**修复方案（三层超时 + helper 抽离）**:
+
+| # | 触发源 | 时长 | 实现位置 |
+|---|--------|------|----------|
+| T1 客户端断开 | res.on('close') | 立即 | 已有，未改 |
+| T2 单轮 LLM fetch | LLM API 整体响应 | 120s | llm.js:467 fetch 处 |
+| T3 整体 SSE | 整个 generateSQL | 5min | query.js:344 |
+| T4 单次 reader.read | stream 中途断流 | 30s | llm.js:504 reader.read 处 |
+
+**核心 helper**：`withTimeout(externalSignal, timeoutMs, label)` 返回 `{signal, cancel, isExternalAbort}`，支持：
+- 外部 abort（客户端断开 / T3 触发）立即级联并清理 timer
+- 本地超时（达到 timeoutMs）自动 abort
+- 操作完成后 `cancel()` 清理 timer 与 listener，无内存泄漏
+- `isExternalAbort()` 区分 abort 原因（前端错误消息会不一样）
+
+**前端错误消息**：
+- T2 触发：`LLM 响应超时（>120s），请稍后重试`
+- T4 触发：`LLM 流式响应中断（>30s 无新数据），请稍后重试`
+- T3 触发：外层 catch 捕获，由前端 axios 拦截器统一显示
+
+**测试覆盖**（[test-llm-timeout.mjs](backend/test-llm-timeout.mjs) 14 条用例）：
+- A. 外部 abort 立即生效
+- B. 外部 abort 优先于超时
+- C. timeoutMs 后超时触发，reason.message 含 label + 毫秒
+- D. cancel() 后定时器清理
+- E. 错误消息格式
+- F. 并发调用互不干扰
+
+**状态**: 已修复。timeout 测试 14/14 通过，sqlValidator 回归 86/86 通过。
 
 ---
 
@@ -613,7 +648,7 @@ try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
 | 🔴 P1 | BUG-3 | getDb 竞态条件 | 文件句柄泄漏 | sqlite.js:21 | ✅ 已修复 |
 | 🔴 P1 | BUG-5 | JSON 解析无大小限制 | DoS 风险 | index.js:13 | ✅ 已修复 |
 | 🔴 P1 | BUG-6 | Monaco 定时器内存泄漏 | 长时间运行 OOM | App.jsx:1229 | ✅ 已修复 |
-| 🟡 P2 | BUG-7 | SSE 流式生成缺单轮 LLM 超时 | 长请求挂起 | query.js:339 | ⏳ 待修复 |
+| 🟡 P2 | BUG-7 | SSE 流式生成缺单轮 LLM 超时 | 长请求挂起 | query.js:344 | ✅ 已修复（2026-06-30，三层超时 + withTimeout） |
 | 🟡 P2 | BUG-8 | 非 stream 模式未实现 | 接口空响应 | query.js:483 | ⏸️ 不修 |
 | 🟡 P2 | BUG-9 | 消息历史取最早而非最新 | 长对话上下文丢失 | query.js:328 | ✅ 已修复 |
 | 🟡 P2 | BUG-10 | checkPort 连接地址不正确 | Windows 端口检测误判 | main.js:231 | ⏸️ 不修 |
@@ -641,7 +676,7 @@ try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
 | 🟡 P2 | **NEW-6** | agent loop 工具调用串行 | agent loop 慢 | llm.js:557 | ✅ 已修复（3 阶段并行） |
 | 🟢 P3 | CODE-3 | mkdirSync 静默吞错 | 问题排查困难 | sqlite.js:15 | ⏳ 待修复 |
 
-**修复进度**: **19/30 (63.3%)** — 含 ⏸️ 不修/暂缓 4 项时为 19/34 (55.9%)。已修项：BUG-1/2/3/4/5/6/9/11/12、PERF-4/7、SEC-1、CODE-2、NEW-1/2/3/4/5/6。⏸️ 不修/暂缓：BUG-8、BUG-10、PERF-3、SEC-3。⏳ 待修 10 项：BUG-7、PERF-1/2/5/6、SEC-2、CODE-1/3/4/5。SEC-1 通过状态机 + 两阶段校验堵住 MySQL 条件注释注入与字符串/反引号边界绕过；SEC-3 暂缓改由 LLM 验证替代
+**修复进度**: **20/30 (66.7%)** — 含 ⏸️ 不修/暂缓 4 项时为 20/34 (58.8%)。已修项：BUG-1/2/3/4/5/6/7/9/11/12、PERF-4/7、SEC-1、CODE-2、NEW-1/2/3/4/5/6。⏸️ 不修/暂缓：BUG-8、BUG-10、PERF-3、SEC-3。⏳ 待修 9 项：PERF-1/2/5/6、SEC-2、CODE-1/3/4/5。SEC-1 通过状态机 + 两阶段校验堵住 MySQL 条件注释注入与字符串/反引号边界绕过；SEC-3 暂缓改由 LLM 验证替代；BUG-7 通过三层超时（fetch 120s / 整体 5min / reader 30s）+ withTimeout helper 防御 LLM API 挂起
 
 ---
 

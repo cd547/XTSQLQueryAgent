@@ -341,6 +341,15 @@ router.post('/generate', async (req, res) => {
       let streamCompleted = false;
       const abortController = new AbortController();
 
+      // T3 整体 SSE 超时（5min）—— 防御 agent loop 30 轮全部接近超时边界的极端情况
+      const OVERALL_TIMEOUT_MS = 5 * 60_000;
+      const overallTimer = setTimeout(() => {
+        if (!streamCompleted) {
+          logger.warn('Overall SSE timeout, aborting LLM request', { OVERALL_TIMEOUT_MS });
+          abortController.abort(new Error(`Overall SSE timeout after ${OVERALL_TIMEOUT_MS}ms`));
+        }
+      }, OVERALL_TIMEOUT_MS);
+
       res.on('close', () => {
         if (!streamCompleted) {
           logger.info('Client disconnected, aborting LLM request');
@@ -468,10 +477,10 @@ logger.info('Stream done, sending final result', { sql: sql?.substring(0, 50), m
           }
         }
 
-        streamCompleted = true;
+        streamCompleted = true; clearTimeout(overallTimer);
         res.write(`data: ${JSON.stringify(doneData)}\n\n`);
       } catch (error) {
-        streamCompleted = true;
+        streamCompleted = true; clearTimeout(overallTimer);
         logger.error('Stream query failed', { error: error.message, stack: error.stack });
         if (!res.writableEnded) {
           res.write(`data: ${JSON.stringify({ type: 'error', content: error.message })}\n\n`);
@@ -799,7 +808,7 @@ ${JSON.stringify(explainResults, null, 2)}
         if (line.startsWith('data: ')) {
           const dataStr = line.slice(6);
           if (dataStr === '[DONE]') {
-            streamCompleted = true;
+            streamCompleted = true; clearTimeout(overallTimer);
             if (!abortController.signal.aborted) {
               res.write(`data: ${JSON.stringify({ type: 'done', analysis: fullContent })}\n\n`);
             }
@@ -822,7 +831,7 @@ ${JSON.stringify(explainResults, null, 2)}
       }
     }
 
-    streamCompleted = true;
+    streamCompleted = true; clearTimeout(overallTimer);
     if (!res.writableEnded) {
       res.end();
     }
