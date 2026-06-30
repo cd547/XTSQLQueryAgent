@@ -83,10 +83,10 @@ eq('只有 # 注释的 SQL',           code('# 只有 # 注释'), 'EMPTY_AFTER_C
 eq('20001 字符',                  code('SELECT ' + 'a'.repeat(20000)), 'TOO_LONG');
 
 console.log('\n=== F. stripSqlComments 单独测试 ===');
-eq('剥离块注释',     stripSqlComments('SELECT 1 /* block */ end'),  'SELECT 1  end');
-eq('剥离 -- 注释',   stripSqlComments('SELECT 1 -- line'),          'SELECT 1 ');
-eq('剥离 # 注释',    stripSqlComments('SELECT 1 # line'),           'SELECT 1 ');
-eq('混合注释',       stripSqlComments('SELECT 1 /* a */ -- b\n # c'), 'SELECT 1  \n ');
+eq('剥离块注释',     stripSqlComments('SELECT 1 /* block */ end').cleaned,  'SELECT 1  end');
+eq('剥离 -- 注释',   stripSqlComments('SELECT 1 -- line').cleaned,          'SELECT 1 ');
+eq('剥离 # 注释',    stripSqlComments('SELECT 1 # line').cleaned,           'SELECT 1 ');
+eq('混合注释',       stripSqlComments('SELECT 1 /* a */ -- b\n # c').cleaned, 'SELECT 1  \n ');
 
 console.log('\n=== G. 结构化返回值 ===');
 const r1 = validateReadOnlySql(`SELECT 1 INTO OUTFILE '/tmp/x'`, EXEC);
@@ -109,6 +109,61 @@ eq('RULES.FORBIDDEN_FUNCTION.code', RULES.FORBIDDEN_FUNCTION.code, 'FORBIDDEN_FU
 eq('RULES.FORBIDDEN_PREFIX.code', RULES.FORBIDDEN_PREFIX.code, 'FORBIDDEN_PREFIX');
 eq('RULES.TOO_LONG.code', RULES.TOO_LONG.code, 'TOO_LONG');
 eq('RULES.EMPTY_AFTER_CLEAN.code', RULES.EMPTY_AFTER_CLEAN.code, 'EMPTY_AFTER_CLEAN');
+eq('RULES.MYSQL_CONDITIONAL_COMMENT.code', RULES.MYSQL_CONDITIONAL_COMMENT.code, 'MYSQL_CONDITIONAL_COMMENT');
+eq('RULES.INVALID_SQL.code', RULES.INVALID_SQL.code, 'INVALID_SQL');
+
+console.log('\n=== I. SEC-1 边界绕过防御 ===');
+
+// 1) MySQL 条件注释：一律拒绝
+eq('拒绝 /*! 无版本号',
+   code('SELECT 1 /*! UNION SELECT password FROM mysql.user */'),
+   'MYSQL_CONDITIONAL_COMMENT');
+eq('拒绝 /*!50000 带版本号',
+   code('SELECT * FROM t /*!50000 WHERE 1=0 UNION SELECT 1 */'),
+   'MYSQL_CONDITIONAL_COMMENT');
+eq('拒绝 /*!12345 通用版本号',
+   code('/*!12345 SELECT 1*/'),
+   'MYSQL_CONDITIONAL_COMMENT');
+
+// 2) 字符串/反引号内的伪注释符原样保留
+eq("字符串内 'a--b' 保留",          v("SELECT 'a--b' FROM t"),           true);
+eq("字符串内 '/*fake*/' 保留",      v("SELECT '/*fake*/' FROM t"),       true);
+eq("字符串内 '##y' 保留",            v("SELECT '##y' FROM t"),            true);
+eq('双引号内 "a--b" 保留',          v('SELECT "a--b" FROM t'),           true);
+eq('反引号内 `c--n` 保留',          v('SELECT `c--n` FROM t'),           true);
+
+// 3) 双写转义
+eq("双写 '' 转义",                   v("SELECT 'a''b' FROM t"),           true);
+eq('双写 "" 转义',                   v('SELECT "a""b" FROM t'),           true);
+eq('反引号双写',                     v('SELECT `a``b` FROM t'),           true);
+
+// 4) 反斜杠转义
+eq("字符串内 \\\\' 转义",             v("SELECT 'a\\'b' FROM t"),         true);
+eq('反引号内 \\` 转义',              v('SELECT `a\\`b` FROM t'),          true);
+
+// 5) 未闭合：拒绝
+eq('未闭合块注释',                    code('SELECT 1 /* unfinished'),     'INVALID_SQL');
+eq('未闭合单引号',                    code("SELECT 'unclosed"),           'INVALID_SQL');
+eq('未闭合双引号',                    code('SELECT "unclosed'),           'INVALID_SQL');
+eq('未闭合反引号',                    code('SELECT `unclosed'),           'INVALID_SQL');
+
+// 6) -- 行注释边界
+eq('-- 后跟空格才算注释',             v('SELECT 1 -- comment\nFROM t'),   true);
+eq('-- 后跟 \\t 算注释',              v('SELECT 1 --\tFROM t'),           true);
+eq('-- 行尾',                        v('SELECT 1 --'),                   true);
+eq('不误伤负数 SELECT -1',           v('SELECT -1'),                     true);
+eq('不误伤减法 col-1',                v('SELECT col-1 FROM t'),           true);
+
+// 7) 阶段 1 失败时不进阶段 2（条件注释中含危险函数也应返回 MYSQL_CONDITIONAL_COMMENT，不是 FORBIDDEN_FUNCTION）
+eq('条件注释短路：不应进危险函数检查',
+   code('SELECT /*! LOAD_FILE("/etc/passwd") */ 1'),
+   'MYSQL_CONDITIONAL_COMMENT');
+
+// 8) SEC-1 不应解决 UNION 注入（这是 SEC-3 范畴：仅做前缀检查，非 AST 解析）
+//    阶段 1 剥注释后进入阶段 2，前缀 SELECT 通过 → SEC-3 残留攻击面，独立排期
+eq('SEC-3 残留：UNION 走阶段 2 前缀检查（不在 SEC-1 修复范围）',
+   v('SELECT 1 /* a */ UNION SELECT 2'),
+   true);
 
 console.log(`\n=========================================`);
 console.log(`  PASS: ${pass}    FAIL: ${fail}`);

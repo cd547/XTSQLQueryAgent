@@ -1479,6 +1479,21 @@
       ],
       "business_constraints": [],
       "business_rules": []
+    },
+    {
+      "name": "order_student_consume",
+      "description": "订单消耗记录",
+      "tags": ["课耗"],
+      "related_tables": [
+        "order_student",
+        "edu_study",
+        "edu_student",
+        "admin_user",
+        "edu_student_type",
+        "edu_student_type_project"
+      ],
+      "business_constraints": [],
+      "business_rules": []
     }
   ]
 }

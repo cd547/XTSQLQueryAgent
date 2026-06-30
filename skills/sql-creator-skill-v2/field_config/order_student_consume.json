@@ -1,0 +1,87 @@
+{
+  "table_name": "order_student_consume",
+  "field_aliases": {},
+  "field_enums": {},
+  "virtual_associations": [
+    {
+      "name": "关联学生订单",
+      "target_table": "order_student",
+      "join_condition": "order_student.id = order_student_consume.order_student_id",
+      "type": "many_to_one",
+      "description": "消费记录关联的学生订单",
+      "fields_mapping": {
+        "id": "order_student_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联排课",
+      "target_table": "edu_study",
+      "join_condition": "edu_study.id = order_student_consume.edu_study_id",
+      "type": "many_to_one",
+      "description": "消费记录关联的排课",
+      "fields_mapping": {
+        "id": "edu_study_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联学生",
+      "target_table": "edu_student",
+      "join_condition": "edu_student.id = order_student_consume.edu_student_id",
+      "type": "many_to_one",
+      "description": "消费记录关联的学生",
+      "fields_mapping": {
+        "id": "edu_student_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联操作人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = order_student_consume.admin_user_id",
+      "type": "many_to_one",
+      "description": "消费记录的操作人",
+      "fields_mapping": {
+        "id": "admin_user_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联学生类型",
+      "target_table": "edu_student_type",
+      "join_condition": "edu_student_type.id = order_student_consume.edu_student_type_id",
+      "type": "many_to_one",
+      "description": "消费记录关联的学生类型",
+      "fields_mapping": {
+        "id": "edu_student_type_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联报读课程",
+      "target_table": "edu_student_type_project",
+      "join_condition": "edu_student_type_project.id = order_student_consume.edu_student_type_project_id",
+      "type": "many_to_one",
+      "description": "消费记录关联的报读课程",
+      "fields_mapping": {
+        "id": "edu_student_type_project_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联客服",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = order_student_consume.customer_admin_user_id",
+      "type": "many_to_one",
+      "description": "消费记录关联的客服人员",
+      "fields_mapping": {
+        "id": "customer_admin_user_id"
+      },
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}

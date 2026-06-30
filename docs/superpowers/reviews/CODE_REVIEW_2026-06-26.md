@@ -30,17 +30,19 @@
 > | 🔴 P1 重要 Bug | 3/3 | 0 | 0 | BUG-3、BUG-5、BUG-6 |
 > | 🟡 P2 中等 Bug | 2/4 | 0 | 2 ⏸️ | BUG-9、BUG-11 已修；BUG-8、BUG-10 不修 |
 > | 🟢 P3 性能 | 2/6 | 4 | 1 ⏸️ | PERF-4、PERF-7 已修；PERF-1/2/5/6 待修；PERF-3 暂不实施 |
-> | 🟢 P3 安全 | 0/3 | 3 | 0 | SEC-1、SEC-2、SEC-3 全部待修 |
+> | 🟢 P3 安全 | 1/3 | 1 | 1 ⏸️ | **SEC-1 ✅ 已修复**；SEC-2 待修；SEC-3 暂缓（计划由 LLM 验证替代） |
 > | 🟢 P3 代码质量 | 1/5 | 4 | 0 | CODE-2 已修；CODE-1、CODE-3、CODE-4、CODE-5 待修 |
 > | 🟢 P3 Bug 其他 | 1/2 | 1 | 0 | BUG-12 已修（防御性）；BUG-7 待修（SSE 单轮 LLM 超时） |
 > | 🔴 P0 本轮新发现 | 1/1 | 0 | 0 | NEW-1 |
 > | 🟡 P2 本轮新发现 | 2/2 | 0 | 0 | NEW-2、NEW-6 |
 > | 🟢 P3 本轮新发现 | 3/3 | 0 | 0 | NEW-3、NEW-4、NEW-5 |
-> | **合计** | **18/30 (60%)** | **12** | **3** | 含 ⏸️ 不修/暂缓 3 项时为 **18/33 (54.55%)** |
+> | **合计** | **19/30 (63.3%)** | **10** | **4** | 含 ⏸️ 不修/暂缓 4 项时为 **19/34 (55.9%)** |
 >
 > *2026-06-26 决定：BUG-8、BUG-10 标记为 ⏸️ 不修（不进入本轮修复范围）。BUG-10 上一轮回复曾误标"已修复"，已更正。*
 >
 > *2026-06-29 增量修复：PERF-7（fs.readFileSync 异步化）、NEW-5（axios 4xx/5xx 拦截器）、NEW-6（agent loop 工具并行）。*
+>
+> *2026-06-30 增量修复：SEC-1（stripSqlComments 状态机重写 + 两阶段校验）。SEC-3 暂缓（计划由 LLM 验证替代，当前部署只读 MySQL 用户，威胁面已收窄）。*
 >
 > *复核日期：2026-06-30（消除汇总表 / 优先级表 / 详细章节之间的不一致）*
 
@@ -457,22 +459,42 @@ return JSON.parse(fs.readFileSync(tableIndexPath, 'utf-8'));
 
 ## 🔒 安全问题
 
-### SEC-1: `stripSqlComments` 有边界绕过风险
+### SEC-1: `stripSqlComments` 有边界绕过风险 ✅ 已修复
 
-**文件**: [backend/src/services/sqlValidator.js:80-84](backend/src/services/sqlValidator.js#L80)
+**文件**: [backend/src/services/sqlValidator.js:104-231](backend/src/services/sqlValidator.js#L104)
+**优先级**: P3 — 安全
+**修复日期**: 2026-06-30
 
-```javascript
-return sql
-  .replace(/\/\*[\s\S]*?\*\//g, '')   // 不处理嵌套 /* /* */ */
-  .replace(/--[^\n]*/g, '')
-  .replace(/#[^\n]*/g, '');
-```
+**原始问题**:
+1. MySQL 条件注释 `/*! ... *\/`（含版本号形式 `/*!12345 ... *\/`）会被当块注释剥掉，
+   但 MySQL 实际会执行其中内容 → UNION 注入可借此绕过白名单/危险函数检查
+2. 字符串字面量内的注释符 `SELECT '-- not a comment' FROM t` 被错误剥离，损坏 SQL
+3. 未闭合的 `/*` / `'` / `"` / `` ` `` 没有报错，可能导致 DoS
 
-**问题**: 
-1. 嵌套块注释 `/* /* inner */ outer */` 可能使部分 SQL 逃逸
-2. 字符串字面量中的注释标记 `SELECT '-- not a comment' FROM t` 会被错误剥离
+**修复方案（两阶段校验 + 字符级状态机）**:
+- `stripSqlComments` 重写为单遍字符级状态机，返回 `{cleaned, errors[]}`
+- 字符串/双引号/反引号内字符原样保留
+- 单/双/反引号支持 `\` 转义 + 双写转义（`''`/`""`/`` `` ``）
+- `--` 行注释必须后跟空白或行尾（避免误伤 `SELECT -1`）
+- MySQL 条件注释（`/*!` / `/*!12345`）一发现即短路返回 `MYSQL_CONDITIONAL_COMMENT`
+- 未闭合的块注释/字符串/反引号返回 `INVALID_SQL`
+- 新增 `validateStructure` 阶段 2 函数：长度/多语句/前缀/危险函数
+- `validateReadOnlySql` 改为编排两阶段，接口完全兼容
 
-**建议**: 使用 SQL 解析器（如 `node-sql-parser`）而非正则。
+**新增错误码**:
+- `MYSQL_CONDITIONAL_COMMENT`：MySQL 条件注释
+- `INVALID_SQL`：未闭合的注释/字符串/反引号
+
+**测试覆盖**（[test-sql-validator.mjs:115-166](backend/test-sql-validator.mjs#L115) 新增 24 条用例）:
+- 条件注释 3 种形式拒绝
+- 字符串/双引号/反引号内伪注释符保留
+- `''` / `""` / `` `` `` / `\` 转义
+- 未闭合的 4 种情况
+- `--` 边界（避免负数误伤）
+- 条件注释短路：阶段 1 失败不进阶段 2
+- SEC-3 残留显式记录（UNION 仍走前缀检查，**不在本修复范围**）
+
+**状态**: 已修复。86/86 测试通过。
 
 ---
 
@@ -600,9 +622,9 @@ try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
 | 🟢 P3 | PERF-1 | BPE 同步阻塞 | 大消息量时短暂冻结 | tokenizer.js:68 | ⏳ 待修复 |
 | 🟢 P3 | PERF-3 | 消息无分页 | 长会话加载慢 | session.js:80 | ⏸️ 暂不实施（无长会话场景反馈） |
 | 🟢 P3 | PERF-5 | Skill 树无缓存 | 每次打开重新遍历 | skill.js:50 | ⏳ 待修复 |
-| 🟢 P3 | SEC-1 | SQL 注释剥离边界绕过 | 安全校验可靠性 | sqlValidator.js:80 | ⏳ 待修复 |
+| 🟢 P3 | SEC-1 | SQL 注释剥离边界绕过 | 安全校验可靠性 | sqlValidator.js:104 | ✅ 已修复（2026-06-30，状态机 + 两阶段） |
 | 🟢 P3 | SEC-2 | netstat 解析 PID 列位置不可靠 | 误杀进程 | main.js:166 | ⏳ 待修复 |
-| 🟢 P3 | SEC-3 | LLM 生成 SQL 仅前缀检查 | 子查询绕过 | sqlValidator.js:108 | ⏳ 待修复 |
+| 🟢 P3 | SEC-3 | LLM 生成 SQL 仅前缀检查 | 子查询绕过 | sqlValidator.js:108 | ⏸️ 暂缓（计划由 LLM 验证替代） |
 | 🟢 P3 | PERF-4 | 切换会话 3 个 API 串行 | 多余 2 RTT | App.jsx:342 | ✅ 已修复 |
 | 🟢 P3 | PERF-6 | LLM 消息 JSON Blob 全量存储 | 大对话 IO 大 | llm.js:280 | ⏳ 待修复 |
 | 🟢 P3 | PERF-7 | toolFuncs 同步读文件 | 工具调用密集时卡 | toolFuncs.js:11 | ✅ 已修复（async 化 + 内部并行） |
@@ -619,7 +641,7 @@ try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
 | 🟡 P2 | **NEW-6** | agent loop 工具调用串行 | agent loop 慢 | llm.js:557 | ✅ 已修复（3 阶段并行） |
 | 🟢 P3 | CODE-3 | mkdirSync 静默吞错 | 问题排查困难 | sqlite.js:15 | ⏳ 待修复 |
 
-**修复进度**: **18/30 (60%)** — 含 ⏸️ 不修/暂缓 3 项时为 18/33 (54.55%)。已修项：BUG-1/2/3/4/5/6/9/11/12、PERF-4/7、CODE-2、NEW-1/2/3/4/5/6。⏸️ 不修/暂缓：BUG-8、BUG-10、PERF-3。⏳ 待修 12 项：BUG-7、PERF-1/2/5/6、SEC-1/2/3、CODE-1/3/4/5。PERF-7 异步化消除事件循环阻塞，叠加 NEW-6 工具并行化使 agent loop 提速
+**修复进度**: **19/30 (63.3%)** — 含 ⏸️ 不修/暂缓 4 项时为 19/34 (55.9%)。已修项：BUG-1/2/3/4/5/6/9/11/12、PERF-4/7、SEC-1、CODE-2、NEW-1/2/3/4/5/6。⏸️ 不修/暂缓：BUG-8、BUG-10、PERF-3、SEC-3。⏳ 待修 10 项：BUG-7、PERF-1/2/5/6、SEC-2、CODE-1/3/4/5。SEC-1 通过状态机 + 两阶段校验堵住 MySQL 条件注释注入与字符串/反引号边界绕过；SEC-3 暂缓改由 LLM 验证替代
 
 ---
 
@@ -750,13 +772,13 @@ for (const toolCall of validToolCalls) {
 | PERF-6 | 🟢 P3 | LLM 消息 JSON Blob 全量存储 | llm.js:280 | ⏳ 待修复 |
 | PERF-7 | 🟢 P3 | `fs.readFileSync` 同步阻塞 | toolFuncs.js:11-16 | ✅ 已修复（async 化 + 内部并行） |
 | SEC-2 | 🟢 P3 | `killProcessOnPort` netstat 解析不可靠 | main.js:166-184 | ⏳ 待修复 |
-| SEC-3 | 🟢 P3 | LLM 生成 SQL 仅前缀检查（非 AST） | sqlValidator.js:108 | ⏳ 待修复 |
+| SEC-3 | 🟢 P3 | LLM 生成 SQL 仅前缀检查（非 AST） | sqlValidator.js:108 | ⏸️ 暂缓（计划由 LLM 验证替代 SEC-3；当前部署只读 MySQL 用户，威胁面已收窄） |
 | CODE-1 | 🟢 P3 | toolFuncs 格式化代码重复 | toolFuncs.js:249-318 | ⏳ 待修复 |
 | CODE-2 | 🟢 P3 | config.js 导出对象未使用 | config.js:3-9 | ✅ 已修复（重构为唯一入口） |
 | CODE-4 | 🟢 P3 | 前端 40+ useState 难维护 | App.jsx:49-141 | ⏳ 待修复 |
 | CODE-5 | 🟢 P3 | 空壳 routes（tables/tableSchema/export） | routes/* | ⏳ 待修复 |
 
-*小结：10 项中已修 4 项（BUG-12、PERF-4、PERF-7、CODE-2），待修 6 项（PERF-6、SEC-2、SEC-3、CODE-1、CODE-4、CODE-5），无 ⏸️ 不修。*
+*小结：10 项中已修 4 项（BUG-12、PERF-4、PERF-7、CODE-2），待修 5 项（PERF-6、SEC-2、CODE-1、CODE-4、CODE-5），⏸️ 暂缓 1 项（SEC-3 计划由 LLM 验证替代）。*
 
 ---
 
