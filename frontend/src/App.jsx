@@ -132,6 +132,13 @@ function AuthenticatedApp({ user, logout }) {
   const hoverIntervalRef = useRef(null);
   // 流式响应期间用于 rAF 节流的滚动句柄（避免每 chunk 触发 scrollIntoView）
   const streamingScrollRafRef = useRef(0);
+  // 实时计时 tick：流式期间每 100ms 触发一次重渲染，让 ChatMessage 实时显示耗时
+  const [liveTimerTick, setLiveTimerTick] = useState(0);
+  useEffect(() => {
+    if (!isStreaming) return;
+    const id = setInterval(() => setLiveTimerTick(t => t + 1), 100);
+    return () => clearInterval(id);
+  }, [isStreaming]);
   // 客户端消息 id 计数器：保证新创建的每条消息都有稳定唯一 key
   // DB 加载的消息用 `db-<row_id>` 命名空间，与客户端 `c-N` 互不冲突
   const clientMsgIdRef = useRef(0);
@@ -497,17 +504,18 @@ function AuthenticatedApp({ user, logout }) {
   
   const handleSend = async () => {
     if (!input.trim() || loading) return;
-    
+
     const userMessage = input.trim();
     setInput('');
-    
+
     const now = new Date().toISOString();
+    const startTime = Date.now();
     const newMessages = [...messages,
       { id: `c-${++clientMsgIdRef.current}`, role: 'user', content: userMessage, timestamp: now },
-      { id: `c-${++clientMsgIdRef.current}`, role: 'assistant', content: '', isStreaming: true, timestamp: now }
+      { id: `c-${++clientMsgIdRef.current}`, role: 'assistant', content: '', isStreaming: true, timestamp: now, startTime }
     ];
     setMessages(newMessages);
-    
+
     setLoading(true);
     setIsStreaming(true);
 
@@ -604,7 +612,9 @@ function AuthenticatedApp({ user, logout }) {
                   const newMsgs = [...prev];
                   const lastIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
                   if (lastIdx !== -1) {
-                    newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: data.content === '请求已被用户中断' ? (newMsgs[lastIdx].content || '') + '\n\n*[已中断]*' : '错误: ' + data.content, isStreaming: false };
+                    const startTime = newMsgs[lastIdx].startTime || Date.now();
+                    const elapsedMs = Date.now() - startTime;
+                    newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: data.content === '请求已被用户中断' ? (newMsgs[lastIdx].content || '') + '\n\n*[已中断]*' : '错误: ' + data.content, isStreaming: false, elapsedMs };
                   }
                   return newMsgs;
                 });
@@ -613,7 +623,9 @@ function AuthenticatedApp({ user, logout }) {
                   const newMsgs = [...prev];
                   const lastIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
                   if (lastIdx !== -1) {
-                    newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: data.message || '', sql: data.sql || '', isStreaming: false };
+                    const startTime = newMsgs[lastIdx].startTime || Date.now();
+                    const elapsedMs = Date.now() - startTime;
+                    newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: data.message || '', sql: data.sql || '', isStreaming: false, elapsedMs };
                   }
                   return newMsgs;
                 });
@@ -636,7 +648,9 @@ function AuthenticatedApp({ user, logout }) {
         const newMsgs = [...prev];
         const lastIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
         if (lastIdx !== -1) {
-          newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: error.name === 'AbortError' ? (newMsgs[lastIdx].content || '') + '\n\n*[已中断]*' : '错误: ' + error.message, isStreaming: false };
+          const startTime = newMsgs[lastIdx].startTime || Date.now();
+          const elapsedMs = Date.now() - startTime;
+          newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: error.name === 'AbortError' ? (newMsgs[lastIdx].content || '') + '\n\n*[已中断]*' : '错误: ' + error.message, isStreaming: false, elapsedMs };
         }
         return newMsgs;
       });
@@ -1187,6 +1201,9 @@ const explainColumns = useMemo(() => explainResults.length > 0
                         onToggleCollapse={handleToggleCollapse}
                         logType={msg.logType}
                         sql={msg.sql}
+                        startTime={msg.startTime}
+                        elapsedMs={msg.elapsedMs}
+                        liveTimerTick={liveTimerTick}
                         onOpenSqlTab={handleOpenSqlTab}
                         onCopyAndExecute={handleCopyAndExecute}
                       />

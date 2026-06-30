@@ -722,7 +722,7 @@ const tokenizerPath = process.env.TOKENIZER_PATH
 - 🟠 P1：4 个（#SEC-02 / #SEC-04 / #DEAD-01~07 / #LOG-04）
 - 🟡 P2：18 个
 
-详见 [CHANGELOG.md](./CHANGELOG.md) 2026-06-20 段落。
+详见 [CHANGELOG.md](../changelog/CHANGELOG.md) 2026-06-20 段落。
 
 ---
 

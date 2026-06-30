@@ -836,6 +836,14 @@ html.xtsql-dark .xtsql-log-tag.return { color: #fbbf24; }
   gap: 6px;
   margin-top: 8px;
   justify-content: flex-end;
+  align-items: center;
+}
+.xtsql-msg-elapsed {
+  font-size: 11px;
+  color: var(--xtsql-text-secondary);
+  margin-right: 4px;
+  user-select: none;
+  cursor: default;
 }
 .xtsql-action-btn {
   height: 28px;

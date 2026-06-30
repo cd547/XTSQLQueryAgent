@@ -22,24 +22,27 @@
 
 ## 🔴 严重 Bug
 
-> **修复状态总览（截至 2026-06-26）**:
+> **修复状态总览（截至 2026-06-30 复核）**:
 >
-> | 类别 | 数量 | 状态 |
-> |------|------|------|
-> | 🔴 P0（严重） | BUG-1、BUG-2、BUG-4 | ✅ 3/3 已修复 |
-> | 🔴 P1（重要） | BUG-3、BUG-5、BUG-6 | ✅ 3/3 已修复 |
-> | 🟡 P2（中等） | BUG-9、BUG-11 | ✅ 2/4 已修复，BUG-8/BUG-10 ⏸️ 不修 |
-| 🟢 P3（性能） | PERF-1/2/3/5/6/7 | ⏳ 待修复（PERF-4 ✅ 2026-06-26 已修） |
-| 🟢 P3（安全） | SEC-1 | ⏳ 待修复（原审查详细章节另列 SEC-2/3） |
-| 🟢 P3（代码质量） | CODE-3 | ⏳ 待修复（原审查详细章节另列 CODE-1/2/4/5） |
-| 🟢 P3（Bug） | BUG-12 | ✅ 已修复（2026-06-26，汇总表未列） |
-| 🔴 P0（**本轮新发现**） | NEW-1 | ✅ 已修复（2026-06-26） |
-> | 🟢 P3（轻微） | PERF/SEC/CODE 共 12 项 | ⏳ 9/12 已修复（PERF-4、CODE-2、NEW-4 ✅ 2026-06-26~29） |
-> | **合计** | **16/26 (61.54%)** | 不含 ⏸️ 不修 2 项 |
+> | 类别 | 已修 | 待修 | 不修/暂缓 | 明细 |
+> |------|------|------|-----------|------|
+> | 🔴 P0 严重 Bug | 3/3 | 0 | 0 | BUG-1、BUG-2、BUG-4 |
+> | 🔴 P1 重要 Bug | 3/3 | 0 | 0 | BUG-3、BUG-5、BUG-6 |
+> | 🟡 P2 中等 Bug | 2/4 | 0 | 2 ⏸️ | BUG-9、BUG-11 已修；BUG-8、BUG-10 不修 |
+> | 🟢 P3 性能 | 2/6 | 4 | 1 ⏸️ | PERF-4、PERF-7 已修；PERF-1/2/5/6 待修；PERF-3 暂不实施 |
+> | 🟢 P3 安全 | 0/3 | 3 | 0 | SEC-1、SEC-2、SEC-3 全部待修 |
+> | 🟢 P3 代码质量 | 1/5 | 4 | 0 | CODE-2 已修；CODE-1、CODE-3、CODE-4、CODE-5 待修 |
+> | 🟢 P3 Bug 其他 | 1/2 | 1 | 0 | BUG-12 已修（防御性）；BUG-7 待修（SSE 单轮 LLM 超时） |
+> | 🔴 P0 本轮新发现 | 1/1 | 0 | 0 | NEW-1 |
+> | 🟡 P2 本轮新发现 | 2/2 | 0 | 0 | NEW-2、NEW-6 |
+> | 🟢 P3 本轮新发现 | 3/3 | 0 | 0 | NEW-3、NEW-4、NEW-5 |
+> | **合计** | **18/30 (60%)** | **12** | **3** | 含 ⏸️ 不修/暂缓 3 项时为 **18/33 (54.55%)** |
 >
 > *2026-06-26 决定：BUG-8、BUG-10 标记为 ⏸️ 不修（不进入本轮修复范围）。BUG-10 上一轮回复曾误标"已修复"，已更正。*
 >
-> *修复日期：2026-06-26*
+> *2026-06-29 增量修复：PERF-7（fs.readFileSync 异步化）、NEW-5（axios 4xx/5xx 拦截器）、NEW-6（agent loop 工具并行）。*
+>
+> *复核日期：2026-06-30（消除汇总表 / 优先级表 / 详细章节之间的不一致）*
 
 ### BUG-1: `skill.js` 中 4 个关键 API 路由完全未注册 ✅ 已修复
 
@@ -63,7 +66,7 @@ router.post('/create-table-files', ...) // 第 400 行 — 创建表文件
 
 ---
 
-### BUG-2: `skill.js` save 路由 catch 块中的 `ReferenceError`
+### BUG-2: `skill.js` save 路由 catch 块中的 `ReferenceError` ✅ 已修复
 
 **文件**: [backend/src/routes/skill.js:238-282](backend/src/routes/skill.js#L238)
 **优先级**: P0 — 错误处理自身崩溃
@@ -167,7 +170,7 @@ app.use(express.json());  // ← 无 limit 参数
 
 ---
 
-### BUG-6: Monaco 编辑器 hover 隐藏定时器内存泄漏
+### BUG-6: Monaco 编辑器 hover 隐藏定时器内存泄漏 ✅ 已修复
 
 **文件**: [frontend/src/App.jsx:1229-1234](frontend/src/App.jsx#L1229)
 **优先级**: P1 — 内存泄漏
@@ -218,7 +221,7 @@ if (schemaMode === 'stream') {
 
 ---
 
-### BUG-9: 消息历史 `LIMIT 20` 取最早而非最新
+### BUG-9: 消息历史 `LIMIT 20` 取最早而非最新 ✅ 已修复
 
 **文件**: [backend/src/routes/query.js:325-329](backend/src/routes/query.js#L325)
 
@@ -279,7 +282,7 @@ session.js、query.js 等路由的错误处理全部使用 `res.json()` 返回 H
 
 ---
 
-### BUG-12: `initSkillLogTable()` 未 await 可能造成表未就绪就被使用
+### BUG-12: `initSkillLogTable()` 未 await 可能造成表未就绪就被使用 ✅ 已修复
 
 **文件**: [backend/src/index.js:44](backend/src/index.js#L44)
 
@@ -588,6 +591,7 @@ try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
 | 🔴 P1 | BUG-3 | getDb 竞态条件 | 文件句柄泄漏 | sqlite.js:21 | ✅ 已修复 |
 | 🔴 P1 | BUG-5 | JSON 解析无大小限制 | DoS 风险 | index.js:13 | ✅ 已修复 |
 | 🔴 P1 | BUG-6 | Monaco 定时器内存泄漏 | 长时间运行 OOM | App.jsx:1229 | ✅ 已修复 |
+| 🟡 P2 | BUG-7 | SSE 流式生成缺单轮 LLM 超时 | 长请求挂起 | query.js:339 | ⏳ 待修复 |
 | 🟡 P2 | BUG-8 | 非 stream 模式未实现 | 接口空响应 | query.js:483 | ⏸️ 不修 |
 | 🟡 P2 | BUG-9 | 消息历史取最早而非最新 | 长对话上下文丢失 | query.js:328 | ✅ 已修复 |
 | 🟡 P2 | BUG-10 | checkPort 连接地址不正确 | Windows 端口检测误判 | main.js:231 | ⏸️ 不修 |
@@ -611,10 +615,11 @@ try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
 | 🟡 P2 | **NEW-2** | /explain-analyze 无断连保护 | 浪费 token | query.js:680 | ✅ 已修复 |
 | 🟢 P3 | **NEW-3** | /me、/logout 缺限流 | 理论可耗 | auth.js:85 | ✅ 已修复 |
 | 🟢 P3 | **NEW-4** | extractToken 不校验格式 | 无效 CPU | auth.js:90 | ✅ 已修复 |
+| 🟡 P2 | **NEW-5** | axios 拦截器未处理 4xx 业务错误 | 用户无错误提示 | api/index.js:44 | ✅ 已修复 |
 | 🟡 P2 | **NEW-6** | agent loop 工具调用串行 | agent loop 慢 | llm.js:557 | ✅ 已修复（3 阶段并行） |
 | 🟢 P3 | CODE-3 | mkdirSync 静默吞错 | 问题排查困难 | sqlite.js:15 | ⏳ 待修复 |
 
-**修复进度**: 18/27 (66.67%) — BUG-12、PERF-4/7、NEW-1/2/3/4/5/6、CODE-2 已修复（2026-06-26~29）；PERF-7 异步化消除事件循环阻塞，叠加 NEW-6 工具并行化
+**修复进度**: **18/30 (60%)** — 含 ⏸️ 不修/暂缓 3 项时为 18/33 (54.55%)。已修项：BUG-1/2/3/4/5/6/9/11/12、PERF-4/7、CODE-2、NEW-1/2/3/4/5/6。⏸️ 不修/暂缓：BUG-8、BUG-10、PERF-3。⏳ 待修 12 项：BUG-7、PERF-1/2/5/6、SEC-1/2/3、CODE-1/3/4/5。PERF-7 异步化消除事件循环阻塞，叠加 NEW-6 工具并行化使 agent loop 提速
 
 ---
 
@@ -645,7 +650,7 @@ try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
 
 ---
 
-### NEW-2: `/explain-analyze` 无客户端断连保护 🟡 P2
+### NEW-2: `/explain-analyze` 无客户端断连保护 🟡 P2 ✅ 已修复
 
 **文件**: [backend/src/routes/query.js:680-802](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/query.js#L680)
 
@@ -656,7 +661,7 @@ try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
 
 ---
 
-### NEW-3: `/api/auth/me`、`/logout` 缺限流 🟢 P3
+### NEW-3: `/api/auth/me`、`/logout` 缺限流 🟢 P3 ✅ 已修复
 
 **文件**: [backend/src/routes/auth.js:85, 90](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/auth.js#L85)
 
@@ -666,7 +671,7 @@ try { mkdirSync(dbDir, { recursive: true }); } catch (e) {
 
 ---
 
-### NEW-4: `extractToken` 不校验 token 格式 🟢 P3
+### NEW-4: `extractToken` 不校验 token 格式 🟢 P3 ✅ 已修复
 
 **文件**: [backend/src/services/auth.js:90-101](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/auth.js#L90)
 
@@ -734,32 +739,37 @@ for (const toolCall of validToolCalls) {
 
 ---
 
-## 📋 原审查详细章节但汇总表遗漏项（补充）
+## 📋 原审查"易被忽视"项当前状态追踪
 
-| 编号 | 优先级 | 问题 | 文件 |
-|------|--------|------|------|
-| BUG-12 | 🟢 P3 | `initSkillLogTable` 未 await（防御性） | index.js:44 |
-| PERF-4 | 🟢 P3 | 切换会话 3 个 API 串行调用 | App.jsx:342-365 |
-| PERF-6 | 🟢 P3 | LLM 消息 JSON Blob 全量存储 | llm.js:280 |
-| PERF-7 | 🟢 P3 | `fs.readFileSync` 同步阻塞 | toolFuncs.js:11-16 |
-| SEC-2 | 🟡 P2 | `killProcessOnPort` netstat 解析不可靠 | main.js:166-184 |
-| SEC-3 | 🟢 P3 | LLM 生成 SQL 仅前缀检查（非 AST） | sqlValidator.js:108 |
-| CODE-1 | 🟢 P3 | toolFuncs 格式化代码重复 | toolFuncs.js:249-318 |
-| CODE-2 | 🟢 P3 | config.js 导出对象未使用 | config.js:3-9 |
-| CODE-4 | 🟢 P3 | 前端 40+ useState 难维护 | App.jsx:49-141 |
-| CODE-5 | 🟢 P3 | 空壳 routes（tables/tableSchema/export） | routes/* |
+> *这 10 项是 2026-06-26 复审时发现"详细章节已记录但汇总表未列入"的问题。2026-06-30 已重写汇总表（L25-42）将其全部纳入，此表保留作为易被忽视项的当前状态快照：*
+
+| 编号 | 优先级 | 问题 | 文件 | 当前状态 |
+|------|--------|------|------|---------|
+| BUG-12 | 🟢 P3 | `initSkillLogTable` 未 await（防御性） | index.js:44 | ✅ 已修复 |
+| PERF-4 | 🟢 P3 | 切换会话 3 个 API 串行调用 | App.jsx:342-365 | ✅ 已修复（Promise.allSettled） |
+| PERF-6 | 🟢 P3 | LLM 消息 JSON Blob 全量存储 | llm.js:280 | ⏳ 待修复 |
+| PERF-7 | 🟢 P3 | `fs.readFileSync` 同步阻塞 | toolFuncs.js:11-16 | ✅ 已修复（async 化 + 内部并行） |
+| SEC-2 | 🟢 P3 | `killProcessOnPort` netstat 解析不可靠 | main.js:166-184 | ⏳ 待修复 |
+| SEC-3 | 🟢 P3 | LLM 生成 SQL 仅前缀检查（非 AST） | sqlValidator.js:108 | ⏳ 待修复 |
+| CODE-1 | 🟢 P3 | toolFuncs 格式化代码重复 | toolFuncs.js:249-318 | ⏳ 待修复 |
+| CODE-2 | 🟢 P3 | config.js 导出对象未使用 | config.js:3-9 | ✅ 已修复（重构为唯一入口） |
+| CODE-4 | 🟢 P3 | 前端 40+ useState 难维护 | App.jsx:49-141 | ⏳ 待修复 |
+| CODE-5 | 🟢 P3 | 空壳 routes（tables/tableSchema/export） | routes/* | ⏳ 待修复 |
+
+*小结：10 项中已修 4 项（BUG-12、PERF-4、PERF-7、CODE-2），待修 6 项（PERF-6、SEC-2、SEC-3、CODE-1、CODE-4、CODE-5），无 ⏸️ 不修。*
 
 ---
 
 ## 🎯 建议修复顺序
 
-> **更新日期**: 2026-06-26
+> **更新日期**: 2026-06-30（与汇总表同步）
 
-1. **第一步（立即修复）**: BUG-1 ✅、BUG-2 ✅ — 已完成
-2. **第二步（本周）**: BUG-4 ✅、BUG-5 ✅、BUG-6 ✅ — 全部完成
-3. **第三步（本次迭代）**: BUG-3 ✅、BUG-9 ✅、BUG-11 ✅ — 全部完成 ✅
-4. **第四步（本轮收官）**: BUG-8 ⏸️、BUG-10 ⏸️ — 经评估不进入本轮修复范围
-5. **后续迭代（持续优化）**: P3 全部 12 项 — PERF-1/2/3/5/6/7、SEC-1/2/3、CODE-1/3/4/5；另有 ConfigPanel 4 处 catch 双重 toast 待清理（NEW-5 残留）
+1. **第一步（立即修复）**: BUG-1 ✅、BUG-2 ✅ — 已完成（2026-06-26）
+2. **第二步（本周）**: BUG-4 ✅、BUG-5 ✅、BUG-6 ✅ — 全部完成（2026-06-26）
+3. **第三步（本次迭代）**: BUG-3 ✅、BUG-9 ✅、BUG-11 ✅ — 全部完成 ✅（2026-06-26）
+4. **第四步（首轮收官）**: BUG-8 ⏸️、BUG-10 ⏸️ — 经评估不进入本轮修复范围
+5. **第五步（2026-06-29 增量）**: PERF-7 ✅、NEW-5 ✅、NEW-6 ✅ — 全部完成 ✅
+6. **后续迭代（持续优化）**: P3 剩余 **10 项** — BUG-7、PERF-1/2/5/6、SEC-1/2/3、CODE-1/3/4/5；另有 PERF-3 暂不实施（无长会话场景反馈）
 
 ---
 

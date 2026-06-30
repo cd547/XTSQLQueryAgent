@@ -5,7 +5,7 @@
 ### 代码审查与 P0 修复
 
 #### 审查报告
-- 新增 [CODE_REVIEW_2026-06-26.md](CODE_REVIEW_2026-06-26.md)，全量审查 `backend/`、`frontend/`、`electron/`，发现 6 个严重 Bug + 7 个中等问题 + 7 个性能问题 + 3 个安全问题 + 5 个代码质量问题
+- 新增 [CODE_REVIEW_2026-06-26.md](../reviews/CODE_REVIEW_2026-06-26.md)，全量审查 `backend/`、`frontend/`、`electron/`，共发现 **33 个问题**：12 个 Bug（BUG-1~12）+ 7 个性能问题（PERF-1~7）+ 3 个安全问题（SEC-1~3）+ 5 个代码质量问题（CODE-1~5）+ 6 个本轮新发现（NEW-1~6）
 
 #### P0/P1 已修复
 - **#BUG-1 skill.js 路由未注册**：原 [`backend/src/routes/skill.js`](backend/src/routes/skill.js) 第 208 行 `export default router` 位置错误，导致后续 4 个关键路由永远不会被 Express 注册
@@ -146,7 +146,7 @@
 ### 代码审查与 P0/P1 修复
 
 #### 审查报告
-- 新增 [CODE_REVIEW_2026-06-20.md](CODE_REVIEW_2026-06-20.md)，全量审查 `backend/`、`frontend/`、`electron/`，发现 35 个问题
+- 新增 [CODE_REVIEW_2026-06-20.md](../reviews/CODE_REVIEW_2026-06-20.md)，全量审查 `backend/`、`frontend/`、`electron/`，发现 35 个问题
 - 分类：🔴 P0 高危 5 / 🟠 P1 11 / 🟡 P2 19
 
 #### P0 安全 / 性能
