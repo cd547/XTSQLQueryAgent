@@ -202,3 +202,61 @@ ${sqlOutput}
     businessDomains
   };
 }
+
+/**
+ * 批量检查哪些 SQL 已被当前用户收藏。
+ * 入参 sqlOutputs 数组去空去重，返回按 sqlOutput 索引的对象 map。
+ * 不存在的 sqlOutput 不会出现在 map 中（调用方按"出现"判断 matched）。
+ *
+ * @param {number} userId
+ * @param {string[]} sqlOutputs
+ * @param {() => import('better-sqlite3').Database} [getDbFn]
+ * @returns {Map<string, {id, optimizedQuestion, businessDomains, addTime}>}
+ */
+export function checkFavorites(userId, sqlOutputs, getDbFn) {
+  if (!userId) return new Map();
+  if (!Array.isArray(sqlOutputs) || sqlOutputs.length === 0) return new Map();
+
+  // 去空 + 去重
+  const unique = [...new Set(sqlOutputs.map(s => (s || '').trim()).filter(Boolean))];
+  if (unique.length === 0) return new Map();
+
+  const db = typeof getDbFn === 'function' ? getDbFn() : getDb();
+  const placeholders = unique.map(() => '?').join(',');
+  const rows = db.prepare(`
+    SELECT id, sql_output, optimized_question, business_domains, add_time
+    FROM my_queries
+    WHERE user_id = ? AND sql_output IN (${placeholders})
+  `).all(userId, ...unique);
+
+  const result = new Map();
+  for (const r of rows) {
+    let domains = [];
+    try { domains = JSON.parse(r.business_domains || '[]'); } catch (_) { domains = []; }
+    result.set(r.sql_output, {
+      id: r.id,
+      optimizedQuestion: r.optimized_question,
+      businessDomains: domains,
+      addTime: r.add_time
+    });
+  }
+  return result;
+}
+
+/**
+ * 取消收藏（按 user_id + sql_output 唯一删除）。
+ * 返回 true 表示删了一条；false 表示记录不存在。
+ *
+ * @param {number} userId
+ * @param {string} sqlOutput
+ * @param {() => import('better-sqlite3').Database} [getDbFn]
+ * @returns {boolean}
+ */
+export function deleteFavoriteQuery(userId, sqlOutput, getDbFn) {
+  if (!userId) return false;
+  if (!sqlOutput || !sqlOutput.trim()) return false;
+  const db = typeof getDbFn === 'function' ? getDbFn() : getDb();
+  const result = db.prepare('DELETE FROM my_queries WHERE user_id = ? AND sql_output = ?')
+    .run(userId, sqlOutput.trim());
+  return result.changes > 0;
+}

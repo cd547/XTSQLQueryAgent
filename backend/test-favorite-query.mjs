@@ -16,7 +16,7 @@ const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'fav-query-test-'));
 process.env.SKILL_PATH = testRoot;
 process.env.PROJECT_ROOT = testRoot;
 
-const { extractJsonObject, saveFavoriteQuery } = await import('./src/services/favoriteQuery.js');
+const { extractJsonObject, saveFavoriteQuery, checkFavorites, deleteFavoriteQuery } = await import('./src/services/favoriteQuery.js');
 const { getDomainsForTables, invalidateReverseIndex } = await import('./src/services/skillDomains.js');
 
 let pass = 0;
@@ -311,6 +311,115 @@ const getDbFn = () => db;
     })
   });
   truthy('C11c saveFavoriteQuery 不传 signal 走通', r.id > 0);
+}
+
+// =========================================================
+// D. checkFavorites
+// =========================================================
+console.log('\n=== D. checkFavorites 批量查 ===');
+{
+  // 准备：再插入 2 个收藏（tester 用户），userA 收藏 1 个
+  await saveFavoriteQuery({
+    userId: testUserId,
+    userQuestion: 'A',
+    sqlOutput: 'SELECT 11',
+    getDbFn,
+    llmCaller: async () => ({ content: JSON.stringify({ optimized_question: '查 11', table_names: [] }), usage: {}, model: 'deepseek-chat' })
+  });
+  await saveFavoriteQuery({
+    userId: testUserId,
+    userQuestion: 'B',
+    sqlOutput: 'SELECT 22',
+    getDbFn,
+    llmCaller: async () => ({ content: JSON.stringify({ optimized_question: '查 22', table_names: ['t_user'] }), usage: {}, model: 'deepseek-chat' })
+  });
+  db.prepare(`INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)`).run('userA', 'h', 'user');
+  const userAId = db.prepare(`SELECT id FROM users WHERE username = ?`).get('userA').id;
+  await saveFavoriteQuery({
+    userId: userAId,
+    userQuestion: 'C',
+    sqlOutput: 'SELECT 33',
+    getDbFn,
+    llmCaller: async () => ({ content: JSON.stringify({ optimized_question: 'userA 查 33', table_names: [] }), usage: {}, model: 'deepseek-chat' })
+  });
+
+  // D1. 全部命中
+  {
+    const m = checkFavorites(testUserId, ['SELECT 11', 'SELECT 22'], getDbFn);
+    eq('D1a 全部命中：size', m.size, 2);
+    truthy('D1b 命中含 optimizedQuestion', m.get('SELECT 11')?.optimizedQuestion === '查 11');
+    truthy('D1c 跨域 SQL 命中含业务域', Array.isArray(m.get('SELECT 22')?.businessDomains) && m.get('SELECT 22').businessDomains.length > 0);
+  }
+
+  // D2. 部分命中
+  {
+    const m = checkFavorites(testUserId, ['SELECT 11', 'SELECT_NOT_EXIST'], getDbFn);
+    eq('D2 部分命中：size', m.size, 1);
+    truthy('D2 命中是 SELECT 11', m.has('SELECT 11'));
+    truthy('D2 未命中不在 map', !m.has('SELECT_NOT_EXIST'));
+  }
+
+  // D3. 全部未命中
+  {
+    const m = checkFavorites(testUserId, ['X1', 'X2', 'X3'], getDbFn);
+    eq('D3 全无命中：size', m.size, 0);
+  }
+
+  // D4. 跨用户隔离：testUserId 查不到 userA 的 SELECT 33
+  {
+    const m = checkFavorites(testUserId, ['SELECT 33'], getDbFn);
+    eq('D4 跨用户隔离：tester 查不到 userA 的', m.size, 0);
+    const mA = checkFavorites(userAId, ['SELECT 33'], getDbFn);
+    eq('D4 跨用户隔离：userA 查得到', mA.size, 1);
+  }
+
+  // D5. 空数组
+  {
+    const m = checkFavorites(testUserId, [], getDbFn);
+    eq('D5 空数组返回空 Map', m.size, 0);
+  }
+
+  // D6. 空字符串 / 空白被过滤
+  {
+    const m = checkFavorites(testUserId, ['', '   ', 'SELECT 11'], getDbFn);
+    eq('D6 空字符串被过滤：size', m.size, 1);
+    truthy('D6 命中 SELECT 11', m.has('SELECT 11'));
+  }
+
+  // D7. 去重
+  {
+    const m = checkFavorites(testUserId, ['SELECT 11', 'SELECT 11', 'SELECT 11'], getDbFn);
+    eq('D7 去重后 size=1', m.size, 1);
+  }
+}
+
+// =========================================================
+// E. deleteFavoriteQuery
+// =========================================================
+console.log('\n=== E. deleteFavoriteQuery 取消收藏 ===');
+{
+  // E1. 删存在的
+  const ok = deleteFavoriteQuery(testUserId, 'SELECT 11', getDbFn);
+  truthy('E1 删存在返回 true', ok);
+  const m = checkFavorites(testUserId, ['SELECT 11'], getDbFn);
+  eq('E1 删后 checkFavorites 不再命中', m.size, 0);
+
+  // E2. 删不存在的
+  const ok2 = deleteFavoriteQuery(testUserId, 'SELECT 11', getDbFn);
+  truthy('E2 删不存在的返回 false', !ok2);
+
+  // E3. 跨用户隔离：userA 删不掉 tester 的
+  db.prepare(`INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)`).run('userB', 'h', 'user');
+  const userBId = db.prepare(`SELECT id FROM users WHERE username = ?`).get('userB').id;
+  const ok3 = deleteFavoriteQuery(userBId, 'SELECT 22', getDbFn);
+  truthy('E3 跨用户隔离：userB 删不掉 tester 的', !ok3);
+  // 验证 tester 的仍在
+  const m3 = checkFavorites(testUserId, ['SELECT 22'], getDbFn);
+  eq('E3 tester 的 SELECT 22 仍存在', m3.size, 1);
+
+  // E4. userId 缺失
+  truthy('E4a userId 缺失返回 false', !deleteFavoriteQuery(0, 'x', getDbFn));
+  truthy('E4b sqlOutput 缺失返回 false', !deleteFavoriteQuery(testUserId, '', getDbFn));
 }
 
 // =========================================================

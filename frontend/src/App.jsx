@@ -19,7 +19,7 @@ import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
 import './utils/monacoEnv';
 import { createMarkdownRenderers } from './components/markdownRenderers.jsx';
-import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles, getDomains, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages, saveFavoriteQuery } from './api';
+import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles, getDomains, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages, saveFavoriteQuery, checkFavorites, unfavoriteQuery } from './api';
 
 const { TextArea } = Input;
 const { Sider, Content } = Layout;
@@ -296,7 +296,7 @@ function AuthenticatedApp({ user, logout }) {
     try {
       const data = await getSessionMessages(sessionId);
       if (data.messages) {
-        setMessages(data.messages
+        const loaded = data.messages
           .filter(m => m.role !== 'usage')
           .map(m => ({
             id: `db-${m.id}`,
@@ -305,7 +305,11 @@ function AuthenticatedApp({ user, logout }) {
             sql: m.sql || '',
             timestamp: m.created_at,
             logType: m.role === 'LLM' ? 'llm' : m.role === 'tool_return' ? 'return' : 'call'
-          })));
+          }));
+        setMessages(loaded);
+        // 切换会话时清空旧 favorites 状态再回显本会话的
+        setFavoriteStates({});
+        hydrateFavoriteStates(loaded);
       }
     } catch (e) {
       console.error('加载消息失败:', e);
@@ -524,11 +528,30 @@ function AuthenticatedApp({ user, logout }) {
     await handleExecute(sql, newKey);
   };
 
-  // 收藏为常用 SQL：按 msgId 维护每条消息的收藏状态
+  // 收藏为常用 SQL：按 msgId 维护每条消息的收藏状态（支持 toggle 取消）
   const [favoriteStates, setFavoriteStates] = useState({});
   const handleFavorite = useCallback(async ({ msgId, userQuestion, sqlOutput }) => {
     if (!msgId || !userQuestion || !sqlOutput) return;
-    if (favoriteStates[msgId] === 'loading' || favoriteStates[msgId] === 'done') return;
+    if (favoriteStates[msgId] === 'loading') return;
+    // toggle：已收藏 → 取消；未收藏 → 收藏
+    if (favoriteStates[msgId] === 'done') {
+      setFavoriteStates(prev => ({ ...prev, [msgId]: 'loading' }));
+      try {
+        const res = await unfavoriteQuery(sqlOutput);
+        if (res?.success) {
+          setFavoriteStates(prev => ({ ...prev, [msgId]: 'idle' }));
+          message.success('已取消收藏');
+        } else {
+          setFavoriteStates(prev => ({ ...prev, [msgId]: 'done' }));
+          message.error(res?.message || '取消收藏失败');
+        }
+      } catch (e) {
+        setFavoriteStates(prev => ({ ...prev, [msgId]: 'done' }));
+        const apiMsg = e?.response?.data?.message;
+        message.error(apiMsg || `取消收藏失败: ${e.message}`);
+      }
+      return;
+    }
     setFavoriteStates(prev => ({ ...prev, [msgId]: 'loading' }));
     try {
       const res = await saveFavoriteQuery({ userQuestion, sqlOutput });
@@ -546,6 +569,38 @@ function AuthenticatedApp({ user, logout }) {
       message.error(apiMsg || `收藏失败: ${e.message}`);
     }
   }, [favoriteStates]);
+
+  // 加载消息完成后，批量查询哪些 SQL 已被收藏，把对应 msgId 标为 done
+  const hydrateFavoriteStates = useCallback(async (msgs) => {
+    if (!Array.isArray(msgs) || msgs.length === 0) return;
+    const sqlItems = [];
+    const sqlToMsgIds = new Map();   // sql -> msgId（取第一个匹配）
+    msgs.forEach(m => {
+      if (m.role === 'assistant' && m.sql && m.sql.trim()) {
+        const sql = m.sql.trim();
+        if (!sqlToMsgIds.has(sql)) {
+          sqlToMsgIds.set(sql, m.id);
+          sqlItems.push({ sqlOutput: sql });
+        }
+      }
+    });
+    if (sqlItems.length === 0) return;
+    try {
+      const res = await checkFavorites(sqlItems);
+      const matched = (res?.items || []).filter(it => it.matched);
+      if (matched.length === 0) return;
+      setFavoriteStates(prev => {
+        const next = { ...prev };
+        matched.forEach(it => {
+          const msgId = sqlToMsgIds.get(it.sqlOutput);
+          if (msgId && next[msgId] !== 'loading') next[msgId] = 'done';
+        });
+        return next;
+      });
+    } catch (e) {
+      console.error('回显收藏状态失败:', e);
+    }
+  }, []);
 
   const handleToggleCollapse = useCallback((msgId) => {
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, collapsed: !(m.collapsed ?? true) } : m));

@@ -114,7 +114,7 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
                   className="xtsql-action-btn"
                   icon={favoriteState === 'done' ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined />}
                   loading={favoriteState === 'loading'}
-                  disabled={favoriteState === 'loading' || favoriteState === 'done'}
+                  disabled={favoriteState === 'loading'}
                   onClick={() => onFavorite && onFavorite({ userQuestion, sqlOutput: sql })}
                 >
                   {favoriteState === 'done' ? '已收藏' : '收藏为常用SQL'}

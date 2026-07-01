@@ -201,6 +201,16 @@ export function saveFavoriteQuery({ userQuestion, sqlOutput }) {
   return api.post('/queries/favorite', { userQuestion, sqlOutput }).then(r => r.data);
 }
 
+// 批量检查收藏状态（用于会话回显）
+export function checkFavorites(items) {
+  return api.post('/queries/favorites/check', { items }).then(r => r.data);
+}
+
+// 取消收藏
+export function unfavoriteQuery(sqlOutput) {
+  return api.delete('/queries/favorite', { data: { sqlOutput } }).then(r => r.data);
+}
+
 export function getAgentConfig() {
   return api.get('/config/agent').then(r => r.data);
 }
