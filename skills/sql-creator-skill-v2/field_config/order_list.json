@@ -39,5 +39,18 @@
   ],
   "calculated_fields": {},
   "business_constraints": {},
-  "business_rules": []
+  "business_rules": [
+    {
+      "name": "表的定义",
+      "description": "这是用于记录线上支付的订单的表，不是订单表。"
+    },{
+      "name": "type字段作用",
+      "description": "C端用户下单后，会生成一条记录，type=0,直到用户完成支付后，外部系统会通过回调接口更新成1"
+    },
+    {
+      "name": "pay_time",
+      "description": "格式：YYYYMMDDHHmmss 例20220308221605，表示2022年3月8日22点16分05秒"
+    }
+    
+  ]
 }

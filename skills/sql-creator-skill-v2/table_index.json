@@ -1545,6 +1545,16 @@
       ],
       "business_constraints": [],
       "business_rules": []
+    },
+    {
+      "name": "my_user_openid",
+      "description": "用户openid",
+      "tags": [],
+      "related_tables": [
+        "my_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
     }
   ]
 }

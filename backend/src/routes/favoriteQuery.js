@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { authRequired } from '../services/auth.js';
-import { saveFavoriteQuery, checkFavorites, deleteFavoriteQuery } from '../services/favoriteQuery.js';
+import { saveFavoriteQuery, checkFavorites, deleteFavoriteQuery, getFavoriteSuggestions } from '../services/favoriteQuery.js';
 import { logger } from '../logger.js';
 
 const router = Router();
@@ -82,6 +82,24 @@ router.delete('/favorite', authRequired, (req, res) => {
   } catch (e) {
     logger.error('deleteFavoriteQuery failed', { userId: req.user?.id, error: e.message });
     res.status(500).json({ success: false, code: 'UNFAVORITE_FAILED', message: e.message });
+  }
+});
+
+// 新会话建议：随机从收藏中抽取
+// - admin：跨用户随机
+// - 普通用户：仅自己
+router.get('/suggestions', authRequired, (req, res) => {
+  const count = Math.max(1, Math.min(20, parseInt(req.query.count, 10) || 4));
+  try {
+    const suggestions = getFavoriteSuggestions({
+      userId: req.user.id,
+      role: req.user.role,
+      count
+    });
+    res.json({ success: true, suggestions });
+  } catch (e) {
+    logger.error('getFavoriteSuggestions failed', { userId: req.user?.id, error: e.message });
+    res.status(500).json({ success: false, code: 'SUGGESTIONS_FAILED', message: e.message });
   }
 });
 

@@ -53,6 +53,9 @@ api.interceptors.response.use(
     if (status === 401) {
       setStoredUser(null);
       window.dispatchEvent(new CustomEvent('xtsql:auth-expired'));
+    } else if (status === 429) {
+      // 限流不弹 toast：后端在限制频率，频繁刷新时不要刷一堆错误
+      // 调用方（如 AuthContext.bootstrap）会区分状态码处理
     } else if (status >= 400 && data && data.error) {
       message.error(data.error);
     }
@@ -209,6 +212,11 @@ export function checkFavorites(items) {
 // 取消收藏
 export function unfavoriteQuery(sqlOutput) {
   return api.delete('/queries/favorite', { data: { sqlOutput } }).then(r => r.data);
+}
+
+// 新会话建议：随机从收藏中抽取
+export function getFavoriteSuggestions(count = 4) {
+  return api.get('/queries/suggestions', { params: { count } }).then(r => r.data);
 }
 
 export function getAgentConfig() {

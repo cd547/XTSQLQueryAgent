@@ -1,5 +1,163 @@
 # 更新日志
 
+## 2026-07-01
+
+### 新增功能：我的查询（收藏常用 SQL）
+
+#### 设计文档
+- [2026-07-01-favorite-query.md](../specs/2026-07-01-favorite-query.md)
+- [2026-07-01-favorite-query.md](../plans/2026-07-01-favorite-query.md)
+- 关联：[2026-07-01-new-session-suggestions.md](../specs/2026-07-01-new-session-suggestions.md)（新会话建议从收藏中随机抽取）
+
+#### 需求
+用户在一轮完整对话结束（最终有 SQL）时，点击"收藏为常用 SQL"按钮，系统调用 LLM 优化提问为 ≤30 字精炼标题、识别涉及的业务域，落库到 `my_queries` 表。已收藏的 SQL 在新会话页面以**随机建议**形式被复用。
+
+#### 关键决策
+| # | 决策 | 选择 |
+|---|------|------|
+| 1 | 优化范围 | **只优化 userQuestion**，不动 SQL |
+| 2 | LLM 强制指定 | `FAVORITE_LLM_MODEL` 或 `deepseek-chat`（与业务主链路模型分流） |
+| 3 | 业务域识别 | LLM 提取 table_names → `getDomainsForTables` 反查 |
+| 4 | 去重策略 | `UNIQUE(user_id, sql_output)` + ON CONFLICT DO UPDATE |
+| 5 | 失败行为 | LLM 失败抛 500 + 前端 toast |
+| 6 | 取消收藏 | 按 user_id + sql_output 删除 |
+| 7 | 状态回显 | `loadMessages` 后批量查 `/favorites/check` |
+
+#### 新增/修改的 API
+- **新增**: `POST /api/queries/favorite` — 收藏（LLM 优化 + 业务域识别 + 落库）
+- **新增**: `POST /api/queries/favorites/check` — 批量查询收藏状态
+- **新增**: `DELETE /api/queries/favorite` — 取消收藏
+- **新增**: `GET /api/queries/suggestions?count=4` — 新会话建议（admin 跨用户 / 普通用户仅自己）
+
+#### 数据模型
+```sql
+CREATE TABLE my_queries (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER NOT NULL,
+  user_question TEXT NOT NULL,
+  optimized_question TEXT,
+  sql_output TEXT NOT NULL,
+  business_domains TEXT NOT NULL DEFAULT '[]',
+  created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+  UNIQUE(user_id, sql_output),
+  FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX idx_my_queries_user ON my_queries(user_id);
+```
+
+#### 涉及文件
+- `backend/src/db/sqlite.js`（修改：+ my_queries 表）
+- `backend/src/services/llm.js`（修改：+ `callLlmForFavorite` + LLM 日志基础设施）
+- `backend/src/services/favoriteQuery.js`（新建：4 个核心函数）
+- `backend/src/routes/favoriteQuery.js`（新建：4 个 API）
+- `backend/src/index.js`（修改：注册路由）
+- `frontend/src/api/index.js`（修改：+ 4 个 API 封装）
+- `frontend/src/components/ChatMessage.jsx`（修改：+ 收藏按钮 + 状态机）
+- `frontend/src/App.jsx`（修改：+ state + handler + 回显）
+- `backend/test-favorite-query.mjs`（新建：**74 条**测试全过）
+
+#### 实施工作量
+约 6 小时（后端 3h + 前端 2h + 测试 1h + 文档 30min）
+
+---
+
+### 新增功能：新会话建议从收藏中随机抽取
+
+#### 设计文档
+- [2026-07-01-new-session-suggestions.md](../specs/2026-07-01-new-session-suggestions.md)
+- [2026-07-01-new-session-suggestions.md](../plans/2026-07-01-new-session-suggestions.md)
+
+#### 需求
+新会话页面原 4 个推荐是**写死的字符串**，改为从用户**自己的收藏**中随机抽取。
+- admin：跨所有用户随机
+- 普通用户：仅自己
+- 不足 4 条时返几条就显几个（不补写死）
+- 完全没收藏时前端 fallback 到写死 4 条
+
+#### 关键决策
+| # | 决策 | 选择 |
+|---|------|------|
+| 1 | 抽取字段 | 优先 `optimized_question`，缺失回退 `user_question` |
+| 2 | 触发时机 | mount + 点"新建对话"时各拉一次 |
+| 3 | 顺序 | `ORDER BY RANDOM()` |
+| 4 | 去重 | `GROUP BY q` |
+
+#### 涉及文件
+- `backend/src/services/favoriteQuery.js`（修改：+ `getFavoriteSuggestions`）
+- `backend/src/routes/favoriteQuery.js`（修改：+ GET /suggestions）
+- `frontend/src/api/index.js`（修改：+ API 封装）
+- `frontend/src/App.jsx`（修改：+ state + useEffect + 渲染 fallback）
+
+#### 实施工作量
+约 1.5 小时
+
+---
+
+### 修复：/me 限流拆分 + 429 误判为未登录
+
+#### 设计文档
+- [2026-07-01-rate-limit-split.md](../specs/2026-07-01-rate-limit-split.md)
+- [2026-07-01-rate-limit-split.md](../plans/2026-07-01-rate-limit-split.md)
+
+#### 问题
+- 现象：用户多次刷新页面后被踢回登录页 + 弹"请求过于频繁"toast；之后无法登录
+- 根因：
+  1. `authRateLimiter` (10/小时) 同时给 `/login` `/me` `/logout` 用，刷新几次用完
+  2. AuthContext bootstrap 把 429 误判为"未登录"清掉 user
+  3. axios 拦截器对 4xx 一律 `message.error`，429 弹无意义 toast
+
+#### 关键决策
+| # | 决策 | 选择 |
+|---|------|------|
+| 1 | 限流拆分 | 是 → 新增 `authMeRateLimiter` (100/小时) |
+| 2 | /me /logout 走新 limiter | 是 |
+| 3 | AuthContext 误判修复 | 401 才清 user；其他错误保留本地 user |
+| 4 | axios 拦截器 429 | 不弹 toast |
+| 5 | 配置化 | 否（express-rate-limit 限制，运行时改不生效） |
+
+#### 拆分后额度
+| 端点 | 限流器 | 窗口 | 上限 |
+|------|--------|------|------|
+| POST /login | authRateLimiter | 1h | 10 |
+| POST /register | authRateLimiter | 1h | 10 |
+| POST /change-password | authRateLimiter | 1h | 10 |
+| GET /me | **authMeRateLimiter** | 1h | **100** |
+| POST /logout | **authMeRateLimiter** | 1h | **100** |
+
+#### 涉及文件
+- `backend/src/middleware/rateLimit.js`（修改：+ `authMeRateLimiter`）
+- `backend/src/routes/auth.js`（修改：/me /logout 切换）
+- `frontend/src/context/AuthContext.jsx`（修改：bootstrap catch 分流 401 vs 其他）
+- `frontend/src/api/index.js`（修改：拦截器 429 不弹 toast）
+
+#### 现场操作
+用户已被 429 拦下，需**重启 Electron** 让 in-memory 计数清空。
+
+#### 实施工作量
+约 30 分钟
+
+---
+
+### 新增：favorite LLM 调用日志
+
+#### 需求
+将"我的查询"功能调用大模型的输入和输出保存到文件，按日维度存。
+
+#### 实现
+- 文件名：`favorite_llm_YYYY-MM-DD.log`（与现有 `llm_YYYY-MM-DD.log` 区分）
+- 路径：`config.logPath`（同 `logs/` 目录）
+- 格式：`{ISO timestamp}: {label}\n`（与现有日志一致）
+- 实现：`writeFavoriteLlmLog` + `queueFavLog`（1s 批量刷盘） + `flushFavLogs`
+- 配对：LLM 请求和响应均 `immediate=true`，保证原子落盘
+
+#### 涉及文件
+- `backend/src/services/favoriteQuery.js`（修改：+ 3 个日志辅助函数 + 2 个埋点）
+
+---
+
+# 更新日志
+
 ## 2026-06-30
 
 ### 新增功能：添加表格 - 业务域选择

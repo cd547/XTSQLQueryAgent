@@ -19,10 +19,16 @@ export function AuthProvider({ children }) {
           setStoredUser(data.user);
         }
       } catch (e) {
-        // 401 / 网络异常都视为未登录
-        if (!cancelled) {
-          setUser(null);
-          setStoredUser(null);
+        // 只把 401（token 失效）视为未登录；429/网络异常等保留本地 user，
+        // 避免刷新页面时被 /me 的 10/小时限流踢回登录页
+        const status = e?.response?.status;
+        if (status === 401) {
+          if (!cancelled) {
+            setUser(null);
+            setStoredUser(null);
+          }
+        } else if (!cancelled) {
+          console.warn('bootstrap /me 失败（非 401），保留本地登录态:', status, e?.message);
         }
       } finally {
         if (!cancelled) setBootstrapping(false);

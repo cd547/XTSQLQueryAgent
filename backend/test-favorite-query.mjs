@@ -16,7 +16,7 @@ const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'fav-query-test-'));
 process.env.SKILL_PATH = testRoot;
 process.env.PROJECT_ROOT = testRoot;
 
-const { extractJsonObject, saveFavoriteQuery, checkFavorites, deleteFavoriteQuery } = await import('./src/services/favoriteQuery.js');
+const { extractJsonObject, saveFavoriteQuery, checkFavorites, deleteFavoriteQuery, getFavoriteSuggestions } = await import('./src/services/favoriteQuery.js');
 const { getDomainsForTables, invalidateReverseIndex } = await import('./src/services/skillDomains.js');
 
 let pass = 0;
@@ -420,6 +420,148 @@ console.log('\n=== E. deleteFavoriteQuery 取消收藏 ===');
   // E4. userId 缺失
   truthy('E4a userId 缺失返回 false', !deleteFavoriteQuery(0, 'x', getDbFn));
   truthy('E4b sqlOutput 缺失返回 false', !deleteFavoriteQuery(testUserId, '', getDbFn));
+}
+
+// =========================================================
+// F. getFavoriteSuggestions
+// =========================================================
+console.log('\n=== F. getFavoriteSuggestions 新会话建议 ===');
+{
+  // 当前状态：D 中 tester 用户有 SELECT 22（optimized="查 22"）；E1 删了 SELECT 11
+  // 重新查询跨区块的 userA / userB id
+  const userAId = db.prepare(`SELECT id FROM users WHERE username = ?`).get('userA').id;
+  const userBId = db.prepare(`SELECT id FROM users WHERE username = ?`).get('userB').id;
+  // 准备：插入更多数据用于多场景
+  //  - tester: 收藏 5 条（不同提问）
+  //  - userA: 收藏 2 条
+  //  - userB: 收藏 1 条
+  const testerSeedSqls = ['SELECT 100', 'SELECT 200', 'SELECT 300', 'SELECT 400', 'SELECT 500'];
+  const testerSeedOptimized = ['统计月度活跃用户', '查退款订单', 'Top 10 热销商品', '按渠道分组销售额', '日活趋势'];
+  for (let i = 0; i < testerSeedSqls.length; i++) {
+    await saveFavoriteQuery({
+      userId: testUserId,
+      userQuestion: `tester 原始 ${i}`,
+      sqlOutput: testerSeedSqls[i],
+      getDbFn,
+      llmCaller: async () => ({
+        content: JSON.stringify({ optimized_question: testerSeedOptimized[i], table_names: [] }),
+        usage: {}, model: 'deepseek-chat'
+      })
+    });
+  }
+  // 重复收藏同一提问（验证 GROUP BY 去重）
+  await saveFavoriteQuery({
+    userId: testUserId,
+    userQuestion: 'tester 原始 0（重复）',
+    sqlOutput: 'SELECT 100_dup',
+    getDbFn,
+    llmCaller: async () => ({
+      content: JSON.stringify({ optimized_question: '统计月度活跃用户', table_names: [] }),
+      usage: {}, model: 'deepseek-chat'
+    })
+  });
+  // 优化标题为空的收藏（验证回退到 user_question）
+  await saveFavoriteQuery({
+    userId: testUserId,
+    userQuestion: '只收藏未优化的问题',
+    sqlOutput: 'SELECT 999',
+    getDbFn,
+    llmCaller: async () => ({
+      content: JSON.stringify({ optimized_question: '', table_names: [] }),
+      usage: {}, model: 'deepseek-chat'
+    })
+  });
+
+  // userA、userB 收藏
+  for (const [q, sql] of [['userA 查询 1', 'SELECT_A1'], ['userA 查询 2', 'SELECT_A2']]) {
+    await saveFavoriteQuery({
+      userId: userAId,
+      userQuestion: q,
+      sqlOutput: sql,
+      getDbFn,
+      llmCaller: async () => ({
+        content: JSON.stringify({ optimized_question: q.replace('userA ', 'userA优'), table_names: [] }),
+        usage: {}, model: 'deepseek-chat'
+      })
+    });
+  }
+  await saveFavoriteQuery({
+    userId: userBId,
+    userQuestion: 'userB 查询 1',
+    sqlOutput: 'SELECT_B1',
+    getDbFn,
+    llmCaller: async () => ({
+      content: JSON.stringify({ optimized_question: 'userB优 查询', table_names: [] }),
+      usage: {}, model: 'deepseek-chat'
+    })
+  });
+
+  // F1. 普通用户：仅自己
+  {
+    const s = getFavoriteSuggestions({ userId: testUserId, role: 'user', count: 20, getDbFn });
+    // tester 总收藏：5 (D 中 SELECT 22) + 5 (seed) + 1 (重复去重) + 1 (未优化回退) = 11 条（去重后 10 条 unique q）
+    truthy('F1a 普通用户只取自己（无 userA/B）',
+      s.every(x => !x.includes('userA') && !x.includes('userB')));
+    // 含去重后的"统计月度活跃用户"（1 条）
+    const countDup = s.filter(x => x === '统计月度活跃用户').length;
+    eq('F1b GROUP BY 去重生效', countDup, 1);
+    // 含回退的 user_question
+    truthy('F1c 含回退的 user_question', s.includes('只收藏未优化的问题'));
+    // 含优化标题
+    truthy('F1d 含优化标题', s.includes('统计月度活跃用户'));
+    // 不超过 count
+    truthy('F1e 不超过 count', s.length <= 20);
+  }
+
+  // F2. admin：跨用户
+  {
+    const s = getFavoriteSuggestions({ userId: testUserId, role: 'admin', count: 30, getDbFn });
+    // admin 应该能看到 userA 的收藏
+    const hasUserA = s.some(x => x.includes('userA优'));
+    const hasUserB = s.some(x => x.includes('userB优'));
+    truthy('F2a admin 跨用户：含 userA', hasUserA);
+    truthy('F2b admin 跨用户：含 userB', hasUserB);
+  }
+
+  // F3. admin vs 普通用户：结果不应完全相同（随机 + 数据量差异）
+  {
+    const admin = getFavoriteSuggestions({ userId: testUserId, role: 'admin', count: 4, getDbFn });
+    const user = getFavoriteSuggestions({ userId: testUserId, role: 'user', count: 4, getDbFn });
+    // 多次采样验证 admin 至少偶尔出现 userA/B 的内容
+    let adminSaw = 0;
+    for (let i = 0; i < 30; i++) {
+      const s = getFavoriteSuggestions({ userId: testUserId, role: 'admin', count: 5, getDbFn });
+      if (s.some(x => x.includes('userA') || x.includes('userB'))) adminSaw++;
+    }
+    truthy('F3 admin 30 次采样大部分都能跨用户', adminSaw >= 15);
+  }
+
+  // F4. 不足 count 条时返回所有
+  {
+    // userB 只有 1 条收藏
+    const s = getFavoriteSuggestions({ userId: userBId, role: 'user', count: 4, getDbFn });
+    eq('F4 userB 只有 1 条收藏：返 1 条', s.length, 1);
+  }
+
+  // F5. 空收藏：返 []
+  {
+    db.prepare(`INSERT INTO users (username, password_hash, role) VALUES (?, ?, ?)`).run('userEmpty', 'h', 'user');
+    const emptyId = db.prepare(`SELECT id FROM users WHERE username = ?`).get('userEmpty').id;
+    const s = getFavoriteSuggestions({ userId: emptyId, role: 'user', count: 4, getDbFn });
+    eq('F5 空收藏返 []', s.length, 0);
+  }
+
+  // F6. userId 缺失
+  {
+    const s = getFavoriteSuggestions({ userId: 0, role: 'admin', count: 4, getDbFn });
+    eq('F6 userId 缺失返 []', s.length, 0);
+  }
+
+  // F7. 默认 count=4
+  {
+    const s = getFavoriteSuggestions({ userId: testUserId, role: 'user', getDbFn });
+    truthy('F7 默认 count=4：不超过 4', s.length <= 4);
+  }
 }
 
 // =========================================================

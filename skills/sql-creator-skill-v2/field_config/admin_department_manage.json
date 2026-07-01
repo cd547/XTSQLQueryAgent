@@ -44,5 +44,5 @@
   
   "business_constraints": {},
   
-  "business_rules": ["改表是配置部门与权限与人员的关系表"]
+  "business_rules": ["该表是配置部门与权限与人员的关系表"]
 }

@@ -260,3 +260,48 @@ export function deleteFavoriteQuery(userId, sqlOutput, getDbFn) {
     .run(userId, sqlOutput.trim());
   return result.changes > 0;
 }
+
+/**
+ * 从收藏中随机抽取建议问题。
+ * - admin：跨用户随机
+ * - 普通用户：仅自己
+ * - 优先取 optimized_question（LLM 优化后的标题），缺失或空时回退 user_question
+ * - 去重：同问题多次收藏只返一次
+ * - 不足 count 条时返回所有可用的（不补占位）
+ *
+ * @param {object} params
+ * @param {number} params.userId
+ * @param {string} [params.role]   'admin' | 'user' | 其他
+ * @param {number} [params.count] 默认 4
+ * @param {() => import('better-sqlite3').Database} [params.getDbFn]
+ * @returns {string[]}
+ */
+export function getFavoriteSuggestions({ userId, role, count = 4, getDbFn } = {}) {
+  if (!userId) return [];
+  const db = typeof getDbFn === 'function' ? getDbFn() : getDb();
+
+  // 优化标题优先，缺失回退原始提问；过滤空字符串与纯空白
+  // admin 跨用户；普通用户仅自己
+  const isAdmin = role === 'admin';
+  const whereUser = isAdmin ? '' : 'WHERE user_id = ?';
+  const sql = `
+    SELECT q FROM (
+      SELECT
+        COALESCE(NULLIF(TRIM(optimized_question), ''), TRIM(user_question)) AS q
+      FROM my_queries
+      ${whereUser}
+    )
+    WHERE q != '' AND q IS NOT NULL
+    GROUP BY q
+    ORDER BY RANDOM()
+    LIMIT ?
+  `;
+
+  let rows;
+  if (isAdmin) {
+    rows = db.prepare(sql).all(count);
+  } else {
+    rows = db.prepare(sql).all(userId, count);
+  }
+  return rows.map(r => r.q).filter(Boolean);
+}

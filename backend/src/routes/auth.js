@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getDb } from '../db/sqlite.js';
 import { authRequired, hashPassword, comparePassword, signToken, setAuthCookie, clearAuthCookie } from '../services/auth.js';
-import { authRateLimiter } from '../middleware/rateLimit.js';
+import { authRateLimiter, authMeRateLimiter } from '../middleware/rateLimit.js';
 import { logger } from '../logger.js';
 
 const router = Router();
@@ -82,12 +82,15 @@ router.post('/login', authRateLimiter, async (req, res) => {
 });
 
 // GET /api/auth/me  当前登录用户信息
-router.get('/me', authRateLimiter, authRequired, (req, res) => {
+// 用单独的 authMeRateLimiter (100/小时) 而非 authRateLimiter (10/小时)：
+// 每次页面刷新都会调用 /me，10/小时会因连续刷新被误踢回登录页。
+router.get('/me', authMeRateLimiter, authRequired, (req, res) => {
   res.json({ user: req.user });
 });
 
 // POST /api/auth/logout  退出登录（清理 cookie；前端跳转登录页）
-router.post('/logout', authRateLimiter, authRequired, (req, res) => {
+// 同样放宽到 authMeRateLimiter，避免登出本身被限流。
+router.post('/logout', authMeRateLimiter, authRequired, (req, res) => {
   try {
     // 递增 token_version 让当前 token 立刻失效（即便客户端保留旧的也用不了）
     const nextTv = (req.user.token_version || 0) + 1;

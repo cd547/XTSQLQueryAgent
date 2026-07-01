@@ -19,7 +19,7 @@ import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
 import './utils/monacoEnv';
 import { createMarkdownRenderers } from './components/markdownRenderers.jsx';
-import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles, getDomains, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages, saveFavoriteQuery, checkFavorites, unfavoriteQuery } from './api';
+import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles, getDomains, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages, saveFavoriteQuery, checkFavorites, unfavoriteQuery, getFavoriteSuggestions } from './api';
 
 const { TextArea } = Input;
 const { Sider, Content } = Layout;
@@ -364,6 +364,8 @@ function AuthenticatedApp({ user, logout }) {
       setResults([]);
       setShowResults(false);
       messageCountRef.current = 0;
+      // 拉取新会话建议（用户决策：点新建对话时重新拉）
+      fetchChatSuggestions();
     } catch (e) {
       message.error('创建会话失败');
     }
@@ -605,6 +607,24 @@ function AuthenticatedApp({ user, logout }) {
   const handleToggleCollapse = useCallback((msgId) => {
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, collapsed: !(m.collapsed ?? true) } : m));
   }, []);
+
+  // 新会话建议：从用户自己的收藏（admin 跨用户）随机抽 4 条
+  // 不足 4 条时返回几条就显几个；接口失败/未登录时显示空数组，由渲染层 fallback 到写死
+  const [chatSuggestions, setChatSuggestions] = useState([]);
+  const fetchChatSuggestions = useCallback(async () => {
+    try {
+      const res = await getFavoriteSuggestions(4);
+      setChatSuggestions(Array.isArray(res?.suggestions) ? res.suggestions : []);
+    } catch (e) {
+      console.error('获取建议失败:', e);
+      setChatSuggestions([]);
+    }
+  }, []);
+
+  // 首次进入/刷新页面：立即拉一次建议（解决"刷新后还显示写死"的问题）
+  useEffect(() => {
+    fetchChatSuggestions();
+  }, [fetchChatSuggestions]);
   
   const handleSend = async () => {
     if (!input.trim() || loading) return;
@@ -1299,7 +1319,10 @@ const explainColumns = useMemo(() => explainResults.length > 0
                     <div className="xtsql-empty-title">开始新对话</div>
                     <div className="xtsql-empty-desc">用自然语言描述你想要的查询，AI 会自动生成 SQL 并执行</div>
                     <div className="xtsql-suggestion-list">
-                      {['查询2024年的销售额', '统计每个分类的商品数量', '查找销售额最高的10个客户', '分析最近30天的订单趋势'].map(s => (
+                      {(chatSuggestions.length > 0
+                        ? chatSuggestions
+                        : ['查询2024年的销售额', '统计每个分类的商品数量', '查找销售额最高的10个客户', '分析最近30天的订单趋势']
+                      ).map(s => (
                         <div key={s} className="xtsql-suggestion" onClick={() => setInput(s)}>
                           {s}
                         </div>
