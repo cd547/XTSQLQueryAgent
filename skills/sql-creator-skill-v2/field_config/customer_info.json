@@ -30,8 +30,7 @@
       "description": "1个客户对应1条线索扩展信息（STRAIGHT_JOIN强制关联）",
       "fields_mapping": {
         "customer_code": "code"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联教育信息",
@@ -41,8 +40,7 @@
       "description": "1个客户对应1条教育信息",
       "fields_mapping": {
         "customer_code": "code"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联意向信息",
@@ -52,8 +50,7 @@
       "description": "1个客户对应1条意向信息",
       "fields_mapping": {
         "customer_code": "code"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联线索池",
@@ -63,8 +60,7 @@
       "description": "1个客户在线索池中有1条记录（顾问类型、启用状态）",
       "fields_mapping": {
         "customer_code": "code"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联创建人",
@@ -74,8 +70,7 @@
       "description": "多个客户可由同一个后台用户创建",
       "fields_mapping": {
         "id": "create_by"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联线索标签",
@@ -85,8 +80,7 @@
       "description": "1个客户可有多个标签（通过EXISTS子查询关联）",
       "fields_mapping": {
         "customer_code": "code"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联联系方式",
@@ -96,8 +90,7 @@
       "description": "1个客户可有多个联系方式（手机号、微信号、邮箱）",
       "fields_mapping": {
         "customer_code": "code"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联自动分配结果",
@@ -107,15 +100,13 @@
       "description": "1个客户可有多条自动分配结果记录",
       "fields_mapping": {
         "customer_code": "code"
-      },
-      "business_rule": ""
+      }
     }
   ],
 
   "calculated_fields": {},
 
   "business_constraints": {
-    "deleted": "查询时需加 deleted = 0 过滤已删除数据"
   },
 
   "business_rules": []

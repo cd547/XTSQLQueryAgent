@@ -1,9 +1,38 @@
 {
   "table_name": "study_abroad_apply_online_person_info",
-  "field_aliases": {},
+
+  "field_aliases": {
+  },
+
   "field_enums": {},
-  "virtual_associations": [],
+
+  "virtual_associations": [
+    {
+      "name": "关联学生规划信息",
+      "target_table": "study_abroad_planning_info",
+      "join_condition": "study_abroad_planning_info.student_id = study_abroad_apply_online_person_info.student_id",
+      "type": "many_to_one",
+      "description": "多条网申个人信息可属于同一学生",
+      "fields_mapping": {
+        "id": "student_id"
+      }
+    },
+    {
+      "name": "关联操作人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = study_abroad_apply_online_person_info.operator_id",
+      "type": "many_to_one",
+      "description": "多条网申个人信息可由同一操作人操作",
+      "fields_mapping": {
+        "id": "operator_id"
+      }
+    }
+  ],
+
   "calculated_fields": {},
-  "business_constraints": {},
+
+  "business_constraints": {
+  },
+
   "business_rules": []
 }

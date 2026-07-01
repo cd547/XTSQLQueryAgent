@@ -1,9 +1,61 @@
 {
   "table_name": "study_abroad_proofread_book",
-  "field_aliases": {},
-  "field_enums": {},
-  "virtual_associations": [],
+
+  "field_aliases": {
+    "application_major": ["专业方向", "申请专业"],
+    "course_code": ["课程代码", "专业代码"],
+    "course_website_address": ["课程网址", "专业链接"],
+    "course_name": ["课程名称", "专业名称"],
+    "study_abroad_major_id": ["专业方向ID"]
+  },
+
+  "field_enums": {
+    "status": {
+      "0": "未定校",
+      "1": "已定校"
+    }
+  },
+
+  "virtual_associations": [
+    {
+      "name": "关联学生规划信息",
+      "target_table": "study_abroad_planning_info",
+      "join_condition": "study_abroad_planning_info.student_id = study_abroad_proofread_book.student_id",
+      "type": "many_to_one",
+      "description": "多条定校书记录可属于同一学生",
+      "fields_mapping": {
+        "id": "student_id"
+      }
+    },
+    {
+      "name": "关联操作人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = study_abroad_proofread_book.operator_user_id",
+      "type": "many_to_one",
+      "description": "多条定校记录可由同一操作人操作",
+      "fields_mapping": {
+        "id": "operator_user_id"
+      }
+    },
+    {
+      "name": "关联专业方向",
+      "target_table": "study_abroad_major",
+      "join_condition": "study_abroad_major.id = study_abroad_proofread_book.study_abroad_major_id",
+      "type": "many_to_one",
+      "description": "多条定校记录可属于同一专业方向",
+      "fields_mapping": {
+        "id": "study_abroad_major_id"
+      }
+    }
+  ],
+
   "calculated_fields": {},
-  "business_constraints": {},
+
+  "business_constraints": {
+    "status_flow": "定校状态流转：0(未定校) -> 1(已定校)。支持确认定校和取消定校操作",
+    "application_country": "申请国家字段存储StudyAbroadCountryEnum对应code的逗号分隔字符串，支持多国家",
+    "admission_time_str": "admissionTimeStr和applicationDeadlineStr为格式化后的字符串字段（yyyy-MM-dd），对应的Date字段为admissionTime和applicationDeadline"
+  },
+
   "business_rules": []
 }

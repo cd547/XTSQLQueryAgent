@@ -17,8 +17,7 @@
       "description": "多条标签关系记录可属于同一客户",
       "fields_mapping": {
         "code": "customer_code"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联标签定义",
@@ -28,15 +27,13 @@
       "description": "多条标签关系记录可引用同一标签定义",
       "fields_mapping": {
         "code": "label_code"
-      },
-      "business_rule": ""
+      }
     }
   ],
 
   "calculated_fields": {},
 
   "business_constraints": {
-    "deleted": "查询时需加 deleted = 0 过滤已删除数据",
     "usage_pattern": "通常在查询customer_info时通过EXISTS子查询条件使用，例如：EXISTS (SELECT 1 FROM customer_label_rel clr WHERE clr.customer_code = main.code AND clr.deleted = 0 AND clr.label_code IN (...))"
   },
 

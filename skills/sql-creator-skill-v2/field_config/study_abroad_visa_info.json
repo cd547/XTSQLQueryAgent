@@ -1,9 +1,48 @@
 {
   "table_name": "study_abroad_visa_info",
-  "field_aliases": {},
-  "field_enums": {},
-  "virtual_associations": [],
+
+  "field_aliases": {
+  },
+
+  "field_enums": {
+    "status": {
+      "0": "未提交",
+      "1": "已提交",
+      "2": "已获得",
+      "3": "被拒签"
+    }
+  },
+
+  "virtual_associations": [
+    {
+      "name": "关联Offer信息",
+      "target_table": "study_abroad_offer_info",
+      "join_condition": "study_abroad_offer_info.id = study_abroad_visa_info.offer_id",
+      "type": "one_to_one",
+      "description": "1个offer对应1条签证信息",
+      "fields_mapping": {
+        "id": "offer_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联学生规划信息",
+      "target_table": "study_abroad_planning_info",
+      "join_condition": "study_abroad_planning_info.student_id = study_abroad_visa_info.student_id",
+      "type": "many_to_one",
+      "description": "多条签证信息可属于同一学生",
+      "fields_mapping": {
+        "id": "student_id"
+      }
+    }
+  ],
+
   "calculated_fields": {},
-  "business_constraints": {},
+
+  "business_constraints": {
+    "status_flow": "签证状态流转：0(未提交) -> 1(已提交) -> 2(已获得) 或 3(被拒签)",
+    "attachment": "签证附件通过study_abroad_attachment表管理（type=3）"
+  },
+
   "business_rules": []
 }

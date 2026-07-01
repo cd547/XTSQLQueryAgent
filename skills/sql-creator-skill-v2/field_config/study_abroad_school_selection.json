@@ -1,9 +1,70 @@
 {
   "table_name": "study_abroad_school_selection",
-  "field_aliases": {},
-  "field_enums": {},
-  "virtual_associations": [],
+
+  "field_aliases": {
+  },
+
+  "field_enums": {
+    "sign_status": {
+      "0": "未签署",
+      "1": "已签署"
+    },
+    "sync_status": {
+      "0": "未同步",
+      "1": "已同步"
+    }
+  },
+
+  "virtual_associations": [
+    {
+      "name": "关联学生规划信息",
+      "target_table": "study_abroad_planning_info",
+      "join_condition": "study_abroad_planning_info.student_id = study_abroad_school_selection.student_id",
+      "type": "many_to_one",
+      "description": "多条定校书PDF可属于同一学生",
+      "fields_mapping": {
+        "id": "student_id"
+      }
+    },
+    {
+      "name": "关联规划信息(planInfoId)",
+      "target_table": "study_abroad_planning_info",
+      "join_condition": "study_abroad_planning_info.id = study_abroad_school_selection.plan_info_id",
+      "type": "many_to_one",
+      "description": "多条定校书PDF可关联同一规划信息",
+      "fields_mapping": {
+        "id": "plan_info_id"
+      }
+    },
+    {
+      "name": "关联乙方签约人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = study_abroad_school_selection.second_part_user_id",
+      "type": "many_to_one",
+      "description": "多条定校书PDF可由同一乙方签约人签署",
+      "fields_mapping": {
+        "id": "second_part_user_id"
+      }
+    },
+    {
+      "name": "关联乙方项目负责人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = study_abroad_school_selection.second_part_personal_id",
+      "type": "many_to_one",
+      "description": "多条定校书PDF可由同一项目负责人签署",
+      "fields_mapping": {
+        "id": "second_part_personal_id"
+      }
+    }
+  ],
+
   "calculated_fields": {},
-  "business_constraints": {},
+
+  "business_constraints": {
+    "sign_flow": "签署流程：甲方（学生+家长）在线签署 -> 乙方（签约人+项目负责人）签署。signStatus控制签署状态",
+    "file": "文件通过fileCode（文件唯一编码）关联文件存储系统，fileName为显示文件名",
+    "sync": "syncStatus控制定校书同步到外部系统的状态（如PDF生成同步）"
+  },
+
   "business_rules": []
 }

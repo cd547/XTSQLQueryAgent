@@ -24,8 +24,7 @@
       "description": "多条联系方式记录可属于同一客户",
       "fields_mapping": {
         "code": "customer_code"
-      },
-      "business_rule": ""
+      }
     }
   ],
 

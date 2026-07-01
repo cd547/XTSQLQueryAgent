@@ -67,15 +67,13 @@
       "description": "多条意向记录属于不同客户（实际业务中1个客户只有1条意向信息）",
       "fields_mapping": {
         "code": "customer_code"
-      },
-      "business_rule": ""
+      }
     }
   ],
 
   "calculated_fields": {},
 
   "business_constraints": {
-    "deleted": "查询时需加 deleted = 0 过滤已删除数据"
   },
 
   "business_rules": []

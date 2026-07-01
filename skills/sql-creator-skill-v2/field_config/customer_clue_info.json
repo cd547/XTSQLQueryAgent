@@ -165,8 +165,7 @@
       "description": "1条线索扩展信息对应1个客户（STRAIGHT_JOIN强制关联）",
       "fields_mapping": {
         "code": "customer_code"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联一级渠道",
@@ -176,8 +175,7 @@
       "description": "多条线索可归属同一一级渠道",
       "fields_mapping": {
         "channel_code": "level1_channel_code"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联二级渠道",
@@ -217,8 +215,7 @@
       "description": "多条线索可归属同一三级渠道",
       "fields_mapping": {
         "channel_code": "level3_channel_code"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联四级渠道",
@@ -228,8 +225,7 @@
       "description": "多条线索可归属同一四级渠道",
       "fields_mapping": {
         "channel_code": "level4_channel_code"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联五级渠道",
@@ -239,8 +235,7 @@
       "description": "多条线索可归属同一五级渠道",
       "fields_mapping": {
         "channel_code": "level5_channel_code"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联负责顾问",
@@ -250,8 +245,7 @@
       "description": "多条线索可由同一顾问负责",
       "fields_mapping": {
         "id": "charge_person_id"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联前负责人",
@@ -261,8 +255,7 @@
       "description": "多条线索可有相同的前负责人",
       "fields_mapping": {
         "id": "before_charge_person_id"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联TMK人员",
@@ -272,8 +265,7 @@
       "description": "多条线索可由同一TMK跟进",
       "fields_mapping": {
         "id": "tmk_user_id"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联当前销售",
@@ -283,8 +275,7 @@
       "description": "多条线索可分配给同一销售",
       "fields_mapping": {
         "id": "sale_user_id"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联创建人",
@@ -294,8 +285,7 @@
       "description": "多条线索可由同一后台用户录入",
       "fields_mapping": {
         "id": "create_by"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联TMK递交人",
@@ -305,8 +295,7 @@
       "description": "多条线索可由同一TMK递交",
       "fields_mapping": {
         "id": "submitter_id"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联预负责人",
@@ -316,8 +305,7 @@
       "description": "多条线索可有相同的预负责人（科桥/克勒）",
       "fields_mapping": {
         "id": "pre_sale_id"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联首次创建人",
@@ -327,8 +315,7 @@
       "description": "多条线索可有相同的首次创建人",
       "fields_mapping": {
         "id": "first_create_by"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联咨询校区",
@@ -368,7 +355,6 @@
   "calculated_fields": {},
 
   "business_constraints": {
-    "deleted": "查询时需加 deleted = 0 过滤已删除数据",
     "org": "org字段区分事业部：0-渊学通 1-科桥 2-克勒 3-择校圈",
     "data_permission": "查询时有数据权限控制：非白名单用户需限制create_by或渠道维护人或校区负责人"
   },

@@ -813,7 +813,9 @@
       ],
       "related_tables": [
         "study_abroad_planning_info",
-        "edu_student"
+        "edu_student",
+        "study_abroad_apply_online_info",
+        "study_abroad_apply_online_person_info"
       ],
       "business_constraints": [],
       "business_rules": [
@@ -858,7 +860,8 @@
       "related_tables": [
         "study_abroad_planning_info",
         "study_abroad_apply_online_info",
-        "edu_student"
+        "edu_student",
+        "admin_user"
       ],
       "business_constraints": [],
       "business_rules": [
@@ -900,7 +903,9 @@
       "related_tables": [
         "study_abroad_document",
         "study_abroad_document_materials",
-        "study_abroad_apply_online_info"
+        "study_abroad_apply_online_info",
+        "study_abroad_offer_info",
+        "study_abroad_visa_info"
       ],
       "business_constraints": [
         "附件表通常用于保存留学业务中上传的文件资源",
@@ -943,7 +948,8 @@
       "related_tables": [
         "study_abroad_planning_info",
         "study_abroad_major",
-        "edu_student"
+        "edu_student",
+        "admin_user"
       ],
       "business_constraints": [
         "查询时可通过 student_id 与规划信息关联，也可通过 study_abroad_major_id 与专业方向关联"
@@ -966,7 +972,8 @@
         "study_abroad_planning_info",
         "study_abroad_document_attachment",
         "study_abroad_document_materials",
-        "edu_student"
+        "edu_student",
+        "study_abroad_major"
       ],
       "business_constraints": [],
       "business_rules": []
@@ -1007,7 +1014,8 @@
         "study_abroad_planning_info",
         "study_abroad_document",
         "study_abroad_proofread_book",
-        "edu_student"
+        "edu_student",
+        "study_abroad_document_attachment"
       ],
       "business_constraints": [],
       "business_rules": [
@@ -1118,7 +1126,10 @@
         "study_abroad_visa_info",
         "study_abroad_major",
         "order_student",
-        "edu_student"
+        "edu_student",
+        "admin_user",
+        "order_list",
+        "customer_clue_info"
       ],
       "business_constraints": [],
       "business_rules": [
@@ -1185,7 +1196,9 @@
       "related_tables": [
         "study_abroad_apply_online_info",
         "study_abroad_document_materials",
-        "study_abroad_planning_info"
+        "study_abroad_planning_info",
+        "admin_user",
+        "study_abroad_major"
       ],
       "business_constraints": [],
       "business_rules": [
@@ -1228,7 +1241,8 @@
       "related_tables": [
         "study_abroad_planning_info",
         "study_abroad_school_selection_detail",
-        "edu_student"
+        "edu_student",
+        "admin_user"
       ],
       "business_constraints": [],
       "business_rules": [

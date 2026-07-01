@@ -2,8 +2,81 @@
   "table_name": "admin_pay_order",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联线上支付订单",
+      "target_table": "order_list",
+      "join_condition": "order_list.id = admin_pay_order.order_list_id",
+      "type": "many_to_one",
+      "description": "支付单关联的线上支付订单",
+      "fields_mapping": {
+        "id": "order_list_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联学生",
+      "target_table": "edu_student",
+      "join_condition": "edu_student.id = admin_pay_order.edu_student_id",
+      "type": "many_to_one",
+      "description": "支付单关联的学生",
+      "fields_mapping": {
+        "id": "edu_student_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联商品",
+      "target_table": "goods_list",
+      "join_condition": "goods_list.id = admin_pay_order.goods_list_id",
+      "type": "many_to_one",
+      "description": "支付单关联的商品",
+      "fields_mapping": {
+        "id": "goods_list_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联创建人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = admin_pay_order.admin_user_id",
+      "type": "many_to_one",
+      "description": "支付单的创建人",
+      "fields_mapping": {
+        "id": "admin_user_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联平台",
+      "target_table": "admin_division",
+      "join_condition": "admin_division.id = admin_pay_order.admin_division_id",
+      "type": "many_to_one",
+      "description": "支付单关联的平台/事业部",
+      "fields_mapping": {
+        "id": "admin_division_id"
+      },
+      "business_rule": ""
+    },
+    {
+      "name": "关联取消操作人",
+      "target_table": "admin_user",
+      "alias": "del_admin_user",
+      "join_condition": "del_admin_user.id = admin_pay_order.del_admin_user_id",
+      "type": "many_to_one",
+      "description": "取消支付单的操作人",
+      "fields_mapping": {
+        "id": "del_admin_user_id"
+      },
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
-  "business_rules": []
+  "business_rules": [
+    {
+      "name": "支付单的定义",
+      "description": "支付单可以通过admin_pay_order_student对应多条订单"
+    }
+  ]
 }

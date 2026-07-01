@@ -36,8 +36,7 @@
       "description": "多条自动分配结果记录可属于同一客户",
       "fields_mapping": {
         "code": "customer_code"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联分配员工",
@@ -47,8 +46,7 @@
       "description": "多条分配记录可分配给同一员工",
       "fields_mapping": {
         "id": "admin_user_id"
-      },
-      "business_rule": ""
+      }
     },
     {
       "name": "关联线索池",

@@ -1,9 +1,50 @@
 {
   "table_name": "study_abroad_apply_online_info",
-  "field_aliases": {},
-  "field_enums": {},
-  "virtual_associations": [],
+
+  "field_aliases": {
+  },
+
+  "field_enums": {
+    "status": {
+      "0": "未提交",
+      "1": "已提交",
+      "2": "已录取",
+      "3": "已放弃"
+    },
+    "interview": {
+      "0": "无面试",
+      "1": "有面试"
+    }
+  },
+
+  "virtual_associations": [
+    {
+      "name": "关联定校书",
+      "target_table": "study_abroad_proofread_book",
+      "join_condition": "study_abroad_proofread_book.id = study_abroad_apply_online_info.book_id",
+      "type": "many_to_one",
+      "description": "多条网申信息可关联同一本定校书",
+      "fields_mapping": {
+        "id": "book_id"
+      }
+    },
+    {
+      "name": "关联学生规划信息",
+      "target_table": "study_abroad_planning_info",
+      "join_condition": "study_abroad_planning_info.student_id = study_abroad_apply_online_info.student_id",
+      "type": "many_to_one",
+      "description": "多条网申信息可属于同一学生",
+      "fields_mapping": {
+        "id": "student_id"
+      }
+    }
+  ],
+
   "calculated_fields": {},
-  "business_constraints": {},
+
+  "business_constraints": {
+    "status_flow": "状态流转：0(未提交) -> 1(已提交) -> 2(已录取)；可从任意状态变为3(已放弃)"
+  },
+
   "business_rules": []
 }

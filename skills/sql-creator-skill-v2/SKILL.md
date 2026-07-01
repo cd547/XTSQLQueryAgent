@@ -1,5 +1,5 @@
 ---
-name: SQL生成器V2
+name: SQL生成器
 description: 域路由→表索引→字段配置→DDL，生成 MySQL 5.7 SQL
 ---
 ## 核心规则（必须遵守）

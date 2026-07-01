@@ -1,9 +1,85 @@
 {
   "table_name": "study_abroad_copy_writer",
-  "field_aliases": {},
-  "field_enums": {},
-  "virtual_associations": [],
+
+  "field_aliases": {
+    "transfer_teacher_id": ["转案老师ID"],
+    "copywriting_teacher_id": ["文案老师ID"],
+    "application_major": ["专业方向", "申请专业"],
+    "study_abroad_major_id": ["专业方向ID"]
+  },
+
+  "field_enums": {
+    "application_level": {
+      "1": "中学",
+      "2": "本科",
+      "3": "硕士",
+      "4": "博士"
+    },
+    "transfer_status": {
+      "0": "未转案",
+      "1": "已转案"
+    }
+  },
+
+  "virtual_associations": [
+    {
+      "name": "关联学生规划信息",
+      "target_table": "study_abroad_planning_info",
+      "join_condition": "study_abroad_planning_info.student_id = study_abroad_copy_writer.student_id",
+      "type": "one_to_one",
+      "description": "1个学生对应1条文案分配记录",
+      "fields_mapping": {
+        "id": "student_id"
+      }
+    },
+    {
+      "name": "关联规划师",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = study_abroad_copy_writer.planner_id",
+      "type": "many_to_one",
+      "description": "多条文案记录可由同一规划师负责",
+      "fields_mapping": {
+        "id": "planner_id"
+      }
+    },
+    {
+      "name": "关联转案老师",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = study_abroad_copy_writer.transfer_teacher_id",
+      "type": "many_to_one",
+      "description": "多条文案记录可由同一转案老师操作",
+      "fields_mapping": {
+        "id": "transfer_teacher_id"
+      }
+    },
+    {
+      "name": "关联文案老师",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = study_abroad_copy_writer.copywriting_teacher_id",
+      "type": "many_to_one",
+      "description": "多条文案记录可分配给同一文案老师",
+      "fields_mapping": {
+        "id": "copywriting_teacher_id"
+      }
+    },
+    {
+      "name": "关联专业方向",
+      "target_table": "study_abroad_major",
+      "join_condition": "study_abroad_major.id = study_abroad_copy_writer.study_abroad_major_id",
+      "type": "many_to_one",
+      "description": "多条文案记录可属于同一专业方向",
+      "fields_mapping": {
+        "id": "study_abroad_major_id"
+      }
+    }
+  ],
+
   "calculated_fields": {},
-  "business_constraints": {},
+
+  "business_constraints": {
+    "transfer_flow": "转案流程：规划师完成规划 -> 转案给文案老师。transferStatus控制流转状态。",
+    "application_country": "申请国家字段存储StudyAbroadCountryEnum对应code的逗号分隔字符串，支持多国家"
+  },
+
   "business_rules": []
 }

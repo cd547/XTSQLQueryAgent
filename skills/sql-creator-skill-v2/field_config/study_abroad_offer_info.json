@@ -1,9 +1,44 @@
 {
   "table_name": "study_abroad_offer_info",
-  "field_aliases": {},
-  "field_enums": {},
-  "virtual_associations": [],
+
+  "field_aliases": {
+  },
+
+  "field_enums": {
+    "final_school": {
+      "0": "不是最终入读学校",
+      "1": "是最终入读学校"
+    }
+  },
+
+  "virtual_associations": [
+    {
+      "name": "关联网申信息",
+      "target_table": "study_abroad_apply_online_info",
+      "join_condition": "study_abroad_apply_online_info.id = study_abroad_offer_info.apply_online_id",
+      "type": "many_to_one",
+      "description": "多条offer可关联同一条网申记录",
+      "fields_mapping": {
+        "id": "apply_online_id"
+      }
+    },
+    {
+      "name": "关联学生规划信息",
+      "target_table": "study_abroad_planning_info",
+      "join_condition": "study_abroad_planning_info.student_id = study_abroad_offer_info.student_id",
+      "type": "many_to_one",
+      "description": "多条offer可属于同一学生",
+      "fields_mapping": {
+        "id": "student_id"
+      }
+    }
+  ],
+
   "calculated_fields": {},
-  "business_constraints": {},
+
+  "business_constraints": {
+    "attachment": "offer附件通过study_abroad_attachment表管理（type=2）"
+  },
+
   "business_rules": []
 }

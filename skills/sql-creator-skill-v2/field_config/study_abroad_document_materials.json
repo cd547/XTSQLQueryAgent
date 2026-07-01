@@ -1,9 +1,66 @@
 {
   "table_name": "study_abroad_document_materials",
-  "field_aliases": {},
-  "field_enums": {},
-  "virtual_associations": [],
+
+  "field_aliases": {
+  },
+
+  "field_enums": {
+    "status": {
+      "0": "未开始",
+      "1": "初稿",
+      "2": "定稿"
+    }
+  },
+
+  "virtual_associations": [
+    {
+      "name": "关联定校书",
+      "target_table": "study_abroad_proofread_book",
+      "join_condition": "study_abroad_proofread_book.id = study_abroad_document_materials.book_id",
+      "type": "many_to_one",
+      "description": "多条文书材料可关联同一本定校书",
+      "fields_mapping": {
+        "id": "book_id"
+      }
+    },
+    {
+      "name": "关联学生规划信息",
+      "target_table": "study_abroad_planning_info",
+      "join_condition": "study_abroad_planning_info.student_id = study_abroad_document_materials.student_id",
+      "type": "many_to_one",
+      "description": "多条文书材料可属于同一学生",
+      "fields_mapping": {
+        "id": "student_id"
+      }
+    },
+    {
+      "name": "关联文书主表",
+      "target_table": "study_abroad_document",
+      "join_condition": "study_abroad_document.id = study_abroad_document_materials.relevancy_id",
+      "type": "many_to_one",
+      "description": "多条文书材料可关联同一文书主记录",
+      "fields_mapping": {
+        "id": "relevancy_id"
+      }
+    },
+    {
+      "name": "关联文书附表",
+      "target_table": "study_abroad_document_attachment",
+      "join_condition": "study_abroad_document_attachment.id = study_abroad_document_materials.relevancy_attach_id",
+      "type": "many_to_one",
+      "description": "多条文书材料可关联同一文书附件记录",
+      "fields_mapping": {
+        "id": "relevancy_attach_id"
+      }
+    }
+  ],
+
   "calculated_fields": {},
-  "business_constraints": {},
+
+  "business_constraints": {
+    "status_flow": "文书状态流转：0(未开始) -> 1(初稿) -> 2(定稿)",
+    "relevance": "relevancyId关联文书主表(study_abroad_document)，relevancyAttachId关联文书附表(study_abroad_document_attachment)"
+  },
+
   "business_rules": []
 }

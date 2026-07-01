@@ -24,8 +24,7 @@
       "description": "1个标签可被打在多个客户上",
       "fields_mapping": {
         "label_code": "code"
-      },
-      "business_rule": ""
+      }
     }
   ],
 
