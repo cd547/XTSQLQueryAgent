@@ -1520,6 +1520,31 @@
       ],
       "business_constraints": [],
       "business_rules": []
+    },
+    {
+      "name": "admin_pay_order",
+      "description": "支付单",
+      "tags": [],
+      "related_tables": [
+        "edu_student",
+        "goods_list",
+        "admin_user",
+        "order_list",
+        "admin_division"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "admin_pay_order_student",
+      "description": "支付单—关联学生订单表",
+      "tags": [],
+      "related_tables": [
+        "admin_pay_order",
+        "order_student"
+      ],
+      "business_constraints": [],
+      "business_rules": []
     }
   ]
 }

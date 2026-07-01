@@ -19,7 +19,7 @@ import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
 import './utils/monacoEnv';
 import { createMarkdownRenderers } from './components/markdownRenderers.jsx';
-import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles, getDomains, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages } from './api';
+import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles, getDomains, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages, saveFavoriteQuery } from './api';
 
 const { TextArea } = Input;
 const { Sider, Content } = Layout;
@@ -523,6 +523,29 @@ function AuthenticatedApp({ user, logout }) {
     setExplainResults([]);
     await handleExecute(sql, newKey);
   };
+
+  // 收藏为常用 SQL：按 msgId 维护每条消息的收藏状态
+  const [favoriteStates, setFavoriteStates] = useState({});
+  const handleFavorite = useCallback(async ({ msgId, userQuestion, sqlOutput }) => {
+    if (!msgId || !userQuestion || !sqlOutput) return;
+    if (favoriteStates[msgId] === 'loading' || favoriteStates[msgId] === 'done') return;
+    setFavoriteStates(prev => ({ ...prev, [msgId]: 'loading' }));
+    try {
+      const res = await saveFavoriteQuery({ userQuestion, sqlOutput });
+      if (res?.success) {
+        setFavoriteStates(prev => ({ ...prev, [msgId]: 'done' }));
+        message.success(`已收藏：${res.optimizedQuestion || userQuestion}`);
+      } else {
+        setFavoriteStates(prev => ({ ...prev, [msgId]: 'idle' }));
+        message.error(res?.message || '收藏失败');
+      }
+    } catch (e) {
+      setFavoriteStates(prev => ({ ...prev, [msgId]: 'idle' }));
+      // 后端 500 时附带的 message 字段更具体
+      const apiMsg = e?.response?.data?.message;
+      message.error(apiMsg || `收藏失败: ${e.message}`);
+    }
+  }, [favoriteStates]);
 
   const handleToggleCollapse = useCallback((msgId) => {
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, collapsed: !(m.collapsed ?? true) } : m));
@@ -1230,25 +1253,39 @@ const explainColumns = useMemo(() => explainResults.length > 0
                   </div>
                 ) : (
                   <div className="xtsql-chat-inner">
-                    {messages.map((msg) => (
-                      <ChatMessage
-                        key={msg.id}
-                        msgId={msg.id}
-                        role={msg.role}
-                        content={msg.content}
-                        isStreaming={msg.isStreaming}
-                        timestamp={msg.timestamp}
-                        collapsed={msg.collapsed !== undefined ? msg.collapsed : true}
-                        onToggleCollapse={handleToggleCollapse}
-                        logType={msg.logType}
-                        sql={msg.sql}
-                        startTime={msg.startTime}
-                        elapsedMs={msg.elapsedMs}
-                        liveTimerTick={liveTimerTick}
-                        onOpenSqlTab={handleOpenSqlTab}
-                        onCopyAndExecute={handleCopyAndExecute}
-                      />
-                    ))}
+                    {messages.map((msg, idx) => {
+                      // 找到本条 assistant 消息前最近一条 user 提问（中间可有 log）
+                      let userQuestion = null;
+                      if (msg.role === 'assistant') {
+                        for (let i = idx - 1; i >= 0; i--) {
+                          const m = messages[i];
+                          if (m.role === 'user') { userQuestion = m.content; break; }
+                          if (m.role === 'assistant') break; // 遇到上一轮 assistant 终止
+                        }
+                      }
+                      return (
+                        <ChatMessage
+                          key={msg.id}
+                          msgId={msg.id}
+                          role={msg.role}
+                          content={msg.content}
+                          isStreaming={msg.isStreaming}
+                          timestamp={msg.timestamp}
+                          collapsed={msg.collapsed !== undefined ? msg.collapsed : true}
+                          onToggleCollapse={handleToggleCollapse}
+                          logType={msg.logType}
+                          sql={msg.sql}
+                          startTime={msg.startTime}
+                          elapsedMs={msg.elapsedMs}
+                          liveTimerTick={liveTimerTick}
+                          onOpenSqlTab={handleOpenSqlTab}
+                          onCopyAndExecute={handleCopyAndExecute}
+                          userQuestion={userQuestion}
+                          favoriteState={favoriteStates[msg.id]}
+                          onFavorite={userQuestion ? ({ userQuestion: uq, sqlOutput }) => handleFavorite({ msgId: msg.id, userQuestion: uq, sqlOutput }) : undefined}
+                        />
+                      );
+                    })}
                   </div>
                 )
               ) : (

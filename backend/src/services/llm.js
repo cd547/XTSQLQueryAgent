@@ -52,19 +52,25 @@ export function withTimeout(externalSignal, timeoutMs, label) {
     logger.warn(`${label} timed out`, { timeoutMs, elapsedMs: Date.now() - startedAt });
   }, timeoutMs);
 
-  const onExternalAbort = () => {
-    clearTimeout(timeoutId);
-    controller.abort(externalSignal.reason);
-  };
-  externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+  // externalSignal 可选：未传时只保留内部超时能力，不挂外部 abort 监听
+  let onExternalAbort = null;
+  if (externalSignal && typeof externalSignal.addEventListener === 'function') {
+    onExternalAbort = () => {
+      clearTimeout(timeoutId);
+      controller.abort(externalSignal.reason);
+    };
+    externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+  }
 
   return {
     signal: controller.signal,
     cancel: () => {
       clearTimeout(timeoutId);
-      externalSignal.removeEventListener('abort', onExternalAbort);
+      if (onExternalAbort && externalSignal) {
+        externalSignal.removeEventListener('abort', onExternalAbort);
+      }
     },
-    isExternalAbort: () => externalSignal.aborted,
+    isExternalAbort: () => !!(externalSignal && externalSignal.aborted),
   };
 }
 
@@ -82,10 +88,12 @@ export function withTimeout(externalSignal, timeoutMs, label) {
  */
 export async function withPromiseTimeout(fn, externalSignal, timeoutMs, label, onAbort) {
   let timeoutId;
-  let externalListener;
+  let externalListener = null;
   const cleanup = () => {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
-    if (externalListener) externalSignal.removeEventListener('abort', externalListener);
+    if (externalListener && externalSignal) {
+      externalSignal.removeEventListener('abort', externalListener);
+    }
   };
   return new Promise((resolve, reject) => {
     timeoutId = setTimeout(() => {
@@ -95,12 +103,14 @@ export async function withPromiseTimeout(fn, externalSignal, timeoutMs, label, o
       reject(new Error(`${label} timeout after ${timeoutMs}ms`));
     }, timeoutMs);
 
-    externalListener = () => {
-      cleanup();
-      if (onAbort) try { onAbort(); } catch (_) {}
-      reject(externalSignal.reason);
-    };
-    externalSignal.addEventListener('abort', externalListener, { once: true });
+    if (externalSignal && typeof externalSignal.addEventListener === 'function') {
+      externalListener = () => {
+        cleanup();
+        if (onAbort) try { onAbort(); } catch (_) {}
+        reject(externalSignal.reason);
+      };
+      externalSignal.addEventListener('abort', externalListener, { once: true });
+    }
 
     fn().then(
       (v) => { cleanup(); resolve(v); },
@@ -787,5 +797,83 @@ while (true) {
 
 // （已废弃：generateSQLWithLangChainStreamGen 从未被任何代码调用，2026-06 阶段性优化清理）
 // （已废弃：generateSQLWithLangChainStreamGenV2 从未被任何代码调用，2026-06 阶段性优化清理）
+
+/* ============================ "我的查询"专用非流式 LLM ============================ */
+
+/**
+ * 非流式单轮 LLM 调用（专用于"我的查询"等轻量任务）
+ *
+ * 与流式 BAK 函数的差异：
+ *   - stream=false，一次性返回完整文本
+ *   - 强制 response_format=json_object，约束模型输出合法 JSON
+ *   - 当 provider === 'deepseek' 时，强制使用 FAVORITE_LLM_MODEL 环境变量或 'deepseek-chat'，
+ *     避免在小任务上消耗 deepseek-v4-flash 快速模型配额
+ *
+ * @param {string} systemPrompt
+ * @param {string} userPrompt
+ * @param {AbortSignal} [signal]
+ * @returns {Promise<{content: string, usage: object, model: string}>}
+ * @throws 任何非 2xx 响应或 fetch 错误；调用方应直接 500 给前端
+ */
+export async function callLlmForFavorite(systemPrompt, userPrompt, signal) {
+  const cfg = getLlmConfig();
+  if (!cfg) {
+    throw new Error('LLM 未配置');
+  }
+  const provider = cfg.provider;
+  // 强制覆盖 model：deepseek 走非快速模型
+  const model = provider === 'deepseek'
+    ? (process.env.FAVORITE_LLM_MODEL || 'deepseek-chat')
+    : cfg.model;
+  const providerCfg = getProviderConfig(provider, model);
+  const baseURL = providerCfg.baseURL;
+  const llmModel = providerCfg.llmModel;
+  const apiKey = cfg.apiKey;
+
+  const tFetch = withTimeout(signal, LLM_TIMEOUTS.FETCH_MS, 'callLlmForFavorite fetch');
+  let res;
+  try {
+    res = await fetch(`${baseURL}/chat/completions`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${apiKey}`
+      },
+      body: JSON.stringify({
+        model: llmModel,
+        messages: [
+          { role: 'system', content: systemPrompt },
+          { role: 'user', content: userPrompt }
+        ],
+        temperature: 0,
+        stream: false,
+        response_format: { type: 'json_object' }
+      }),
+      signal: tFetch.signal
+    });
+  } catch (e) {
+    if (e.name === 'AbortError' || /timeout/i.test(e.message || '')) {
+      if (tFetch.isExternalAbort()) throw e;
+      throw new Error(`LLM 响应超时（>${LLM_TIMEOUTS.FETCH_MS / 1000}s）`);
+    }
+    throw e;
+  } finally {
+    tFetch.cancel();
+  }
+
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const errJson = await res.json();
+      detail = errJson?.error?.message || detail;
+    } catch (_) { /* ignore */ }
+    throw new Error(`LLM 调用失败 (${res.status}): ${detail}`);
+  }
+
+  const json = await res.json();
+  const content = json.choices?.[0]?.message?.content || '';
+  const usage = json.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+  return { content, usage, model: llmModel };
+}
 
 export { loadSkillMd };

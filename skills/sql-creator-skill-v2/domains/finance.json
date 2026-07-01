@@ -13,6 +13,8 @@
     "order_student_received_settlement",
     "order_student_received_settlement_log",
     "order_student_received_approvalsettlement",
-    "order_student_consume"
+    "order_student_consume",
+    "admin_pay_order",
+    "admin_pay_order_student"
   ]
 }

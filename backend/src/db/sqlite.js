@@ -207,6 +207,23 @@ export async function initDatabase() {
   // 添加 message_tokens 字段（用于存储消息上下文的 token 数量）
   addColumnIfMissing(db, 'llm_messages', 'message_tokens', 'INTEGER DEFAULT 0');
 
+  // 我的查询（常用 SQL 收藏）：user_id + sql_output 唯一约束，重复收藏时更新
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS my_queries (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      user_question TEXT NOT NULL,
+      optimized_question TEXT,
+      sql_output TEXT NOT NULL,
+      business_domains TEXT,
+      add_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE(user_id, sql_output),
+      FOREIGN KEY (user_id) REFERENCES users(id)
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_my_queries_user_id ON my_queries(user_id)`);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_my_queries_add_time ON my_queries(add_time)`);
+
   // 所有迁移完成后才标记为已初始化，getDb() 才允许返回实例
   initialized = true;
   console.log('SQLite initialized');

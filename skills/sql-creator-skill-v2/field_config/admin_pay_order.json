@@ -1,0 +1,9 @@
+{
+  "table_name": "admin_pay_order",
+  "field_aliases": {},
+  "field_enums": {},
+  "virtual_associations": [],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}

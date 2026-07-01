@@ -27,6 +27,7 @@ import tableSchemaRouter from './routes/tableSchema.js';
 import skillRouter from './routes/skill.js';
 import exportRouter from './routes/export.js';
 import authRouter from './routes/auth.js';
+import favoriteQueryRouter from './routes/favoriteQuery.js';
 
 app.use('/api/auth', authRouter);
 app.use('/api/config', configRouter);
@@ -36,6 +37,7 @@ app.use('/api/sessions', sessionRouter);
 app.use('/api/table-schema', tableSchemaRouter);
 app.use('/api/skills', skillRouter);
 app.use('/api/export', exportRouter);
+app.use('/api/queries', favoriteQueryRouter);
 
 // 启动序列：必须先完成数据库初始化，再启动 HTTP 监听
 // 失败时 process.exit(1)，让 Electron 立即看到 stderr

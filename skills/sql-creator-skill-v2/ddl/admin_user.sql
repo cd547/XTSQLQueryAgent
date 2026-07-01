@@ -14,7 +14,7 @@ CREATE TABLE `admin_user` (
   `del` int(11) NOT NULL DEFAULT '0' COMMENT '是否禁用 0 正常 1禁用',
   `del_time` varchar(128) CHARACTER SET utf8 DEFAULT NULL COMMENT '禁用时间',
   `crm_id` varchar(128) CHARACTER SET utf8 DEFAULT NULL COMMENT 'crmid',
-  `weight` int(11) NOT NULL DEFAULT '0' COMMENT '销售分配客户权重',
+  `weight` int(11) NOT NULL DEFAULT '0' COMMENT '是否有绩效0正常有绩效 1无绩效',
   `weight_auth` int(11) NOT NULL DEFAULT '0' COMMENT '权重开关',
   `password` varchar(128) CHARACTER SET utf8 NOT NULL DEFAULT 'yxuetongcom20200501' COMMENT '密码',
   `isadmin` int(11) NOT NULL DEFAULT '1' COMMENT '是否是管理员1 普通用户 2 管理员',

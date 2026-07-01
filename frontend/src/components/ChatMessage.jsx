@@ -1,13 +1,13 @@
 import React, { memo } from 'react';
 import { Button, Spin, Tooltip } from 'antd';
-import { CaretRightOutlined, DownOutlined, UserOutlined, CopyOutlined, ThunderboltOutlined, CheckOutlined } from '@ant-design/icons';
+import { CaretRightOutlined, DownOutlined, UserOutlined, CopyOutlined, ThunderboltOutlined, CheckOutlined, StarOutlined, StarFilled } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import AppIcon from './AppIcon.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { createMarkdownRenderers } from './markdownRenderers.jsx';
 
-const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, liveTimerTick, onOpenSqlTab, onCopyAndExecute }) {
+const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, liveTimerTick, onOpenSqlTab, onCopyAndExecute, onFavorite, favoriteState, userQuestion }) {
   // liveTimerTick 用于在父组件流式期间 100ms 触发一次重渲染，这里仅作为 memo 失效键，不参与业务计算
   const { theme: themeMode } = useTheme();
   const isUser = role === 'user';
@@ -110,6 +110,15 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
             )}
             {!isStreaming && sql && sql.trim() && (
               <>
+                <Button
+                  className="xtsql-action-btn"
+                  icon={favoriteState === 'done' ? <StarFilled style={{ color: '#faad14' }} /> : <StarOutlined />}
+                  loading={favoriteState === 'loading'}
+                  disabled={favoriteState === 'loading' || favoriteState === 'done'}
+                  onClick={() => onFavorite && onFavorite({ userQuestion, sqlOutput: sql })}
+                >
+                  {favoriteState === 'done' ? '已收藏' : '收藏为常用SQL'}
+                </Button>
                 <Button
                   className="xtsql-action-btn"
                   icon={<CopyOutlined />}

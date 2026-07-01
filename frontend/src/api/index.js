@@ -196,6 +196,11 @@ export function addTagToTable(tableName, tag) {
   return api.post('/skills/add-tag', { tableName, tag }).then(r => r.data);
 }
 
+// 我的查询（常用 SQL 收藏）
+export function saveFavoriteQuery({ userQuestion, sqlOutput }) {
+  return api.post('/queries/favorite', { userQuestion, sqlOutput }).then(r => r.data);
+}
+
 export function getAgentConfig() {
   return api.get('/config/agent').then(r => r.data);
 }
