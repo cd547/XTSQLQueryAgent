@@ -139,13 +139,6 @@ function AuthenticatedApp({ user, logout }) {
   const hoverIntervalRef = useRef(null);
   // 流式响应期间用于 rAF 节流的滚动句柄（避免每 chunk 触发 scrollIntoView）
   const streamingScrollRafRef = useRef(0);
-  // 实时计时 tick：流式期间每 100ms 触发一次重渲染，让 ChatMessage 实时显示耗时
-  const [liveTimerTick, setLiveTimerTick] = useState(0);
-  useEffect(() => {
-    if (!isStreaming) return;
-    const id = setInterval(() => setLiveTimerTick(t => t + 1), 100);
-    return () => clearInterval(id);
-  }, [isStreaming]);
   // 客户端消息 id 计数器：保证新创建的每条消息都有稳定唯一 key
   // DB 加载的消息用 `db-<row_id>` 命名空间，与客户端 `c-N` 互不冲突
   const clientMsgIdRef = useRef(0);
@@ -1355,7 +1348,6 @@ const explainColumns = useMemo(() => explainResults.length > 0
                           sql={msg.sql}
                           startTime={msg.startTime}
                           elapsedMs={msg.elapsedMs}
-                          liveTimerTick={liveTimerTick}
                           onOpenSqlTab={handleOpenSqlTab}
                           onCopyAndExecute={handleCopyAndExecute}
                           userQuestion={userQuestion}

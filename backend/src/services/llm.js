@@ -125,7 +125,13 @@ function writeLlmLog(content) {
   const logFile = path.join(LOGS_PATH, `llm_${dateStr}.log`);
   const timestamp = now.toISOString();
   const logLine = `${timestamp}: ${content}\n`;
-  fs.appendFileSync(logFile, logLine, 'utf-8');
+  try {
+    fs.appendFileSync(logFile, logLine, 'utf-8');
+  } catch (e) {
+    // 日志写入失败不应该让 LLM 调用挂掉，但要让用户能排查（web/electron 是否同目录、权限、磁盘等）
+    // eslint-disable-next-line no-console
+    console.error(`[writeLlmLog] failed to write ${logFile}:`, e.message);
+  }
 }
 
 const LOG_BUFFER = [];

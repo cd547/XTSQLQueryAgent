@@ -51,5 +51,15 @@
   
   "business_constraints": {},
   
-  "business_rules": ["查询用户名是指user字段，非nick_name字段"]
+  "business_rules": [
+    {
+      "name": "查询用户名",
+      "description": "查询用户名是指user字段，非nick_name字段"
+    },
+    {
+      "name": "离职",
+      "description": "离职后del=1，del_time有值"
+
+    }
+  ]
 }

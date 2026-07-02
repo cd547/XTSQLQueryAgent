@@ -758,7 +758,27 @@ html.xtsql-dark { color-scheme: dark; }
 .xtsql-msg-bubble pre code {
   background: transparent;
   padding: 0;
+  /* 强制透明继承：让 react-syntax-highlighter 给的 inline color 生效
+     （vscDarkPlus/prism 把 token 颜色挂在 token span 的 inline style 上，
+      不影响子元素；但全局 CSS 若再覆盖 pre/code color，会干扰背景对比） */
   color: inherit;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+}
+/* 关键：保护 SyntaxHighlighter 生成的 token span 不被外层 color 串掉
+   （vscDarkPlus/prism 自身已用 inline style 上色，但加 !important 防御性
+    避免后续全局 CSS 误伤） */
+.xtsql-msg-bubble pre code .token,
+.xtsql-msg-bubble pre code span[class*="token"] {
+  color: inherit;
+}
+.xtsql-msg-bubble pre code .token.keyword,
+.xtsql-msg-bubble pre code .token.string,
+.xtsql-msg-bubble pre code .token.number,
+.xtsql-msg-bubble pre code .token.comment,
+.xtsql-msg-bubble pre code .token.function,
+.xtsql-msg-bubble pre code .token.operator,
+.xtsql-msg-bubble pre code .token.punctuation {
+  /* 占位：inline style 优先级最高，这些规则只是兜底；不写具体值 */
 }
 .xtsql-msg-bubble table {
   border-collapse: collapse;

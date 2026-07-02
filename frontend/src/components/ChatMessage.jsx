@@ -1,4 +1,4 @@
-import React, { memo } from 'react';
+import React, { memo, useState, useEffect } from 'react';
 import { Button, Spin, Tooltip } from 'antd';
 import { CaretRightOutlined, DownOutlined, UserOutlined, CopyOutlined, ThunderboltOutlined, CheckOutlined, StarOutlined, StarFilled } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
@@ -7,11 +7,22 @@ import AppIcon from './AppIcon.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { createMarkdownRenderers } from './markdownRenderers.jsx';
 
-const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, liveTimerTick, onOpenSqlTab, onCopyAndExecute, onFavorite, favoriteState, userQuestion }) {
-  // liveTimerTick 用于在父组件流式期间 100ms 触发一次重渲染，这里仅作为 memo 失效键，不参与业务计算
+const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, onOpenSqlTab, onCopyAndExecute, onFavorite, favoriteState, userQuestion }) {
   const { theme: themeMode } = useTheme();
   const isUser = role === 'user';
   const isLog = role === 'log' || role === 'LLM' || role === 'tool' || role === 'tool_return';
+
+  // 内部计时器：流式期间每 200ms 触发一次本组件局部重渲染，更新"已用时间"显示
+  // 之前用父级 liveTimerTick (100ms) → 触发整树重渲染 + 旁路 React.memo
+  // 现在下沉到本组件：父级 0 开销；只有这一条流式消息在更新
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    if (!isStreaming || !startTime) return undefined;
+    // 立即跑一次，避免 0ms → 真实值之间的闪烁
+    setNow(Date.now());
+    const id = setInterval(() => setNow(Date.now()), 200);
+    return () => clearInterval(id);
+  }, [isStreaming, startTime]);
 
   const timeStr = timestamp ? new Date(timestamp).toLocaleString('zh-CN', {
     year: 'numeric',
@@ -22,11 +33,11 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
   }) : '';
 
   // 格式化耗时：< 60s 显示 "3.2s"，>= 60s 显示 "1m 23s"
-  // 流式期间：用 startTime + Date.now() 实时计算
+  // 流式期间：用 startTime + now (内部 200ms 计时器) 实时计算
   // 完成时：用冻结的 elapsedMs
   const displayMs = elapsedMs != null
     ? elapsedMs
-    : (startTime ? Date.now() - startTime : null);
+    : (startTime ? now - startTime : null);
   const elapsedStr = (() => {
     if (displayMs == null) return null;
     const seconds = displayMs / 1000;

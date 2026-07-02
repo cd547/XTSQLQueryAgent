@@ -40,37 +40,69 @@ export function createMarkdownRenderers(isDark, opts = {}) {
 
   const Pre = ({ children }) => <>{children}</>;
   const Code = ({ className, children, ...props }) => {
-    const text = String(children ?? '');
+    // children 可能是 string / React 元素数组 / 数字 → 统一转 string
+    // react-markdown v8 对 code block 通常传 string，但有些情况是元素数组
+    let text = '';
+    if (typeof children === 'string') {
+      text = children;
+    } else if (Array.isArray(children)) {
+      text = children
+        .map((c) => (typeof c === 'string' ? c : (c && c.props && c.props.children) || ''))
+        .join('');
+    } else if (children != null) {
+      text = String(children);
+    }
     const match = /language-(\w+)/.exec(className || '');
-    if (match) {
-      const lang = match[1];
+    const isBlock = match !== null || text.includes('\n');
+
+    // 行内 code：单行、无 language- 前缀 → 原样返回
+    if (!isBlock) {
       return (
-        <SyntaxHighlighter
-          language={lang}
-          style={hlStyle}
-          customStyle={{
-            margin: '8px 0',
-            padding: '10px 12px',
-            borderRadius: 6,
-            fontSize,
-            lineHeight: 1.55,
-            background: containerBg,
-            border: `1px solid ${containerBorder}`,
-          }}
-          codeTagProps={{
-            style: { fontFamily, fontSize },
-          }}
-          wrapLongLines={false}
-          showLineNumbers={false}
-        >
-          {text.replace(/\n$/, '')}
-        </SyntaxHighlighter>
+        <code className={className} {...props}>
+          {children}
+        </code>
       );
     }
+
+    // 块级 code
+    let lang = match ? match[1] : null;
+
+    // 兜底：未指定语言时启发式检测（LLM 经常只写 ``` 不带 sql）
+    if (!lang) {
+      const trimmed = text.trim().toUpperCase();
+      if (/^(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|WITH|MERGE|EXPLAIN|SHOW|DESCRIBE|TRUNCATE|REPLACE)\b/.test(trimmed)) {
+        lang = 'sql';
+      } else {
+        // 块级但不像 SQL：降级为带 pre 包裹的普通 code
+        return (
+          <pre style={{ margin: '8px 0', padding: '10px 12px', borderRadius: 6, fontSize, fontFamily, background: containerBg, border: `1px solid ${containerBorder}`, overflowX: 'auto' }}>
+            <code className={className} {...props}>{children}</code>
+          </pre>
+        );
+      }
+    }
+
     return (
-      <code className={className} {...props}>
-        {children}
-      </code>
+      <SyntaxHighlighter
+        language={lang}
+        style={hlStyle}
+        customStyle={{
+          margin: '8px 0',
+          padding: '10px 12px',
+          borderRadius: 6,
+          fontSize,
+          lineHeight: 1.55,
+          background: containerBg,
+          border: `1px solid ${containerBorder}`,
+        }}
+        codeTagProps={{
+          style: { fontFamily, fontSize },
+        }}
+        wrapLongLines={false}
+        showLineNumbers={false}
+      >
+        {text.replace(/\n$/, '')}
+      </SyntaxHighlighter>
     );
   };
   return { pre: Pre, code: Code };
