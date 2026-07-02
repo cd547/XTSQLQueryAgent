@@ -1,4 +1,6 @@
 import React from 'react';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import SyntaxHighlighter from 'react-syntax-highlighter/dist/esm/prism-light';
 import sql from 'react-syntax-highlighter/dist/esm/languages/prism/sql';
 import json from 'react-syntax-highlighter/dist/esm/languages/prism/json';
@@ -66,6 +68,25 @@ export function createMarkdownRenderers(isDark, opts = {}) {
 
     // 块级 code
     let lang = match ? match[1] : null;
+
+    // LLM 经常把整段回答包在 ```markdown ... ``` 外层，SQL 写在内部 ```sql ... ``` 嵌套。
+    // react-markdown 解析外层代码块时会把内部 ``` 当作纯文本，SQL 永远不会到我们这里。
+    // 解决方案：检测到 markdown/md 包裹 + 内部有行首 ``` 嵌套时，剥掉外壳递归渲染一次。
+    if ((lang === 'markdown' || lang === 'md') && /^```/m.test(text)) {
+      const inner = text
+        .replace(/^```(?:markdown|md)?\s*\n?/i, '')
+        .replace(/\n?```\s*$/, '');
+      return (
+        <div className="xtsql-nested-markdown xtsql-msg-bubble" style={{ margin: '8px 0', padding: 0, background: 'transparent' }}>
+          <ReactMarkdown
+            remarkPlugins={[remarkGfm]}
+            components={{ pre: Pre, code: Code }}
+          >
+            {inner}
+          </ReactMarkdown>
+        </div>
+      );
+    }
 
     // 兜底：未指定语言时启发式检测（LLM 经常只写 ``` 不带 sql）
     if (!lang) {

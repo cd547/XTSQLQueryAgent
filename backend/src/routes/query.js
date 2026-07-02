@@ -337,6 +337,8 @@ router.post('/generate', async (req, res) => {
       res.setHeader('Content-Type', 'text/event-stream');
       res.setHeader('Cache-Control', 'no-cache');
       res.setHeader('Connection', 'keep-alive');
+      // SSE 场景关闭 Nagle 算法，每个 chunk 立即发出，避免小包攒批导致 100-200ms 顿挫
+      req.socket.setNoDelay(true);
 
       let streamCompleted = false;
       const abortController = new AbortController();
@@ -818,12 +820,11 @@ ${JSON.stringify(explainResults, null, 2)}
             const data = JSON.parse(dataStr);
             const content = data.choices?.[0]?.delta?.content || '';
             if (content) {
-              fullContent += content;
-              if (!abortController.signal.aborted) {
-                res.write(`data: ${JSON.stringify({ type: 'chunk', content })}\n\n`);
-                res.flush();
+                fullContent += content;
+                if (!abortController.signal.aborted) {
+                  res.write(`data: ${JSON.stringify({ type: 'chunk', content })}\n\n`);
+                }
               }
-            }
           } catch (e) {
             // 忽略单行 JSON 解析错误（LLM 流中偶发），继续处理后续行
           }
