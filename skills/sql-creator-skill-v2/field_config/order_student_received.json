@@ -1,7 +1,14 @@
 {
   "table_name": "order_student_received",
   "field_aliases": {},
-  "field_enums": {},
+  "field_enums": {
+     "account_title_id": {
+      "6": "退款专用账户",
+      "7": "内部调整专户",
+      "22": "欠费排课账户",
+      "100": "其他账户"
+    }
+  },
   "virtual_associations": [
     {
       "name": "关联学生订单",

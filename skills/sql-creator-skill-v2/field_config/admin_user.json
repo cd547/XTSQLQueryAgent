@@ -59,7 +59,6 @@
     {
       "name": "离职",
       "description": "离职后del=1，del_time有值"
-
     }
   ]
 }
