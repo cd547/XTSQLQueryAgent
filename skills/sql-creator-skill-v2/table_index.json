@@ -562,9 +562,7 @@
       "related_tables": [
         "customer_info"
       ],
-      "business_constraints": [
-        "deleted: 查询时需加 deleted = 0 过滤已删除数据"
-      ],
+      "business_constraints": [],
       "business_rules": []
     },
     {
@@ -577,9 +575,7 @@
       "related_tables": [
         "customer_info"
       ],
-      "business_constraints": [
-        "deleted: 查询时需加 deleted = 0 过滤已删除数据"
-      ],
+      "business_constraints": [],
       "business_rules": []
     },
     {
@@ -594,7 +590,6 @@
         "admin_user"
       ],
       "business_constraints": [
-        "deleted: 查询时需加 deleted = 0 过滤已删除数据",
         "列表查询常加 user_type = 1 AND enabled = 1（顾问类型、启用状态）"
       ],
       "business_rules": []
@@ -612,7 +607,6 @@
         "customer_clue_info"
       ],
       "business_constraints": [
-        "deleted: 查询时需加 deleted = 0 过滤已删除数据",
         "channel_code为唯一键，同一渠道编码可被多条线索的level1~level5引用"
       ],
       "business_rules": [
@@ -655,7 +649,6 @@
         "customer_auto_assign_result"
       ],
       "business_constraints": [
-        "deleted: 查询时需加 deleted = 0 过滤已删除数据",
         "该表为CRM线索驱动表，大多数CRM查询从此表FROM开始"
       ],
       "business_rules": []
@@ -678,7 +671,6 @@
         "admin_department_children"
       ],
       "business_constraints": [
-        "deleted: 查询时需加 deleted = 0 过滤已删除数据",
         "org字段区分事业部：0-渊学通 1-科桥 2-克勒 3-择校圈",
         "与customer_info为STRAIGHT_JOIN强制关联（customer_code）"
       ],
@@ -696,7 +688,6 @@
         "customer_label"
       ],
       "business_constraints": [
-        "deleted: 查询时需加 deleted = 0 过滤已删除数据",
         "通常在查询customer_info时通过EXISTS子查询使用"
       ],
       "business_rules": []
@@ -712,7 +703,6 @@
         "customer_info"
       ],
       "business_constraints": [
-        "deleted: 查询时需加 deleted = 0 过滤已删除数据",
         "concat_type: 0-手机号 1-微信号 2-邮箱",
         "通常在查询customer_info时通过EXISTS子查询按联系方式类型过滤"
       ],
@@ -731,7 +721,6 @@
         "customer_clue_pool"
       ],
       "business_constraints": [
-        "deleted: 查询时需加 deleted = 0 过滤已删除数据",
         "assign_status: 0-未分配 1-分配成功"
       ],
       "business_rules": []

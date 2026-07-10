@@ -285,7 +285,7 @@ function formatTableInfo(tables) {
 export const tools = [
   new DynamicTool({
     name: "get_tables",
-    description: "【兜底工具，非必要时禁止使用】返回全部表的完整信息。请优先使用 get_domain_index → get_sliced_index 域路由流程。仅当所有业务域都不匹配或 get_sliced_index 返回的表确实不够用时，才调用此工具。",
+    description: "【兜底工具，谨慎使用】返回全部表信息。仅在 get_domain_index/get_sliced_index 都不够用时调用。",
     params: {
       type: 'object',
       properties: {},
@@ -326,7 +326,7 @@ export const tools = [
   }),
   new DynamicTool({
     name: "get_table_schema",
-    description: "从field_config/表名.json中获取指定表的字段详细信息，包括字段别名、枚举值、业务约束等，支持一次获取多个表。",
+    description: "获取指定表的字段详情（别名、枚举、约束、业务、关联），支持多表。",
     params: {
       type: 'object',
       properties: {
@@ -350,7 +350,7 @@ export const tools = [
   }),
   new DynamicTool({
     name: "get_table_ddl",
-    description: "获取指定表的DDL建表语句。默认只返回列定义（short=1），不含索引、主键、外键。传short=0返回完整DDL。",
+    description: "获取指定表的DDL（short=1 仅列定义；short=0 含索引/外键）。",
     params: {
       type: 'object',
       properties: {
@@ -412,7 +412,7 @@ export const tools = [
   }),
     new DynamicTool({
     name: "get_domain_index",
-    description: "获取业务域路由索引：列出所有业务域。用于判断用户问题归属哪些业务域。",
+    description: "列出所有业务域（id + 名称 + 描述），用于域路由第一步。",
     params: {
       type: 'object',
       properties: {},
@@ -428,7 +428,7 @@ export const tools = [
   }),
   new DynamicTool({
     name: "get_sliced_index",
-    description: "【按域裁剪→精简 table_index】在 get_domain_index 选定业务域后调用。传入 1-5 个 domain id 数组，返回这些域涉及的所有表的完整卡片，作为候选表池和最终喂给 SQL 生成器的精简 table_index。",
+    description: "【按域裁剪】传入 1-5 个 domain_id，返回这些域的候选表池（含标签/关联表/业务规则）。",
     params: {
       type: 'object',
       properties: {
