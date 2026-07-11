@@ -297,7 +297,8 @@ function AuthenticatedApp({ user, logout }) {
             content: m.content || m.sql || '',
             sql: m.sql || '',
             timestamp: m.created_at,
-            logType: m.role === 'LLM' ? 'llm' : m.role === 'tool_return' ? 'return' : 'call'
+            logType: m.role === 'LLM' ? 'llm' : m.role === 'tool_return' ? 'return' : 'call',
+            collapsed: m.role === 'LLM' ? true : false,
           }));
         setMessages(loaded);
         // 切换会话时清空旧 favorites 状态再回显本会话的
@@ -718,6 +719,76 @@ function AuthenticatedApp({ user, logout }) {
                       logType: logType
                     };
                     newMsgs.splice(lastAssistantIdx, 0, logMsg);
+                  }
+                  return newMsgs;
+                });
+              } else if (data.type === 'reasoning_chunk') {
+                // 实时流式思考过程：找到/创建 llm log 消息，累加 content
+                setMessages(prev => {
+                  const newMsgs = [...prev];
+                  const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+                  if (lastAssistantIdx === -1) return newMsgs;
+
+                  // 当前轮 = 最后一个 user 消息之后的所有消息
+                  // 关键：必须按"轮"隔离 llm log 查找范围，
+                  // 否则上一轮的 llm log 会被错误复用，导致第二轮的思考被追加到第一轮
+                  const lastUserIdx = newMsgs.findLastIndex(m => m.role === 'user');
+                  const currentRoundStart = lastUserIdx === -1 ? 0 : lastUserIdx + 1;
+
+                  let lastLlmLogIdx = -1;
+                  let lastLogIdx = -1;
+                  for (let i = newMsgs.length - 1; i >= currentRoundStart; i--) {
+                    const m = newMsgs[i];
+                    if (m.role === 'log') {
+                      if (lastLogIdx === -1) lastLogIdx = i;
+                      if (m.logType === 'llm' && lastLlmLogIdx === -1) lastLlmLogIdx = i;
+                    }
+                  }
+                  const isCurrentRound = lastLlmLogIdx !== -1 && lastLlmLogIdx === lastLogIdx;
+
+                  if (isCurrentRound) {
+                    newMsgs[lastLlmLogIdx] = {
+                      ...newMsgs[lastLlmLogIdx],
+                      content: (newMsgs[lastLlmLogIdx].content || '') + data.content,
+                      collapsed: false,
+                    };
+                  } else {
+                    const logMsg = {
+                      id: `c-${++clientMsgIdRef.current}`,
+                      role: 'log',
+                      content: '💭 LLM思考过程:\n' + data.content,
+                      timestamp: new Date().toISOString(),
+                      collapsed: false,
+                      logType: 'llm',
+                    };
+                    newMsgs.splice(lastAssistantIdx, 0, logMsg);
+                  }
+                  return newMsgs;
+                });
+                // 流式 chunk 滚动到底部（rAF 节流）
+                if (!streamingScrollRafRef.current) {
+                  streamingScrollRafRef.current = requestAnimationFrame(() => {
+                    streamingScrollRafRef.current = 0;
+                    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+                  });
+                }
+              } else if (data.type === 'reasoning_done') {
+                // 思考过程结束：折叠最近一个 llm log 消息，与历史默认行为保持一致
+                setMessages(prev => {
+                  const newMsgs = [...prev];
+                  const lastLlmLogIdx = newMsgs.findLastIndex(m => m.role === 'log' && m.logType === 'llm');
+                  if (lastLlmLogIdx !== -1) {
+                    newMsgs[lastLlmLogIdx] = { ...newMsgs[lastLlmLogIdx], collapsed: true };
+                  }
+                  return newMsgs;
+                });
+              } else if (data.type === 'message_final') {
+                // 后处理：剥离 LLM 误倒进 content 的 thinking 后，用清理后的 content 替换 assistant 消息
+                setMessages(prev => {
+                  const newMsgs = [...prev];
+                  const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+                  if (lastAssistantIdx !== -1) {
+                    newMsgs[lastAssistantIdx] = { ...newMsgs[lastAssistantIdx], content: data.content };
                   }
                   return newMsgs;
                 });

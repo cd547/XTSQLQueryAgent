@@ -134,6 +134,34 @@ function writeLlmLog(content) {
   }
 }
 
+/**
+ * 启发式：从 responseText 中剥离被 LLM 误倒进 content 字段的 thinking
+ *
+ * 触发条件（同时满足）：
+ *   1. 含有 ``` 代码块
+ *   2. 第一个 ``` 之前的文字 > 100 字符（远超正常 lead-in）
+ *   3. 含 thinking 标记词（"让我"、"等等"、"我注意到"等）
+ *   4. 含多行（≥2 个换行，说明是叙述性文字）
+ *
+ * @param {string} responseText - 流式累积的 content 字段
+ * @returns {{ content: string, extraThinking: string }}
+ */
+function splitThinkingFromContent(responseText) {
+  if (!responseText || typeof responseText !== 'string' || !responseText.includes('```')) {
+    return { content: responseText || '', extraThinking: '' };
+  }
+  const firstCodeBlockIdx = responseText.indexOf('```');
+  const before = responseText.substring(0, firstCodeBlockIdx).trim();
+  const after = responseText.substring(firstCodeBlockIdx);
+  const isLongPrefix = before.length > 100;
+  const hasThinkingMarker = /(让我|等等|我发现|我注意到|我决定|实际上|让我再想|让我先|我先|继续|我开始|我准备|让我再)/.test(before);
+  const hasMultipleLines = (before.match(/\n/g) || []).length >= 2;
+  if (isLongPrefix && hasThinkingMarker && hasMultipleLines) {
+    return { content: after.trim(), extraThinking: before };
+  }
+  return { content: responseText, extraThinking: '' };
+}
+
 const LOG_BUFFER = [];
 let flushTimer = null;
 
@@ -617,7 +645,20 @@ ${skillMd}`;
       queueLog(`📋 [Round ${(31 - maxToolCalls)}] 本轮 LLM 请求无『已调用工具清单』（首轮或无 sessionId）`, true);
     }
 
-    const requestMessages = checklistMsg ? [...messages, checklistMsg] : messages;
+    // 剥离 assistant 消息中的 reasoning_content（模型 OUTPUT 字段，非 API 请求参数）
+    // 原因：DeepSeek 官方 API 不接收 reasoning_content 字段，调用时不应传入；
+    //       保留会占用大量 token 并污染 LLM 注意力（每轮回灌，Round N 累积 N-1 份旧 reasoning）
+    // 副作用：全剥后 LLM 失去"思考放哪"的隐式提示，可能把思考倒进 content 字段。
+    //       通过 system prompt 中的"思考放 reasoning_content"格式约束来缓解（见 systemMessage）。
+    // 保留：每轮 content（外部输出）+ tool_calls（行为信号）
+    // 剥除：所有 assistant 的 reasoning_content
+    const requestMessages = (checklistMsg ? [...messages, checklistMsg] : messages).map(m => {
+      if (m.role === 'assistant' && m.reasoning_content) {
+        const { reasoning_content, ...rest } = m;
+        return rest;
+      }
+      return m;
+    });
 
     // 工具剪枝：一次性工具调用过后，从 LLM 请求的 tools 数组中移除以节省 token
     // - get_domain_index：调用后业务域列表已在 history 中，后续不需要
@@ -744,6 +785,8 @@ while (true) {
               const reasoning = data.choices?.[0]?.delta?.reasoning_content || '';
               if (reasoning) {
                 reasoningContent += reasoning;
+                // 实时 yield 思考过程 delta，避免长思考阶段前端长时间无输出
+                yield { type: 'reasoning_chunk', content: reasoning };
               }
               
               // 检查工具调用
@@ -786,9 +829,24 @@ while (true) {
         }
       }
 
-      // 输出LLM的思考过程（reasoning）
-      if (reasoningContent) {
-        yield { type: 'LLM', log: `💭 LLM思考过程:\n${reasoningContent.slice(0, 10000)}` };
+      // 启发式后处理：从 responseText 中剥离被 LLM 误倒进 content 的 thinking
+      // 背景：DeepSeek LLM 偶尔不遵守字段分离，把整段思考写进 content，导致前端"答案气泡"显示大段 thinking
+      // 修复：流结束后检测并剥离（splitThinkingFromContent），把 thinking 追加到 reasoningContent
+      const { content: cleanContent, extraThinking } = splitThinkingFromContent(responseText);
+      const finalResponseText = cleanContent;
+      const finalReasoningContent = extraThinking
+        ? (reasoningContent ? reasoningContent + '\n\n' + extraThinking : extraThinking)
+        : reasoningContent;
+
+      // 如果发生了剥离，向前端发出 message_final 事件以更新 assistant 消息
+      if (extraThinking) {
+        yield { type: 'message_final', content: finalResponseText, extraThinking };
+      }
+
+      // 思考过程已在流式过程中实时 yield reasoning_chunk 给前端
+      // 此处仅 yield reasoning_done 用于 DB 持久化（历史回显需要），UI 不再消费
+      if (finalReasoningContent) {
+        yield { type: 'reasoning_done', content: `💭 LLM思考过程:\n${finalReasoningContent.slice(0, 10000)}` };
       }
 
       // 过滤出有实际工具名称的工具调用
@@ -809,10 +867,11 @@ while (true) {
       }
 
       // 保存 assistant 消息，需要包含 tool_calls
+      // 使用清理后的 finalResponseText（剥离了 thinking）和 finalReasoningContent（追加了被剥离的 thinking）
       const assistantMsg = {
         role: 'assistant',
-        content: responseText || '',
-        reasoning_content: reasoningContent || '',
+        content: finalResponseText || '',
+        reasoning_content: finalReasoningContent || '',
       };
       if (validToolCalls.length > 0) {
         // 为每个 tool_call 确保有 id

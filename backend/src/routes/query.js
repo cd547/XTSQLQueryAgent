@@ -406,6 +406,23 @@ router.post('/generate', async (req, res) => {
                 logger.error('保存单条日志失败', { error: e.message });
               }
             }
+          } else if (chunk.type === 'reasoning_chunk') {
+            // 实时流式思考过程：只透传给前端，不入 DB，不累计到 fullContent
+            res.write(`data: ${JSON.stringify({ type: 'reasoning_chunk', content: chunk.content })}\n\n`);
+          } else if (chunk.type === 'message_final') {
+            // 后处理：剥离 LLM 误倒进 content 的 thinking 后，更新前端 assistant 消息
+            res.write(`data: ${JSON.stringify({ type: 'message_final', content: chunk.content, extraThinking: chunk.extraThinking })}\n\n`);
+          } else if (chunk.type === 'reasoning_done') {
+            // 思考过程结束：单条入 DB（历史回显用），不传给 UI（UI 已通过 reasoning_chunk 实时显示）
+            if (sessionId && chunk.content) {
+              try {
+                const db = getDb();
+                db.prepare('INSERT INTO messages (session_id, role, content, sql, results) VALUES (?, ?, ?, ?, ?)')
+                  .run(sessionId, 'LLM', chunk.content, '', '');
+              } catch (e) {
+                logger.error('保存reasoning失败', { error: e.message });
+              }
+            }
           } else if (chunk.type === 'error') {
             res.write(`data: ${JSON.stringify({ type: 'error', content: chunk.content })}\n\n`);
           } else if (chunk.type === 'done') {
