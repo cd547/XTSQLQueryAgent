@@ -410,7 +410,10 @@ export const tools = [
       return requestTagConfirmation(term, table, description || '');
     }
   }),
-    new DynamicTool({
+  // ===== 可变工具：调用一次后会被剪枝（见 llm.js 中的剪枝逻辑）=====
+  // 剪枝顺序：get_domain_index 先剪（Round 2 后），get_sliced_index 后剪（Round 3 后）
+  // 顺序必须按"调用顺序"排，先被调用的先剪
+  new DynamicTool({
     name: "get_domain_index",
     description: "列出所有业务域（id + 名称 + 描述），用于域路由第一步。",
     params: {

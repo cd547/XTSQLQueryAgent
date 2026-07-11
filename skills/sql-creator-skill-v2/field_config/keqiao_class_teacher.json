@@ -8,7 +8,7 @@
       "target_table": "keqiao_class",
       "join_condition": "keqiao_class.id = keqiao_class_teacher.keqiao_class_id",
       "type": "many_to_one",
-      "description": "通过班级ID关联班级表",
+      "description": "",
       "fields_mapping": {
         "id": "keqiao_class_id"
       },
@@ -19,7 +19,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = keqiao_class_teacher.admin_user_id",
       "type": "many_to_one",
-      "description": "通过老师ID关联后台用户表",
+      "description": "",
       "fields_mapping": {
         "id": "admin_user_id"
       },

@@ -8,7 +8,7 @@
       "target_table": "my_user",
       "join_condition": "my_user.id = keqiao_preschool_examination.my_user_id",
       "type": "many_to_one",
-      "description": "通过用户ID关联用户基本表",
+      "description": "",
       "fields_mapping": {
         "id": "my_user_id"
       },
@@ -19,7 +19,7 @@
       "target_table": "edu_campus_school",
       "join_condition": "edu_campus_school.id = keqiao_preschool_examination.edu_campus_school_id",
       "type": "many_to_one",
-      "description": "通过二级校区ID关联分校表",
+      "description": "",
       "fields_mapping": {
         "id": "edu_campus_school_id"
       },

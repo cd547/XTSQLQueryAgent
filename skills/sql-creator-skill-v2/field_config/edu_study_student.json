@@ -8,7 +8,7 @@
       "target_table": "edu_study",
       "join_condition": "edu_study.id = edu_study_student.edu_study_id",
       "type": "many_to_one",
-      "description": "通过排课ID关联排课信息",
+      "description": "",
       "fields_mapping": {
         "id": "edu_study_id"
       },
@@ -19,7 +19,7 @@
       "target_table": "edu_student",
       "join_condition": "edu_student.id = edu_study_student.edu_student_id",
       "type": "many_to_one",
-      "description": "通过学生ID关联学生信息",
+      "description": "",
       "fields_mapping": {
         "id": "edu_student_id"
       },
@@ -30,7 +30,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = edu_study_student.admin_user_id",
       "type": "many_to_one",
-      "description": "通过操作人ID关联后台用户",
+      "description": "",
       "fields_mapping": {
         "id": "admin_user_id"
       },

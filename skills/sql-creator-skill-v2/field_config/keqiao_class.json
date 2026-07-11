@@ -8,7 +8,7 @@
       "target_table": "keqiao_class_type",
       "join_condition": "keqiao_class_type.id = keqiao_class.keqiao_class_type_id",
       "type": "many_to_one",
-      "description": "通过班级类型ID关联班级类型表",
+      "description": "",
       "fields_mapping": {
         "id": "keqiao_class_type_id"
       },
@@ -19,7 +19,7 @@
       "target_table": "keqiao_class_category",
       "join_condition": "keqiao_class_category.id = keqiao_class.keqiao_class_category_id",
       "type": "many_to_one",
-      "description": "通过班级类别ID关联班级类别表",
+      "description": "",
       "fields_mapping": {
         "id": "keqiao_class_category_id"
       },
@@ -30,7 +30,7 @@
       "target_table": "edu_campus_school",
       "join_condition": "edu_campus_school.id = keqiao_class.edu_campus_school_id",
       "type": "many_to_one",
-      "description": "通过校区分校ID关联分校表",
+      "description": "",
       "fields_mapping": {
         "id": "edu_campus_school_id"
       },
@@ -52,7 +52,7 @@
       "target_table": "edu_level_mapping",
       "join_condition": "edu_level_mapping.id = keqiao_class.edu_level_mapping_id",
       "type": "many_to_one",
-      "description": "通过等级映射规则ID关联等级映射规则表",
+      "description": "",
       "fields_mapping": {
         "id": "edu_level_mapping_id"
       },

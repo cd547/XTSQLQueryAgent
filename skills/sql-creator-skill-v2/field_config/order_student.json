@@ -8,7 +8,7 @@
       "target_table": "order_type",
       "join_condition": "order_type.id = order_student.type_id",
       "type": "many_to_one",
-      "description": "学生订单关联的订单类型",
+      "description": "",
       "fields_mapping": {
         "id": "type_id"
       },
@@ -19,7 +19,7 @@
       "target_table": "edu_student_type",
       "join_condition": "edu_student_type.id = order_student.edu_student_type_id",
       "type": "many_to_one",
-      "description": "学生订单关联的学生类型",
+      "description": "",
       "fields_mapping": {
         "id": "edu_student_type_id"
       },
@@ -30,7 +30,7 @@
       "target_table": "edu_student_type_project",
       "join_condition": "edu_student_type_project.id = order_student.edu_student_type_project_id",
       "type": "many_to_one",
-      "description": "学生订单关联的报读项目",
+      "description": "",
       "fields_mapping": {
         "id": "edu_student_type_project_id"
       },
@@ -41,7 +41,7 @@
       "target_table": "order_pattern",
       "join_condition": "order_pattern.id = order_student.pattern_id",
       "type": "many_to_one",
-      "description": "学生订单关联的订单模式",
+      "description": "",
       "fields_mapping": {
         "id": "pattern_id"
       },
@@ -52,7 +52,7 @@
       "target_table": "edu_goods",
       "join_condition": "edu_goods.id = order_student.goods_id",
       "type": "many_to_one",
-      "description": "学生订单关联的产品",
+      "description": "",
       "fields_mapping": {
         "id": "goods_id"
       },
@@ -63,7 +63,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = order_student.admin_user_id",
       "type": "many_to_one",
-      "description": "学生订单的创建人",
+      "description": "",
       "fields_mapping": {
         "id": "admin_user_id"
       },
@@ -74,7 +74,7 @@
       "target_table": "edu_student",
       "join_condition": "edu_student.id = order_student.student_id",
       "type": "many_to_one",
-      "description": "学生订单关联的学生",
+      "description": "",
       "fields_mapping": {
         "id": "student_id"
       },
@@ -85,7 +85,7 @@
       "target_table": "order_entry",
       "join_condition": "order_entry.id = order_student.order_entry_id",
       "type": "many_to_one",
-      "description": "学生订单关联的项目名称",
+      "description": "",
       "fields_mapping": {
         "id": "order_entry_id"
       },
@@ -96,7 +96,7 @@
       "target_table": "edu_campus",
       "join_condition": "edu_campus.id = order_student.edu_campus_id",
       "type": "many_to_one",
-      "description": "学生订单关联的校区",
+      "description": "",
       "fields_mapping": {
         "id": "edu_campus_id"
       },
@@ -107,7 +107,7 @@
       "target_table": "order_contract_template",
       "join_condition": "order_contract_template.id = order_student.order_contract_template_id",
       "type": "many_to_one",
-      "description": "学生订单关联的合同模版",
+      "description": "",
       "fields_mapping": {
         "id": "order_contract_template_id"
       },

@@ -8,7 +8,7 @@
       "target_table": "edu_student",
       "join_condition": "edu_student.id = edu_student_parent.student_id",
       "type": "many_to_one",
-      "description": "通过学生ID关联学生信息",
+      "description": "",
       "fields_mapping": {
         "id": "student_id"
       },
