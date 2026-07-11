@@ -69,12 +69,20 @@ export function createMarkdownRenderers(isDark, opts = {}) {
     // 块级 code
     let lang = match ? match[1] : null;
 
-    // LLM 经常把整段回答包在 ```markdown ... ``` 外层，SQL 写在内部 ```sql ... ``` 嵌套。
+    // LLM 经常把整段回答包在 ```(markdown|md|空|text|...) ... ``` 外层，SQL 写在内部 ```sql ... ``` 嵌套。
     // react-markdown 解析外层代码块时会把内部 ``` 当作纯文本，SQL 永远不会到我们这里。
-    // 解决方案：检测到 markdown/md 包裹 + 内部有行首 ``` 嵌套时，剥掉外壳递归渲染一次。
-    if ((lang === 'markdown' || lang === 'md') && /^```/m.test(text)) {
+    // 解决方案：只要 text 内任意行出现 ``` 嵌套（说明外层把整段当字符串包的代码块），
+    // 就剥掉外壳递归渲染一次。
+    //
+    // 历史 bug：旧条件要求外层 lang 必须是 markdown/md。LLM 有时只写 ```（lang 为 null）
+    // 或 ```text，此时第一个分支不触发，落到下面的"启发式检测 SQL 关键字"——但 text
+    // 第一行是 "- 库:" 而非 SELECT，整段降级为无高亮的 <pre><code>，内层 ```sql 也跟着没高亮。
+    // 修复：去掉 lang 限制，剥壳正则也放宽为接受任意语言。
+    if (/^```/m.test(text)) {
+      // 容忍任意语言：开头的 ``` 后可能跟 markdown / md / text / <空> / 其它语言标识，
+      // 一律剥到第一个换行（含换行本身）。
       const inner = text
-        .replace(/^```(?:markdown|md)?\s*\n?/i, '')
+        .replace(/^```[^\n`]*\n?/, '')
         .replace(/\n?```\s*$/, '');
       return (
         <div className="xtsql-nested-markdown xtsql-msg-bubble" style={{ margin: '8px 0', padding: 0, background: 'transparent' }}>

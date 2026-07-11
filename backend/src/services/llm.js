@@ -169,7 +169,9 @@ function getOrCreateRegistry(sessionId) {
       getDomainIndexCalled: false,
       slicedDomains: new Set(),       // 已通过 get_sliced_index 加载过的域 ID
       tableSchema: new Set(),
-      tableDdl: new Set(),
+      // get_table_ddl 注册表：tableName -> Set<'short=0'|'short=1'>
+      // 必须按 (table, short) 组合判断重复，因为 short=0(完整DDL含索引/外键) 与 short=1(仅列定义) 返回内容不同
+      tableDdl: new Map(),
       termConfirmed: new Set(),
     });
   }
@@ -186,15 +188,61 @@ function buildChecklist(reg) {
   const domainIndexFlag = reg.getDomainIndexCalled ? '已调用' : '未调用';
   const slicedDomainsList = [...reg.slicedDomains].sort().join(', ') || '无';
   const schemaList = [...reg.tableSchema].sort().join(', ') || '无';
-  const ddlList = [...reg.tableDdl].sort().join(', ') || '无';
+  const ddlShort0 = [];
+  const ddlShort1 = [];
+  for (const [t, shorts] of reg.tableDdl.entries()) {
+    if (shorts.has('short=0')) ddlShort0.push(t);
+    if (shorts.has('short=1')) ddlShort1.push(t);
+  }
+  const ddlShort0List = ddlShort0.sort().join(', ') || '无';
+  const ddlShort1List = ddlShort1.sort().join(', ') || '无';
   const tablesFlag = reg.getTablesCalled ? '已调用' : '未调用';
   return [
     `- get_domain_index: ${domainIndexFlag}`,
     `- get_sliced_index 已覆盖的域: ${slicedDomainsList}`,
     `- get_tables: ${tablesFlag}`,
     `- 已获取 field_config 的表: ${schemaList}`,
-    `- 已获取 DDL 的表: ${ddlList}`,
+    `- 已获取 DDL (short=0, 完整含索引/外键) 的表: ${ddlShort0List}`,
+    `- 已获取 DDL (short=1, 仅列定义) 的表: ${ddlShort1List}`,
   ].join('\n');
+}
+
+/**
+ * 构建"已调用工具 + 参数"摘要消息（用于本轮 LLM 请求，不持久化到 history）。
+ * 目的：让 LLM 在生成 tool_call 决策前明确看到本会话已调用的工具及关键参数，
+ *       避免大模型因"长上下文注意力衰减"造成的重复调用。
+ * 关键：仅作为 LLM 请求参数（requestMessages）的一部分追加，**绝不** push 到累积的
+ *       messages 数组，避免污染 history / 数据库 / 调试接口的 lastMessages。
+ * @param {object|null} reg - 会话工具调用注册表
+ * @returns {{role: 'system', content: string} | null} 没有已调用工具时返回 null
+ */
+function buildToolCallChecklistMessage(reg) {
+  if (!reg) return null;
+  const parts = [];
+  if (reg.getDomainIndexCalled) parts.push('get_domain_index:✓');
+  if (reg.getTablesCalled) parts.push('get_tables:✓');
+  if (reg.slicedDomains.size > 0) parts.push(`get_sliced_index:[${[...reg.slicedDomains].sort().join(',')}]`);
+  if (reg.tableSchema.size > 0) parts.push(`get_table_schema:[${[...reg.tableSchema].sort().join(',')}]`);
+  if (reg.tableDdl.size > 0) {
+    const s0 = [];
+    const s1 = [];
+    for (const [t, shorts] of reg.tableDdl.entries()) {
+      if (shorts.has('short=0')) s0.push(t);
+      if (shorts.has('short=1')) s1.push(t);
+    }
+    if (s0.length > 0) parts.push(`get_table_ddl(s0):[${s0.sort().join(',')}]`);
+    if (s1.length > 0) parts.push(`get_table_ddl(s1):[${s1.sort().join(',')}]`);
+  }
+  if (reg.termConfirmed.size > 0) {
+    const items = [...reg.termConfirmed].map(s => s.replace('::', '@'));
+    parts.push(`request_tag_confirmation:[${items.join(',')}]`);
+  }
+  if (parts.length === 0) return null;
+  return {
+    role: 'system',
+    content: `[已调用] ${parts.join(' | ')}\n\n` +
+      `核对清单：相同工具+相同关键参数（table_names/domain_ids/term+table）请直接复用历史结果，避免重复调用。`
+  };
 }
 
 /**
@@ -261,10 +309,10 @@ function checkAndFilterDuplicateCall(toolName, args, sessionId) {
     return { block: false, args };
   }
 
-  if (toolName === 'get_table_schema' || toolName === 'get_table_ddl') {
+  if (toolName === 'get_table_schema') {
     const requested = normalizeTableNames(args.table_names);
     if (requested.length === 0) return { block: false, args };
-    const target = toolName === 'get_table_schema' ? reg.tableSchema : reg.tableDdl;
+    const target = reg.tableSchema;
     const dupes = requested.filter(n => target.has(n));
     const fresh = requested.filter(n => !target.has(n));
 
@@ -272,9 +320,9 @@ function checkAndFilterDuplicateCall(toolName, args, sessionId) {
       return {
         block: true,
         message:
-          `⚠️ 【重复调用已被程序拦截】工具 ${toolName} 中的所有表在本会话中都已被获取过: ${dupes.join(', ')}。\n\n` +
+          `⚠️ 【重复调用已被程序拦截】工具 get_table_schema 中的所有表在本会话中都已被获取过: ${dupes.join(', ')}。\n\n` +
           `📋 已有信息清单:\n${buildChecklist(reg)}\n\n` +
-          `请直接复用已有信息，禁止重复调用 ${toolName}。\n` +
+          `请直接复用已有信息，禁止重复调用 get_table_schema。\n` +
           `如需获取尚未在清单中的表，请重新传入只包含新表的 table_names 参数。`
       };
     }
@@ -283,7 +331,46 @@ function checkAndFilterDuplicateCall(toolName, args, sessionId) {
         block: false,
         args: { ...args, table_names: fresh },
         notice:
-          `ℹ️ 自动过滤重复表（已在清单中）: ${dupes.join(', ')}。仅对 [${fresh.join(', ')}] 执行 ${toolName}。\n` +
+          `ℹ️ 自动过滤重复表（已在清单中）: ${dupes.join(', ')}。仅对 [${fresh.join(', ')}] 执行 get_table_schema。\n` +
+          `📋 已有信息清单:\n${buildChecklist(reg)}`
+      };
+    }
+    return { block: false, args };
+  }
+
+  if (toolName === 'get_table_ddl') {
+    // get_table_ddl 必须按 (table, short) 组合判断重复：
+    //   short=0 → 完整 DDL 含索引/外键；short=1 → 仅列定义。两种返回内容不同，不应相互替代。
+    const requested = normalizeTableNames(args.table_names);
+    if (requested.length === 0) return { block: false, args };
+    const short = (args.short === 0 || args.short === '0') ? 0 : 1;
+    const shortKey = `short=${short}`;
+    const dupes = requested.filter(n => {
+      const shorts = reg.tableDdl.get(n);
+      return shorts && shorts.has(shortKey);
+    });
+    const fresh = requested.filter(n => {
+      const shorts = reg.tableDdl.get(n);
+      return !shorts || !shorts.has(shortKey);
+    });
+
+    if (dupes.length === requested.length) {
+      return {
+        block: true,
+        message:
+          `⚠️ 【重复调用已被程序拦截】工具 get_table_ddl 中所有 (table, ${shortKey}) 组合在本会话中都已被获取过: ${dupes.join(', ')}。\n\n` +
+          `📋 已有信息清单:\n${buildChecklist(reg)}\n\n` +
+          `请直接复用已有信息，禁止重复调用 get_table_ddl。\n` +
+          `如需获取尚未在清单中的 (table, short) 组合，请重新传入只包含新表的 table_names 参数；` +
+          `如需 short=0/1 之外的版本（如已用 short=1 查过，但需要 short=0 的完整 DDL），需明确传入 short=0。`
+      };
+    }
+    if (dupes.length > 0) {
+      return {
+        block: false,
+        args: { ...args, table_names: fresh, short },
+        notice:
+          `ℹ️ 自动过滤重复 (table, ${shortKey}) 组合（已在清单中）: ${dupes.join(', ')}。仅对 [${fresh.join(', ')}] 执行 get_table_ddl。\n` +
           `📋 已有信息清单:\n${buildChecklist(reg)}`
       };
     }
@@ -334,7 +421,13 @@ function recordToolCall(toolName, args, sessionId) {
   } else if (toolName === 'get_table_schema') {
     normalizeTableNames(args.table_names).forEach(n => reg.tableSchema.add(n));
   } else if (toolName === 'get_table_ddl') {
-    normalizeTableNames(args.table_names).forEach(n => reg.tableDdl.add(n));
+    // 按 (table, short) 组合记录，允许同一表同时记录 short=0 和 short=1
+    const short = (args.short === 0 || args.short === '0') ? 0 : 1;
+    const shortKey = `short=${short}`;
+    normalizeTableNames(args.table_names).forEach(n => {
+      if (!reg.tableDdl.has(n)) reg.tableDdl.set(n, new Set());
+      reg.tableDdl.get(n).add(shortKey);
+    });
   } else if (toolName === 'request_tag_confirmation') {
     const termsRaw = args.term;
     const terms = Array.isArray(termsRaw) ? termsRaw : (termsRaw ? [termsRaw] : []);
@@ -500,13 +593,61 @@ ${skillMd}`;
   let sql = '';
   
   while (maxToolCalls > 0) {
+    // 每轮 LLM 请求前，临时向 messages 追加"已调用工具清单"消息（仅用于本轮请求，不持久化）。
+    // 目的：让 LLM 在生成 tool_call 决策前明确看到本会话已调用的工具 + 参数，
+    //       避免因长上下文注意力衰减造成的重复调用（详见 project_memory.md）。
+    // 不持久化：清单消息只放在 requestMessages，原始 messages 数组不被修改，
+    //           避免污染 history / DB / 调试接口的 lastMessages。
+    const checklistMsg = sessionId
+      ? buildToolCallChecklistMessage(getOrCreateRegistry(sessionId))
+      : null;
+
+    // 明确记录『当时调用情况』到 log（仅本轮 LLM 请求使用，不存 DB，不累积到 messages）：
+    //   - 没有 checklistMsg 时记录『(无)』，便于知道本轮没有清单消息
+    //   - 有 checklistMsg 时用 BEGIN/END 标记包裹，便于 grep 抓取
+    if (checklistMsg) {
+      queueLog(
+        `📋 [Round ${(31 - maxToolCalls)}] 本轮 LLM 请求末尾追加的『已调用工具清单』消息（仅本轮使用，不存 DB）:\n` +
+        `--- BEGIN checklist (requestMessages 末尾) ---\n` +
+        `${checklistMsg.content}\n` +
+        `--- END checklist ---`,
+        true
+      );
+    } else {
+      queueLog(`📋 [Round ${(31 - maxToolCalls)}] 本轮 LLM 请求无『已调用工具清单』（首轮或无 sessionId）`, true);
+    }
+
+    const requestMessages = checklistMsg ? [...messages, checklistMsg] : messages;
+
+    // 工具剪枝：一次性工具调用过后，从 LLM 请求的 tools 数组中移除以节省 token
+    // - get_domain_index：调用后业务域列表已在 history 中，后续不需要
+    // - get_sliced_index：调用后已加载的域在 history 中，后续不需要
+    // 注意：toolsMap（用于执行工具的查找）保持不变，仅影响 LLM 看到哪些工具可选
+    const pruneReg = sessionId ? getOrCreateRegistry(sessionId) : null;
+    const prunedTools = pruneReg
+      ? toolsDefinition.filter(t => {
+          if (t.function.name === 'get_domain_index' && pruneReg.getDomainIndexCalled) return false;
+          if (t.function.name === 'get_sliced_index' && pruneReg.slicedDomains.size > 0) return false;
+          return true;
+        })
+      : toolsDefinition;
+    const prunedNames = toolsDefinition
+      .filter(t => !prunedTools.includes(t))
+      .map(t => t.function.name);
+    if (prunedNames.length > 0) {
+      queueLog(
+        `✂️ [Round ${(31 - maxToolCalls)}] 本轮 LLM 请求已剪枝工具（不再传入）: ${prunedNames.join(', ')}`,
+        true
+      );
+    }
+
     const requestParams = {
       model: llmModel,
-      messages: messages,
+      messages: requestMessages,
       temperature: 0,
       stream: true,
       stream_options: { include_usage: true },
-      tools: toolsDefinition,
+      tools: prunedTools,
       thinking: {
         type: 'enabled'
       }
