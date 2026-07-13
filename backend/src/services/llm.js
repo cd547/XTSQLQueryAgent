@@ -645,15 +645,21 @@ ${skillMd}`;
       queueLog(`📋 [Round ${(31 - maxToolCalls)}] 本轮 LLM 请求无『已调用工具清单』（首轮或无 sessionId）`, true);
     }
 
-    // 剥离 assistant 消息中的 reasoning_content（模型 OUTPUT 字段，非 API 请求参数）
-    // 原因：DeepSeek 官方 API 不接收 reasoning_content 字段，调用时不应传入；
-    //       保留会占用大量 token 并污染 LLM 注意力（每轮回灌，Round N 累积 N-1 份旧 reasoning）
-    // 副作用：全剥后 LLM 失去"思考放哪"的隐式提示，可能把思考倒进 content 字段。
-    //       通过 system prompt 中的"思考放 reasoning_content"格式约束来缓解（见 systemMessage）。
-    // 保留：每轮 content（外部输出）+ tool_calls（行为信号）
-    // 剥除：所有 assistant 的 reasoning_content
+    // 剥离"无工具调用"的 assistant 消息中的 reasoning_content
+    //
+    // DeepSeek 官方规则（thinking_mode 文档）：
+    //   - 两个 user 之间如果未进行工具调用 → assistant 的 reasoning_content 无需参与上下文拼接
+    //     （传入 API 也会被忽略）
+    //   - 两个 user 之间如果进行了工具调用 → assistant 的 reasoning_content **必须**回传 API，
+    //     否则 API 返回 400 错误（"The `reasoning_content` in the thinking mode must be passed back to the API."）
+    //
+    // 历史教训：之前一刀切全剥，导致工具调用场景第二轮 LLM 请求报 400，
+    //   任务链断裂模型"断片"，后续思考/工具调用无法连贯执行。
+    //
+    // 保留：所有 tool_calls 的 assistant.reasoning_content（多轮推理链必需）
+    // 剥除：无 tool_calls 的 assistant.reasoning_content（节省 token + 减少注意力污染）
     const requestMessages = (checklistMsg ? [...messages, checklistMsg] : messages).map(m => {
-      if (m.role === 'assistant' && m.reasoning_content) {
+      if (m.role === 'assistant' && m.reasoning_content && !m.tool_calls) {
         const { reasoning_content, ...rest } = m;
         return rest;
       }

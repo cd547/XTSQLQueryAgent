@@ -304,6 +304,10 @@ router.post('/generate', async (req, res) => {
   }
 
   try {
+    // 记录请求开始时间：用于计算 assistant 消息耗时（前端回显显示"耗时 Xs"）
+    // 这是后端权威耗时，包含网络传输/历史读取/LLM 调用/工具调用全过程
+    const requestStartTime = Date.now();
+
     // 保存用户消息到数据库
     if (sessionId && question) {
       try {
@@ -452,14 +456,17 @@ router.post('/generate', async (req, res) => {
         }
 
 logger.info('Stream done, sending final result', { sql: sql?.substring(0, 50), message: message?.substring(0, 50), totalTokens });
-        
-        // 保存最终消息到数据库（包含token统计）
+
+        // 计算本次请求耗时：后端权威时间，含网络/历史读取/LLM/工具调用
+        const elapsedMs = Date.now() - requestStartTime;
+
+        // 保存最终消息到数据库（包含token统计与耗时）
         const contentForDb = fullContent || message;
         if (sessionId && contentForDb) {
           try {
             const db = getDb();
-            db.prepare('INSERT INTO messages (session_id, role, content, sql, results, prompt_tokens, completion_tokens, total_tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-              .run(sessionId, 'assistant', contentForDb, sql || '', '', totalPromptTokens, totalCompletionTokens, totalTokens);
+            db.prepare('INSERT INTO messages (session_id, role, content, sql, results, prompt_tokens, completion_tokens, total_tokens, elapsed_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+              .run(sessionId, 'assistant', contentForDb, sql || '', '', totalPromptTokens, totalCompletionTokens, totalTokens, elapsedMs);
           } catch (e) {
             logger.error('保存最终消息失败', { error: e.message });
           }
@@ -483,7 +490,9 @@ logger.info('Stream done, sending final result', { sql: sql?.substring(0, 50), m
           sql,
           message,
           sessionId,
-          totalTokens
+          totalTokens,
+          // 后端权威耗时（毫秒）：前端优先用此值显示，回显历史消息时也用 DB 中的此字段
+          elapsedMs
         };
 
         const confirmMatch = message.match(/<!--confirm_tag_add:(\{[^}]+\})-->/);

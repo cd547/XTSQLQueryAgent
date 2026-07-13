@@ -289,9 +289,12 @@ function AuthenticatedApp({ user, logout }) {
     try {
       const data = await getSessionMessages(sessionId);
       if (data.messages) {
-        const loaded = data.messages
-          .filter(m => m.role !== 'usage')
-          .map(m => ({
+        const filtered = data.messages.filter(m => m.role !== 'usage');
+        // 老数据兜底：没有 elapsed_ms 时按 user/assistant 成对消息的 created_at 差值补算
+        // 一次性扫描，按"相邻 user/assistant 配对"得到回显耗时
+        const loaded = filtered.map(m => {
+          let elapsedMs = m.elapsed_ms || null;
+          return {
             id: `db-${m.id}`,
             role: m.role,
             content: m.content || m.sql || '',
@@ -299,7 +302,26 @@ function AuthenticatedApp({ user, logout }) {
             timestamp: m.created_at,
             logType: m.role === 'LLM' ? 'llm' : m.role === 'tool_return' ? 'return' : 'call',
             collapsed: m.role === 'LLM' ? true : false,
-          }));
+            elapsedMs
+          };
+        });
+        // 老数据回填：相邻 user → assistant 配对，差值作为 elapsedMs
+        for (let i = 0; i < loaded.length; i++) {
+          if (loaded[i].role === 'assistant' && (loaded[i].elapsedMs == null || loaded[i].elapsedMs === 0)) {
+            // 向前找最近的 user 消息
+            for (let j = i - 1; j >= 0; j--) {
+              if (loaded[j].role === 'user') {
+                const u = new Date(loaded[j].timestamp).getTime();
+                const a = new Date(loaded[i].timestamp).getTime();
+                if (Number.isFinite(u) && Number.isFinite(a) && a > u) {
+                  loaded[i].elapsedMs = a - u;
+                }
+                break;
+              }
+              if (loaded[j].role === 'assistant') break; // 遇到上一轮 assistant 终止
+            }
+          }
+        }
         setMessages(loaded);
         // 切换会话时清空旧 favorites 状态再回显本会话的
         setFavoriteStates({});
@@ -812,7 +834,10 @@ function AuthenticatedApp({ user, logout }) {
                   const lastIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
                   if (lastIdx !== -1) {
                     const startTime = newMsgs[lastIdx].startTime || Date.now();
-                    const elapsedMs = Date.now() - startTime;
+                    // 优先用后端权威耗时（含网络/工具调用），fallback 到前端本地计时
+                    const elapsedMs = (typeof data.elapsedMs === 'number' && data.elapsedMs >= 0)
+                      ? data.elapsedMs
+                      : Date.now() - startTime;
                     newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: data.message || '', sql: data.sql || '', isStreaming: false, elapsedMs };
                   }
                   return newMsgs;
