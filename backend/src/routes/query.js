@@ -366,7 +366,7 @@ router.post('/generate', async (req, res) => {
       res.flushHeaders();
 
       try {
-        const generator = generateSQLWithLangChainStreamGen_BAK(question, historyText, abortController.signal, sessionId);
+        const generator = generateSQLWithLangChainStreamGen_BAK(question, historyText, abortController.signal, sessionId, req.user.username);
         let fullContent = '';
         let sql = '';
         let message = '';

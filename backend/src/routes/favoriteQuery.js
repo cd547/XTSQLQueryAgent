@@ -19,6 +19,7 @@ router.post('/favorite', authRequired, async (req, res) => {
   try {
     const result = await saveFavoriteQuery({
       userId: req.user.id,
+      username: req.user.username,
       userQuestion,
       sqlOutput
     });

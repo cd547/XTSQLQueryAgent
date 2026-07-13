@@ -25,6 +25,16 @@
       "fields_mapping": {
         "code": "customer_code"
       }
+    },
+        {
+      "name": "关联线索家长表",
+      "target_table": "customer_people",
+      "join_condition": "customer_people.id = customer_contact.people_id",
+      "type": "many_to_one",
+      "description": "多条联系方式记录可属于同一家长,people_id=0 表示线索本人的手机号",
+      "fields_mapping": {
+        "id": "people_id"
+      }
     }
   ],
 

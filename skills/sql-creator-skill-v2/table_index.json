@@ -1558,6 +1558,14 @@
       ],
       "business_constraints": [],
       "business_rules": []
+    },
+    {
+      "name": "customer_people",
+      "description": "线索家长表",
+      "tags": [],
+      "related_tables": ["customer_clue_info"],
+      "business_constraints": [],
+      "business_rules": []
     }
   ]
 }

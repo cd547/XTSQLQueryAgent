@@ -18,6 +18,7 @@
     "customer_auto_assign_result",
     "customer_label",
     "effective_customers",
-    "customers_new_sign_returned_info"
+    "customers_new_sign_returned_info",
+    "customer_people"
   ]
 }

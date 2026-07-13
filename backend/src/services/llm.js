@@ -7,9 +7,46 @@ import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { config } from '../config.js';
+import { ensureDir } from '../utils/fs.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOGS_PATH = config.logPath;
+
+/**
+ * 把任意用户名清洗为文件系统安全的形式：
+ *   - 仅保留 [a-zA-Z0-9_-]，其它字符替换为 _
+ *   - 长度上限 50 字符
+ *   - 空结果回退为 "unknown"（保证日志文件不会因为边界值缺失）
+ */
+function sanitizeUsername(name) {
+  if (!name || typeof name !== 'string') return 'unknown';
+  const cleaned = name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50);
+  return cleaned || 'unknown';
+}
+
+/**
+ * 计算当前日期键（YYYY-MM-DD），用于按天分子目录。
+ */
+function todayKey() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * 计算用户 LLM 日志文件绝对路径：logs/YYYY-MM-DD/{username}_llm.log
+ * 边界：usernane 为空时落 _system_llm.log（与 Winston 系统日志风格一致）
+ */
+function llmLogFileFor(username) {
+  const safe = sanitizeUsername(username);
+  const dateDir = path.join(LOGS_PATH, todayKey());
+  ensureDir(dateDir, 'llm log date dir');
+  // 当无法归属用户（如未登录、系统调用）时统一走 _system_ 命名
+  const prefix = safe === 'unknown' ? '_system' : safe;
+  return path.join(dateDir, `${prefix}_llm.log`);
+}
 
 /* ============================ 超时配置（BUG-7 修复） ============================ */
 
@@ -119,11 +156,22 @@ export async function withPromiseTimeout(fn, externalSignal, timeoutMs, label, o
   });
 }
 
-function writeLlmLog(content) {
+function writeLlmLog(content, username) {
+  // 按"日期 / 用户"分文件落盘
+  //  - 路径：logs/YYYY-MM-DD/{username}_llm.log（username 缺失则 _system_llm.log）
+  //  - 用户名经 sanitizeUsername 清洗（保留 a-zA-Z0-9_-，超 50 截断）
+  //  - 仍走 fs.appendFileSync（项目当前部署是单进程，不引入锁；与原实现行为一致）
   const now = new Date();
-  const dateStr = now.toISOString().slice(0, 10);
-  const logFile = path.join(LOGS_PATH, `llm_${dateStr}.log`);
   const timestamp = now.toISOString();
+  let logFile;
+  try {
+    logFile = llmLogFileFor(username);
+  } catch (e) {
+    // 路径解析/目录创建失败 → 回退到 _system_llm.log，避免日志写入整链路挂掉
+    const dateDir = path.join(LOGS_PATH, todayKey());
+    try { ensureDir(dateDir, 'llm log date dir fallback'); } catch (_) {}
+    logFile = path.join(dateDir, '_system_llm.log');
+  }
   const logLine = `${timestamp}: ${content}\n`;
   try {
     fs.appendFileSync(logFile, logLine, 'utf-8');
@@ -162,14 +210,24 @@ function splitThinkingFromContent(responseText) {
   return { content: responseText, extraThinking: '' };
 }
 
+// LLM 日志缓冲：每条记录带 username（"日期 / 用户"分文件场景下，按用户聚合后再 flush）
+// 结构：{ username, content } — flush 时按 username 分组聚合，再走 writeLlmLog
 const LOG_BUFFER = [];
 let flushTimer = null;
 
 function flushLogs() {
   if (LOG_BUFFER.length === 0) return;
   const flushing = LOG_BUFFER.splice(0);
-  const content = flushing.join('\n');
-  writeLlmLog(content);
+  // 按 username 分组聚合后批量写盘，减少 appendFileSync 次数（系统级合并到 _system）
+  const byUser = new Map();
+  for (const item of flushing) {
+    const u = item.username || null;
+    if (!byUser.has(u)) byUser.set(u, []);
+    byUser.get(u).push(item.content);
+  }
+  for (const [u, lines] of byUser) {
+    writeLlmLog(lines.join('\n'), u);
+  }
 }
 
 // 进程级全局缓存：记录最近一次 LLM 调用的完整 messages 数组。
@@ -482,8 +540,10 @@ export function getSessionChecklist(sessionId) {
   return buildChecklist(reg);
 }
 
-function queueLog(content, immediate = false) {
-  LOG_BUFFER.push(content);
+function queueLog(content, immediate = false, username = null) {
+  // username 由调用方（generateSQLWithLangChainStreamGen_BAK）注入，
+  // 写到 LOG_BUFFER 时一起打包，flushLogs 按用户分组聚合后再写盘
+  LOG_BUFFER.push({ username, content });
   if (immediate) {
     if (flushTimer) {
       clearTimeout(flushTimer);
@@ -550,8 +610,11 @@ export function loadMessagesFromDb(sessionId) {
 }
 
 // 备份原有函数
-export async function* generateSQLWithLangChainStreamGen_BAK(question, history = '', signal, sessionId = null) {
-  logger.info('generateSQLWithLangChainStreamGen_BAK called (backup)', { question, historyLength: history?.length, sessionId });
+// username: 触发该 LLM 调用的登录用户名（来自 req.user.username），
+//   透传到 queueLog 写到 logs/YYYY-MM-DD/{username}_llm.log。
+//   缺失/空值时统一走 _system_llm.log。
+export async function* generateSQLWithLangChainStreamGen_BAK(question, history = '', signal, sessionId = null, username = null) {
+  logger.info('generateSQLWithLangChainStreamGen_BAK called (backup)', { question, historyLength: history?.length, sessionId, username });
   
   let config;
   try {
@@ -639,10 +702,11 @@ ${skillMd}`;
         `--- BEGIN checklist (requestMessages 末尾) ---\n` +
         `${checklistMsg.content}\n` +
         `--- END checklist ---`,
-        true
+        true,
+        username
       );
     } else {
-      queueLog(`📋 [Round ${(31 - maxToolCalls)}] 本轮 LLM 请求无『已调用工具清单』（首轮或无 sessionId）`, true);
+      queueLog(`📋 [Round ${(31 - maxToolCalls)}] 本轮 LLM 请求无『已调用工具清单』（首轮或无 sessionId）`, true, username);
     }
 
     // 剥离"无工具调用"的 assistant 消息中的 reasoning_content
@@ -705,7 +769,7 @@ ${skillMd}`;
       return;
     }
 
-    queueLog('generateSQLWithLangChainStreamGen_BAK Round ' + (31 - maxToolCalls) + ' Request:\n' + JSON.stringify(requestParams, null, 2), true);
+    queueLog('generateSQLWithLangChainStreamGen_BAK Round ' + (31 - maxToolCalls) + ' Request:\n' + JSON.stringify(requestParams, null, 2), true, username);
 
     try {
       const tFetch = withTimeout(signal, LLM_TIMEOUTS.FETCH_MS, 'LLM fetch');
@@ -953,7 +1017,7 @@ while (true) {
           const toolArgs = toolCall.function.arguments || '{}';
 
           if (p.dupCheck && p.dupCheck.block) {
-            queueLog(`🚫 拦截重复调用: ${toolName} sessionId=${sessionId} args=${toolArgs}`, true);
+            queueLog(`🚫 拦截重复调用: ${toolName} sessionId=${sessionId} args=${toolArgs}`, true, username);
             yield { type: 'tool_return', log: `🚫 拦截重复调用: ${toolName}\n参数: ${toolArgs}\n${p.dupCheck.message}` };
             messages.push({
               role: 'tool',
@@ -1000,7 +1064,7 @@ while (true) {
   // 返回 markdown 格式的结果
   const message = responseText;
 
-  queueLog(`=== BAK 完成 SQL: ${sql || responseText}`, true);
+  queueLog(`=== BAK 完成 SQL: ${sql || responseText}`, true, username);
   flushLogs();
   yield { type: 'done', sql: '', message };
 }

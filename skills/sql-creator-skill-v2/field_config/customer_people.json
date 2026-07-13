@@ -1,0 +1,20 @@
+{
+  "table_name": "customer_people",
+  "field_aliases": {},
+  "field_enums": {},
+  "virtual_associations": [
+      {
+      "name": "关联线索扩展信息",
+      "target_table": "customer_clue_info",
+      "join_condition": "customer_clue_info.customer_code = customer_people.customer_code",
+      "type": "one_to_one",
+      "description": "",
+      "fields_mapping": {
+        "customer_code": "customer_code"
+      }
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}
