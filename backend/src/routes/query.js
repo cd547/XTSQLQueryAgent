@@ -374,6 +374,9 @@ router.post('/generate', async (req, res) => {
         let totalPromptTokens = 0;
         let totalCompletionTokens = 0;
         let totalTokens = 0;
+        // ★ request_user_choice 弹窗请求：捕获 llm.js yield done 中的事件字段
+        // 用于穿透到 SSE doneData，驱动前端 UserChoiceDialog
+        let userChoiceRequestFromStream = null;
 
         for await (const chunk of generator) {
           if (abortController.signal.aborted) break;
@@ -432,6 +435,11 @@ router.post('/generate', async (req, res) => {
           } else if (chunk.type === 'done') {
             sql = chunk.sql || '';
             message = chunk.message || '';
+            // ★ 捕获 userChoiceRequest 事件字段（来自 llm.js 终止分支 yield）
+            // 与 confirm_tag_add 不同：userChoiceRequest 通过事件字段直接传，不靠 regex
+            if (chunk.userChoiceRequest && !userChoiceRequestFromStream) {
+              userChoiceRequestFromStream = chunk.userChoiceRequest;
+            }
           }
         }
 
@@ -494,6 +502,12 @@ logger.info('Stream done, sending final result', { sql: sql?.substring(0, 50), m
           // 后端权威耗时（毫秒）：前端优先用此值显示，回显历史消息时也用 DB 中的此字段
           elapsedMs
         };
+
+        // ★ request_user_choice 弹窗请求：来自 llm.js 终止分支 yield 的 userChoiceRequest 事件字段
+        // null 表示 DB 写失败降级（不弹窗）/ 正常路径（无 user_choice 调用）
+        if (userChoiceRequestFromStream) {
+          doneData.user_choice_request = userChoiceRequestFromStream;
+        }
 
         const confirmMatch = message.match(/<!--confirm_tag_add:(\{[^}]+\})-->/);
         if (confirmMatch) {

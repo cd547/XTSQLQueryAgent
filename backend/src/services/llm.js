@@ -259,6 +259,9 @@ function getOrCreateRegistry(sessionId) {
       // 必须按 (table, short) 组合判断重复，因为 short=0(完整DDL含索引/外键) 与 short=1(仅列定义) 返回内容不同
       tableDdl: new Map(),
       termConfirmed: new Set(),
+      // request_user_choice 注册表：key = id (uc_xxx) —— 记录已问过哪些问题
+      // 用于 checklist 显示 + 拦截完全相同 (question, options) 组合的重复调用（Q-09 = B）
+      userChoiceAsked: new Map(),     // id -> {question, options, multiSelect, header, signature}
     });
   }
   return sessionToolRegistries.get(sessionId);
@@ -322,6 +325,15 @@ function buildToolCallChecklistMessage(reg) {
   if (reg.termConfirmed.size > 0) {
     const items = [...reg.termConfirmed].map(s => s.replace('::', '@'));
     parts.push(`request_tag_confirmation:[${items.join(',')}]`);
+  }
+  if (reg.userChoiceAsked && reg.userChoiceAsked.size > 0) {
+    // 显示所有 userChoiceAsked 项（id + question 预览 50 字符），不截断
+    // 不同 question 都允许，重复由 checkAndFilterDuplicateCall 拦截
+    const items = [...reg.userChoiceAsked.entries()].map(([id, v]) => {
+      const q = String(v?.question || '').slice(0, 50).replace(/[|:]/g, ' ');
+      return `${id}:"${q}"`;
+    });
+    parts.push(`request_user_choice:[${items.join('|')}]`);
   }
   if (parts.length === 0) return null;
   return {
@@ -489,13 +501,38 @@ function checkAndFilterDuplicateCall(toolName, args, sessionId) {
     return { block: false, args };
   }
 
+  if (toolName === 'request_user_choice') {
+    // Q-09 = B：拦截完全相同 (question, options, multi_select) 组合的重复调用
+    // 不同问题/不同选项都允许——只拦"完全相同"，与 request_tag_confirmation 同构
+    const sig = computeUserChoiceSignature(args);
+    let isDupe = false;
+    for (const [, v] of reg.userChoiceAsked) {
+      if (v && v.signature === sig) { isDupe = true; break; }
+    }
+    if (isDupe) {
+      return {
+        block: true,
+        message:
+          `⚠️ 【重复调用已被程序拦截】request_user_choice 中完全相同的问题/选项/类型在本会话中已被问过: "${String(args?.question || '').slice(0, 80)}"。\n` +
+          `请基于用户上次回复继续生成 SQL；如需追问不同问题，请使用不同 question 或 options。`
+      };
+    }
+    return { block: false, args };
+  }
+
   return { block: false, args };
 }
 
 /**
  * 记录一次成功执行的工具调用。必须在工具真正执行成功后调用。
+ *
+ * @param {string} toolName - 工具名
+ * @param {object} args - LLM 传入的 args
+ * @param {string} sessionId - 会话 ID
+ * @param {string|null} [overrideId=null] - 覆盖 id（request_user_choice 用，从 tool.func 返回的 {id, marker, payload} 中提取）
+ *   用于保证 registry 内 id 与 marker 内 id 一致（reviewer #2 修复）
  */
-function recordToolCall(toolName, args, sessionId) {
+function recordToolCall(toolName, args, sessionId, overrideId = null) {
   const reg = getOrCreateRegistry(sessionId);
   if (!reg) return;
   if (toolName === 'get_tables') {
@@ -519,7 +556,31 @@ function recordToolCall(toolName, args, sessionId) {
     const terms = Array.isArray(termsRaw) ? termsRaw : (termsRaw ? [termsRaw] : []);
     const table = args.table || '';
     terms.forEach(t => reg.termConfirmed.add(`${t}::${table}`));
+  } else if (toolName === 'request_user_choice') {
+    // ★ 优先用 overrideId（来自 tool.func 的结构化返回），fallback 到 args.id
+    // 没有 overrideId 时记录 "uc_unknown_<timestamp>" 标记（防止 id 冲突）
+    const id = overrideId
+      || (args && args.id)
+      || ('uc_unknown_' + Date.now());
+    const options = Array.isArray(args?.options) ? args.options : [];
+    const signature = `${String(args?.question || '').trim()}|${options.join('||')}|${!!args?.multi_select}`;
+    reg.userChoiceAsked.set(id, {
+      question: args?.question || '',
+      options,
+      multiSelect: !!args?.multi_select,
+      header: args?.header || '',
+      signature
+    });
   }
+}
+
+/**
+ * 计算 request_user_choice 的 signature（用于 checkAndFilterDuplicateCall）
+ */
+function computeUserChoiceSignature(args) {
+  const question = String(args?.question || '').trim();
+  const options = Array.isArray(args?.options) ? args.options : [];
+  return `${question}|${options.join('||')}|${!!args?.multi_select}`;
 }
 
 /**
@@ -680,9 +741,16 @@ ${skillMd}`;
 
   const agentConfig = getAgentConfig();
   let maxToolCalls = parseInt(agentConfig.agent_max_tool_calls || '30', 10);
+  // ★ 记录初始 maxToolCalls 用于 Round 编号：Round = 已用掉多少轮（从 0 开始递增）
+  //   历史 Bug：用 `31 - maxToolCalls` 计算，当 admin 配置 > 31 时出现负数（Round -9, -8, ...）
+  const maxToolCallsInitial = maxToolCalls;
   let responseText = '';
   let sql = '';
-  
+  // ★ request_user_choice 终止信号：检测到该工具被调用后，置为 payload，跳出 while 循环
+  // 程序硬控：LLM 调用该工具后，工具循环立即终止（不再调用 LLM）
+  // 详见 project_memory.md "TURN 1 终止边界"
+  let pendingUserChoice = null;
+
   while (maxToolCalls > 0) {
     // 每轮 LLM 请求前，临时向 messages 追加"已调用工具清单"消息（仅用于本轮请求，不持久化）。
     // 目的：让 LLM 在生成 tool_call 决策前明确看到本会话已调用的工具 + 参数，
@@ -698,7 +766,7 @@ ${skillMd}`;
     //   - 有 checklistMsg 时用 BEGIN/END 标记包裹，便于 grep 抓取
     if (checklistMsg) {
       queueLog(
-        `📋 [Round ${(31 - maxToolCalls)}] 本轮 LLM 请求末尾追加的『已调用工具清单』消息（仅本轮使用，不存 DB）:\n` +
+        `📋 [Round ${(maxToolCallsInitial - maxToolCalls)}] 本轮 LLM 请求末尾追加的『已调用工具清单』消息（仅本轮使用，不存 DB）:\n` +
         `--- BEGIN checklist (requestMessages 末尾) ---\n` +
         `${checklistMsg.content}\n` +
         `--- END checklist ---`,
@@ -706,7 +774,7 @@ ${skillMd}`;
         username
       );
     } else {
-      queueLog(`📋 [Round ${(31 - maxToolCalls)}] 本轮 LLM 请求无『已调用工具清单』（首轮或无 sessionId）`, true, username);
+      queueLog(`📋 [Round ${(maxToolCallsInitial - maxToolCalls)}] 本轮 LLM 请求无『已调用工具清单』（首轮或无 sessionId）`, true, username);
     }
 
     // 剥离"无工具调用"的 assistant 消息中的 reasoning_content
@@ -747,7 +815,7 @@ ${skillMd}`;
       .map(t => t.function.name);
     if (prunedNames.length > 0) {
       queueLog(
-        `✂️ [Round ${(31 - maxToolCalls)}] 本轮 LLM 请求已剪枝工具（不再传入）: ${prunedNames.join(', ')}`,
+        `✂️ [Round ${(maxToolCallsInitial - maxToolCalls)}] 本轮 LLM 请求已剪枝工具（不再传入）: ${prunedNames.join(', ')}`,
         true
       );
     }
@@ -769,7 +837,7 @@ ${skillMd}`;
       return;
     }
 
-    queueLog('generateSQLWithLangChainStreamGen_BAK Round ' + (31 - maxToolCalls) + ' Request:\n' + JSON.stringify(requestParams, null, 2), true, username);
+    queueLog('generateSQLWithLangChainStreamGen_BAK Round ' + (maxToolCallsInitial - maxToolCalls) + ' Request:\n' + JSON.stringify(requestParams, null, 2), true, username);
 
     try {
       const tFetch = withTimeout(signal, LLM_TIMEOUTS.FETCH_MS, 'LLM fetch');
@@ -844,6 +912,20 @@ while (true) {
               const data = JSON.parse(line.slice(6));
               const usage = data.usage;
               if (usage) {
+                // ★ DeepSeek prefix cache 命中率（默认开启）：
+                //   prompt_cache_hit_tokens - 命中缓存的 token 数（按缓存价计费）
+                //   prompt_cache_miss_tokens - 未命中 token 数（按原价计费）
+                // 不记录到 SSE 事件（前端不需要），仅写日志用于监控 prefix cache 实际效果。
+                const cacheHit = usage.prompt_cache_hit_tokens || 0;
+                const cacheMiss = usage.prompt_cache_miss_tokens || 0;
+                const cacheTotal = cacheHit + cacheMiss;
+                const hitRate = cacheTotal > 0 ? ((cacheHit / cacheTotal) * 100).toFixed(1) : '0.0';
+                queueLog(
+                  `📊 [Round ${(maxToolCallsInitial - maxToolCalls)}] LLM usage: ` +
+                  `prompt=${usage.prompt_tokens || 0} completion=${usage.completion_tokens || 0} total=${usage.total_tokens || 0} | ` +
+                  `prefix_cache: hit=${cacheHit} miss=${cacheMiss} hit_rate=${hitRate}%`,
+                  true, username
+                );
                 yield { type: 'usage', usage: { prompt_tokens: usage.prompt_tokens || 0, completion_tokens: usage.completion_tokens || 0, total_tokens: usage.total_tokens || 0 } };
               }
               const content = data.choices?.[0]?.delta?.content || '';
@@ -995,16 +1077,28 @@ while (true) {
         //   同步工具也会被 await 正确处理（Promise.resolve 包装）
         const execResults = await Promise.all(prepared.map(async (p) => {
           if (!p.tool || (p.dupCheck && p.dupCheck.block)) {
-            return { ...p, rawResult: null, execError: null };
+            return { ...p, rawResult: null, toolMessageContent: null, userChoiceId: null, execError: null };
           }
           try {
             const effectiveArgs = p.dupCheck.args;
             const notice = p.dupCheck.notice;
             const rawResult = await Promise.resolve(p.tool.func(effectiveArgs));
-            recordToolCall(p.toolName, effectiveArgs, sessionId);
-            return { ...p, rawResult, execError: null, notice };
+
+            // ★ request_user_choice 特殊处理：tool.func 返回结构化对象 {id, marker, payload}
+            //   - userChoiceId：从对象提取 id，用于 recordToolCall 写入 registry
+            //   - toolMessageContent：从对象提取 marker（字符串），用于阶段 3 push 到 messages
+            //   - 其他工具：toolMessageContent 默认 = rawResult（兼容）
+            let userChoiceId = null;
+            let toolMessageContent = rawResult;
+            if (p.toolName === 'request_user_choice' && rawResult && typeof rawResult === 'object' && rawResult.marker) {
+              userChoiceId = rawResult.id;
+              toolMessageContent = rawResult.marker;
+            }
+
+            recordToolCall(p.toolName, effectiveArgs, sessionId, userChoiceId);
+            return { ...p, rawResult, toolMessageContent, userChoiceId, execError: null, notice };
           } catch (e) {
-            return { ...p, rawResult: null, execError: e };
+            return { ...p, rawResult: null, toolMessageContent: null, userChoiceId: null, execError: e };
           }
         }));
 
@@ -1036,21 +1130,44 @@ while (true) {
             continue;
           }
 
-          const resultContent = p.notice ? `${p.notice}\n\n${p.rawResult}` : p.rawResult;
-          yield { type: 'tool_return', log: `📋 工具 ${toolName} 返回:\n${resultContent}` };
+          // ★ 优先用 p.toolMessageContent（request_user_choice 已拆为 marker 字符串）
+          //   fallback 到原 notice+rawResult 逻辑
+          const resultContent = p.toolMessageContent
+            || (p.notice ? `${p.notice}\n\n${p.rawResult}` : p.rawResult);
+          yield { type: 'tool_return', log: `📋 工具 ${toolName} 返回:\n${typeof resultContent === 'string' ? resultContent : JSON.stringify(resultContent)}` };
           messages.push({
             role: 'tool',
             tool_call_id: toolCallId,
             content: resultContent
           });
+
+          // ★ 检测 request_user_choice 工具 → 设置终止信号
+          // p.rawResult 是结构化对象 {id, marker, payload}，提取 marker 用于正则解析
+          if (p.toolName === 'request_user_choice' && p.rawResult && typeof p.rawResult === 'object' && p.rawResult.marker) {
+            const marker = p.rawResult.marker || '';
+            const match = marker.match(/<!--user_choice:(\{[\s\S]*?\})-->/);
+            if (match) {
+              try {
+                pendingUserChoice = JSON.parse(match[1]);
+                logger.info('user_choice tool detected, terminating TURN 1', {
+                  sessionId, id: pendingUserChoice.id, question: pendingUserChoice.question
+                });
+              } catch (e) {
+                logger.warn('user_choice marker parse failed', { sessionId, error: e.message, raw: marker.slice(0, 200) });
+                // 解析失败：fall through，不终止（LLM 继续正常流程）
+              }
+            }
+          }
         }
+
+        // ★ 跳出 while 循环：检测到 request_user_choice 后 TURN 1 终止
+        if (pendingUserChoice) break;
 
         maxToolCalls--;
         continue;
       }
 
-      break;
-      
+      break;      
     } catch (e) {
       if (e.name === 'AbortError') {
         yield { type: 'error', content: '请求已被用户中断' };
@@ -1059,6 +1176,56 @@ while (true) {
       }
       return;
     }
+  }
+
+  // ★ request_user_choice 终止分支：TURN 1 在工具循环处硬性结束
+  // LLM 调用 request_user_choice 后：
+  //   1) 持久化 messages（含 tool marker，Turn 2 要 load）
+  //   2) 写日志（payload 详情 + dbSaveOk 状态）
+  //   3) yield done 携带 userChoiceRequest 事件字段
+  //   4) DB 写失败时降级（不弹窗，让 LLM 继续）
+  // 详见 project_memory.md "TURN 1 终止边界" + "程序硬控原则"
+  if (pendingUserChoice) {
+    let dbSaveOk = true;
+    if (sessionId) {
+      try {
+        saveMessagesToDb(sessionId, messages);
+      } catch (e) {
+        // 现有 saveMessagesToDb 内部已有 try/catch + error 日志
+        // 但仍可能因异常路径未覆盖（死锁/超时）走到这里
+        dbSaveOk = false;
+        logger.error('CRITICAL: saveMessagesToDb failed for user_choice flow', {
+          sessionId, error: e.message
+        });
+      }
+    }
+
+    queueLog(
+      `🔔 TURN 1 终止 - user_choice 请求: id=${pendingUserChoice.id} question="${String(pendingUserChoice.question || '').slice(0, 80)}" options=${JSON.stringify(pendingUserChoice.options)} multi_select=${!!pendingUserChoice.multi_select} dbSaveOk=${dbSaveOk}`,
+      true, username
+    );
+    flushLogs();
+
+    // 降级处理：DB 写失败 → 不弹窗，让 LLM 继续
+    if (!dbSaveOk) {
+      logger.warn('DB save failed, falling back to LLM continuation', { sessionId });
+      yield {
+        type: 'done',
+        sql: '',
+        message: responseText + '\n\n（系统提示：用户交互持久化失败，请基于已有信息继续）',
+        userChoiceRequest: null  // null 告诉前端不弹窗
+      };
+      return;
+    }
+
+    // 正常路径：yield done 携带 userChoiceRequest
+    yield {
+      type: 'done',
+      sql: '',
+      message: responseText,
+      userChoiceRequest: pendingUserChoice
+    };
+    return;
   }
 
   // 返回 markdown 格式的结果

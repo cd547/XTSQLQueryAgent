@@ -61,3 +61,10 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL 5.7 SQL
 用户给出术语→表名映射时，调用 `request_tag_confirmation(term, table, description)`。
 - `term`：术语数组（支持多个），`table`：表名，`description`：可选描述。
 - 示例：用户说"aa表就是edu_student" → `request_tag_confirmation(term=["aa"], table="edu_student", description="学生")`
+
+## 用户交互
+
+任务缺信息时（时间范围、报表口径、字段消歧等）调 `request_user_choice` 弹窗让用户选/填：
+- 调用前在 content 中**自然语言描述问题**（便于历史回看）
+- 调用后**不再生成任何文字**（程序自动结束本轮并弹窗）
+- 用户答案简洁（例："近7天, 华东区"），直接基于此继续生成 SQL

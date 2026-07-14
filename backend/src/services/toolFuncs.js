@@ -251,6 +251,33 @@ export function requestTagConfirmation(term, table, description) {
   return `<!--confirm_tag_add:${JSON.stringify({ term, table, description })}-->`;
 }
 
+// request_user_choice: 生成稳定 id + marker 字符串
+// 关键：返回结构化对象 {id, marker, payload} —— 让 caller 拿到 id 写入 registry
+// 不返回单纯 marker 字符串（否则 registry 与 marker 的 id 无法关联，reviewer #2 已确认是严重 bug）
+export function makeUserChoiceId() {
+  return 'uc_' + Math.random().toString(36).slice(2, 8);
+}
+
+export function buildUserChoiceMarker(question, options, multiSelect, header) {
+  const id = makeUserChoiceId();
+  const payload = {
+    id,
+    question: String(question || '').slice(0, 500),
+    options: (Array.isArray(options) ? options : []).slice(0, 8).map(o => String(o).slice(0, 100)),
+    multi_select: !!multiSelect,
+    header: String(header || '').slice(0, 12)
+  };
+  return {
+    id,
+    marker: `<!--user_choice:${JSON.stringify(payload)}-->`,
+    payload
+  };
+}
+
+export function requestUserChoice(question, options, multiSelect, header) {
+  return buildUserChoiceMarker(question, options, multiSelect, header);
+}
+
 // 表格卡片格式化：与 get_tables 输出保持一致，供 get_sliced_index 共用
 function formatTableInfo(tables) {
   return tables.map(t => {
@@ -408,6 +435,51 @@ export const tools = [
       }
 
       return requestTagConfirmation(term, table, description || '');
+    }
+  }),
+  // ★ 新增：request_user_choice 工具（稳定工具组末尾，**严禁放首位**——会破坏 prefix cache）
+  // 位置：request_tag_confirmation 之后、get_domain_index 之前
+  new DynamicTool({
+    name: "request_user_choice",
+    description: "【需要用户输入】当任务需要用户确认/选择/补充才能继续时调用。弹出选项+自由文本框，用户提交后 LLM 继续。调用后不要再生成任何文字——程序会自动结束当前轮次并弹出对话框。",
+    params: {
+      type: 'object',
+      properties: {
+        question: { type: 'string', description: '向用户提问的内容（≤500字）' },
+        options: { type: 'array', items: { type: 'string' }, description: '候选选项（1-8 个字符串，每项 ≤100 字）' },
+        multi_select: { type: 'boolean', description: 'true=多选（checkbox），false=单选（radio），默认 false' },
+        header: { type: 'string', description: '弹窗短标题（≤12 字）' }
+      },
+      required: ['question', 'options']
+    },
+    func: (params) => {
+      // 解析（string/object 双兼容，与 request_tag_confirmation 一致）
+      let question, options, multiSelect, header;
+      try {
+        if (typeof params === 'object' && params !== null) {
+          ({ question, options, multiSelect, header } = params);
+        } else if (typeof params === 'string') {
+          const parsed = JSON.parse(params);
+          question = parsed.question;
+          options = parsed.options;
+          multiSelect = parsed.multi_select;
+          header = parsed.header;
+        }
+      } catch (e) { logger.debug('Parse request_user_choice params failed', { error: e.message }); }
+
+      if (!question || typeof question !== 'string') {
+        return '请提供 question(问题) 参数';
+      }
+      if (!Array.isArray(options) || options.length === 0) {
+        return '请提供 options(选项数组) 参数，至少 1 个';
+      }
+      if (options.length > 8) options = options.slice(0, 8);
+
+      // ★ 关键：tool.func 返回结构化对象 {id, marker, payload}
+      // - marker 用于 LLM 看到的 tool 消息 content
+      // - id 用于 recordToolCall 写入 registry（保证与 marker 内 id 一致）
+      // 如果只返回 marker 字符串，caller 拿不到 id，registry 会存 "uc_unknown_<timestamp>"，与 marker 内 id 失联
+      return requestUserChoice(question, options, multiSelect, header);
     }
   }),
   // ===== 可变工具：调用一次后会被剪枝（见 llm.js 中的剪枝逻辑）=====

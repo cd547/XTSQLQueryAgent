@@ -508,6 +508,7 @@ html.xtsql-dark { color-scheme: dark; }
   flex-direction: column;
   background: var(--xtsql-app-bg);
   background-attachment: fixed;
+  position: relative;
 }
 .xtsql-content-header {
   display: flex;

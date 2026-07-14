@@ -5,6 +5,7 @@ import './App.css';
 const { Panel } = Collapse;
 
 import ConfirmDialog from './components/ConfirmDialog';
+import UserChoiceDialog from './components/UserChoiceDialog';
 import ResizableTitle from './components/ResizableTitle';
 import ChatMessage from './components/ChatMessage';
 import ConfigPanel from './components/ConfigPanel';
@@ -31,8 +32,9 @@ function App() {
   // 未登录：渲染登录页（带启动校验 loading 态）
   if (bootstrapping) {
     return (
-      <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Spin size="large" tip="正在校验登录状态..." />
+      <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+        <Spin size="large" />
+        <div style={{ color: 'var(--xtsql-text-secondary, #666)' }}>正在校验登录状态...</div>
       </div>
     );
   }
@@ -111,6 +113,16 @@ function AuthenticatedApp({ user, logout }) {
     term: [],
     table: '',
     description: ''
+  });
+  // ★ request_user_choice 弹窗状态：由 SSE done 事件的 user_choice_request 字段驱动
+  // 提交/取消后合成新 user message，调 /generate 触发新一轮
+  const [userChoiceRequest, setUserChoiceRequest] = useState({
+    visible: false,
+    requestId: '',
+    question: '',
+    options: [],
+    multiSelect: false,
+    header: ''
   });
   const [isExplainResult, setIsExplainResult] = useState(false);
   const [explainResults, setExplainResults] = useState([]);
@@ -642,11 +654,15 @@ function AuthenticatedApp({ user, logout }) {
     fetchChatSuggestions();
   }, [fetchChatSuggestions]);
   
-  const handleSend = async () => {
-    if (!input.trim() || loading) return;
+  const handleSend = async (overrideText = null) => {
+    // 兼容 onClick={handleSend} 情况：React 会注入 SyntheticEvent 作为第一个参数
+    // 这里把非 string 参数当 null 处理，强制走 input 分支
+    const textArg = typeof overrideText === 'string' ? overrideText : null;
+    const userMessage = (textArg !== null ? textArg : String(input || '')).trim();
+    if (!userMessage || loading) return;
 
-    const userMessage = input.trim();
-    setInput('');
+    // 清空 input 框（仅当是从 input 触发的）
+    if (textArg === null) setInput('');
 
     const now = new Date().toISOString();
     const startTime = Date.now();
@@ -772,7 +788,7 @@ function AuthenticatedApp({ user, logout }) {
                     newMsgs[lastLlmLogIdx] = {
                       ...newMsgs[lastLlmLogIdx],
                       content: (newMsgs[lastLlmLogIdx].content || '') + data.content,
-                      collapsed: false,
+                      collapsed: true,
                     };
                   } else {
                     const logMsg = {
@@ -780,7 +796,7 @@ function AuthenticatedApp({ user, logout }) {
                       role: 'log',
                       content: '💭 LLM思考过程:\n' + data.content,
                       timestamp: new Date().toISOString(),
-                      collapsed: false,
+                      collapsed: true,
                       logType: 'llm',
                     };
                     newMsgs.splice(lastAssistantIdx, 0, logMsg);
@@ -846,6 +862,18 @@ function AuthenticatedApp({ user, logout }) {
                 if (data.totalTokens) {
                   setCurrentTokens(prev => prev + data.totalTokens);
                 }
+                // ★ 检测 user_choice_request 弹窗（来自 llm.js 终止分支）
+                // null 表示 DB 写失败降级 / 正常路径无 user_choice 调用
+                if (data.user_choice_request) {
+                  setUserChoiceRequest({
+                    visible: true,
+                    requestId: data.user_choice_request.id || '',
+                    question: data.user_choice_request.question || '',
+                    options: Array.isArray(data.user_choice_request.options) ? data.user_choice_request.options : [],
+                    multiSelect: !!data.user_choice_request.multi_select,
+                    header: data.user_choice_request.header || ''
+                  });
+                }
               }
             } catch (e) {
               console.warn('Parse SSE error:', e);
@@ -894,6 +922,28 @@ function AuthenticatedApp({ user, logout }) {
 
   const handleCancelTagAdd = () => {
     setConfirmTagAdd(prev => ({ ...prev, visible: false }));
+  };
+
+  // ★ request_user_choice 提交处理：合成简洁 user message，调 /generate 触发新一轮
+  // 多轮 UX 连贯性：先插气泡 → 关弹窗 → setLoading → 触发 generateSQL
+  // 不要传 wrapper 格式（[用户对选择请求的回复]...）—— LLM 通过上下文自然理解
+  const handleSubmitUserChoice = async (selected, text) => {
+    const { question } = userChoiceRequest;
+    // 简洁答案：直接拼接 "已选" + "补充"，不用 wrapper
+    // 例如："近7天, 华东区"
+    const parts = [];
+    if (Array.isArray(selected) && selected.length > 0) parts.push(selected.join(', '));
+    if (text) parts.push(text);
+    const answer = parts.length > 0 ? parts.join(', ') : '用户未选择任何选项';
+    setUserChoiceRequest(prev => ({ ...prev, visible: false }));
+    // 直接调 handleSend 或 generateSQL —— 复用同一管线
+    await handleSend(answer);
+  };
+
+  // ★ 取消处理：合成 "用户取消了选择" 消息，提交新一轮
+  const handleCancelUserChoice = () => {
+    setUserChoiceRequest(prev => ({ ...prev, visible: false }));
+    handleSend('用户取消了选择，请基于已有信息继续');
   };
   
   const getSelectedSql = () => {
@@ -1697,6 +1747,20 @@ children: currentResults.length > 0 ? (
                   onCancel={handleCancelTagAdd}
                 />
               )}
+
+              {/* ★ request_user_choice 弹窗：与 ConfirmDialog 并列，按 userChoiceRequest.visible 渲染 */}
+              {activeTabKey === 'chat' && userChoiceRequest.visible && (
+                <UserChoiceDialog
+                  visible={true}
+                  question={userChoiceRequest.question}
+                  options={userChoiceRequest.options}
+                  multiSelect={userChoiceRequest.multiSelect}
+                  header={userChoiceRequest.header}
+                  inputHeight={inputHeight}
+                  onSubmit={handleSubmitUserChoice}
+                  onCancel={handleCancelUserChoice}
+                />
+              )}
               
               <Modal
                 title="会话消息详情"
@@ -1765,7 +1829,8 @@ children: currentResults.length > 0 ? (
                     value={input}
                     onChange={e => setInput(e.target.value)}
                     onPressEnter={e => { if (!e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                    placeholder="输入自然语言查询，按Enter发送，Shift+Enter换行"
+                    placeholder={userChoiceRequest.visible ? "请先完成弹窗中的选择" : "输入自然语言查询，按Enter发送，Shift+Enter换行"}
+                    disabled={userChoiceRequest.visible}
                     autoSize={{ minRows: 1, maxRows: 10 }}
                     style={{ height: inputHeight - 44 }}
                   />
@@ -2061,7 +2126,8 @@ children: currentResults.length > 0 ? (
             <div>
               {addTableChecking ? (
                 <div style={{ textAlign: 'center', padding: 32 }}>
-                  <Spin tip="正在查询数据库获取DDL..." />
+                  <Spin />
+                  <div style={{ marginTop: 12, color: 'var(--xtsql-text-secondary, #666)' }}>正在查询数据库获取DDL...</div>
                 </div>
               ) : (
                 <div>
@@ -2178,9 +2244,15 @@ function ChangePasswordModal({ open, onClose, onChanged }) {
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
 
-  // 关闭时清空表单
+  // 关闭时清空表单 —— 仅在 open 从 true → false 时 reset，
+  // 避免 open=false 初始化阶段（Form 还未挂载）调用 resetFields() 报
+  // "Instance created by useForm is not connected to any Form element" 警告
+  const prevOpenRef = useRef(open);
   useEffect(() => {
-    if (!open) form.resetFields();
+    if (prevOpenRef.current && !open) {
+      form.resetFields();
+    }
+    prevOpenRef.current = open;
   }, [open, form]);
 
   const handleOk = async () => {
@@ -2215,7 +2287,7 @@ function ChangePasswordModal({ open, onClose, onChanged }) {
       confirmLoading={submitting}
       okText="确认修改"
       cancelText="取消"
-      destroyOnClose
+      destroyOnHidden
     >
       <Form form={form} layout="vertical" autoComplete="off">
         <Form.Item
