@@ -313,7 +313,9 @@ function AuthenticatedApp({ user, logout }) {
             sql: m.sql || '',
             timestamp: m.created_at,
             logType: m.role === 'LLM' ? 'llm' : m.role === 'tool_return' ? 'return' : 'call',
-            collapsed: m.role === 'LLM' ? true : false,
+            // 历史回看：所有日志类型（LLM思考 / 工具调用 / 工具返回）默认折叠，
+            // 与流式实时态（collapsed: true）保持一致，避免历史消息全展开
+            collapsed: ['LLM', 'tool', 'tool_return'].includes(m.role),
             elapsedMs
           };
         });

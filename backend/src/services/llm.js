@@ -674,6 +674,12 @@ export function loadMessagesFromDb(sessionId) {
 // username: 触发该 LLM 调用的登录用户名（来自 req.user.username），
 //   透传到 queueLog 写到 logs/YYYY-MM-DD/{username}_llm.log。
 //   缺失/空值时统一走 _system_llm.log。
+//
+// [DEAD-CODE 2026-07-15] history 形参当前未在函数体内被消费：
+//   - query.js:325-339 的 historyText 装载逻辑已被临时禁用（`if (false && sessionId)`）
+//   - 真实 LLM context 历史来自 llm_messages.messages（loadMessagesFromDb）
+//   - 恢复方法：在本函数体内把 history 注入到 system message 或 user message 之前
+//     （注意：会影响 DeepSeek prefix cache，因为 system 变了）
 export async function* generateSQLWithLangChainStreamGen_BAK(question, history = '', signal, sessionId = null, username = null) {
   logger.info('generateSQLWithLangChainStreamGen_BAK called (backup)', { question, historyLength: history?.length, sessionId, username });
   

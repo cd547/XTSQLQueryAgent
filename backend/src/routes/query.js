@@ -322,10 +322,12 @@ router.post('/generate', async (req, res) => {
     const skillMd = await loadSkillMd();
     logger.info('Skill.md loaded at generate request', { length: skillMd.length });
 
+    // [DEAD-CODE 2026-07-15] historyText 当前未被 llm.js 消费（llm.js 用 llm_messages.messages JSON blob）
+    // 保留这段代码以备未来"双上下文"设计（如：用 messages 表做更精细的 token 控制 / 摘要压缩 / 工具调用审计）
+    // 恢复方法：在 llm.js:677 generateSQLWithLangChainStreamGen_BAK 函数体内使用 history 形参
     let schema = '';
     let historyText = '';
-
-    if (sessionId) {
+    if (false && sessionId) {  // ← 临时禁用入口，避免无谓 SQL 查询
       const db = getDb();
       // 取最近 20 条消息（长对话保留近期上下文），再翻转成时间正序拼入 prompt
       const messages = db.prepare(`
