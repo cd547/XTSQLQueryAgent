@@ -1,0 +1,294 @@
+/* ==================== 消息气泡 ==================== */
+.xtsql-msg {
+  display: flex;
+  gap: 12px;
+  align-items: flex-start;
+  animation: xtsql-msg-in 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes xtsql-msg-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.xtsql-msg.user {
+  flex-direction: row-reverse;
+}
+.xtsql-msg-avatar {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  flex-shrink: 0;
+  box-shadow: var(--xtsql-shadow-xs);
+  overflow: hidden;
+  background: transparent;
+  border: none;
+}
+.xtsql-msg-avatar.user {
+  background: linear-gradient(135deg, #1677ff 0%, #4f46e5 100%);
+  color: #fff;
+  font-weight: 600;
+}
+.xtsql-msg-avatar.assistant {
+  background: var(--xtsql-bg-elevated);
+  color: var(--xtsql-accent);
+  border: 1px solid var(--xtsql-border);
+}
+.xtsql-msg-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-width: calc(100% - 220px);
+  min-width: 80px;
+}
+.xtsql-msg.user .xtsql-msg-body {
+  align-items: flex-end;
+}
+.xtsql-msg-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 10px;
+  color: var(--xtsql-text-tertiary);
+  padding: 0 4px;
+}
+.xtsql-msg.user .xtsql-msg-meta { flex-direction: row-reverse; }
+.xtsql-msg-bubble {
+  padding: 11px 15px;
+  border-radius: var(--xtsql-radius-lg);
+  font-size: 13px;
+  line-height: 1.65;
+  word-break: break-word;
+  /* 移除 white-space: pre-wrap：会让 LLM 输出里的空行被保留成 line-height 高的空白，导致段落间距爆炸。
+     用户消息的 pre-wrap 改在它自己的容器 div 上（见 ChatMessage.jsx 里的 inline style） */
+  box-shadow: var(--xtsql-shadow-sm);
+  border: 1px solid var(--xtsql-border);
+  position: relative;
+}
+.xtsql-msg.user .xtsql-msg-bubble {
+  background: var(--xtsql-message-user);
+  color: var(--xtsql-message-user-text);
+  border: none;
+  border-top-right-radius: 4px;
+  box-shadow: var(--xtsql-accent-glow);
+}
+.xtsql-msg.assistant .xtsql-msg-bubble {
+  background: var(--xtsql-message-assistant);
+  color: var(--xtsql-message-assistant-text);
+  border-top-left-radius: 4px;
+}
+.xtsql-msg-bubble code {
+  background: rgba(0, 0, 0, 0.08);
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-size: 12px;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+}
+
+/* markdown 元素间距：避免 LLM 流式输出多空行导致段落间距爆炸 */
+.xtsql-msg-bubble p {
+  margin: 0 0 6px 0;
+  line-height: 1.65;
+}
+.xtsql-msg-bubble p:last-child { margin-bottom: 0; }
+/* 隐藏空段落（连续 \n\n 会被 react-markdown 转成空 <p>） */
+.xtsql-msg-bubble p:empty { display: none; }
+.xtsql-msg-bubble h1,
+.xtsql-msg-bubble h2,
+.xtsql-msg-bubble h3,
+.xtsql-msg-bubble h4,
+.xtsql-msg-bubble h5,
+.xtsql-msg-bubble h6 {
+  margin: 10px 0 6px 0;
+  font-weight: 600;
+  line-height: 1.4;
+}
+.xtsql-msg-bubble h1 { font-size: 18px; }
+.xtsql-msg-bubble h2 { font-size: 16px; }
+.xtsql-msg-bubble h3 { font-size: 15px; }
+.xtsql-msg-bubble h4,
+.xtsql-msg-bubble h5,
+.xtsql-msg-bubble h6 { font-size: 14px; }
+.xtsql-msg-bubble ul,
+.xtsql-msg-bubble ol {
+  margin: 4px 0;
+  padding-left: 22px;
+}
+.xtsql-msg-bubble li {
+  margin: 2px 0;
+  line-height: 1.6;
+}
+.xtsql-msg-bubble li > p { margin: 2px 0; }
+.xtsql-msg-bubble blockquote {
+  margin: 6px 0;
+  padding: 4px 10px;
+  border-left: 3px solid var(--xtsql-border-strong);
+  color: var(--xtsql-text-secondary);
+  background: var(--xtsql-hover);
+  border-radius: 0 4px 4px 0;
+}
+.xtsql-msg-bubble hr {
+  border: none;
+  border-top: 1px solid var(--xtsql-border);
+  margin: 10px 0;
+}
+.xtsql-msg.user .xtsql-msg-bubble code {
+  background: rgba(255, 255, 255, 0.18);
+  color: #fff;
+}
+.xtsql-msg-bubble pre {
+  background: rgba(0, 0, 0, 0.04);
+  padding: 10px 12px;
+  border-radius: var(--xtsql-radius-sm);
+  overflow: auto;
+  font-size: 12px;
+  margin: 8px 0;
+}
+.xtsql-msg.user .xtsql-msg-bubble pre {
+  background: rgba(255, 255, 255, 0.15);
+}
+.xtsql-msg-bubble pre code {
+  background: transparent;
+  padding: 0;
+  /* 强制透明继承：让 react-syntax-highlighter 给的 inline color 生效
+     （vscDarkPlus/prism 把 token 颜色挂在 token span 的 inline style 上，
+      不影响子元素；但全局 CSS 若再覆盖 pre/code color，会干扰背景对比） */
+  color: inherit;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+}
+/* 关键：保护 SyntaxHighlighter 生成的 token span 不被外层 color 串掉
+   （vscDarkPlus/prism 自身已用 inline style 上色，但加 !important 防御性
+    避免后续全局 CSS 误伤） */
+.xtsql-msg-bubble pre code .token,
+.xtsql-msg-bubble pre code span[class*="token"] {
+  color: inherit;
+}
+.xtsql-msg-bubble pre code .token.keyword,
+.xtsql-msg-bubble pre code .token.string,
+.xtsql-msg-bubble pre code .token.number,
+.xtsql-msg-bubble pre code .token.comment,
+.xtsql-msg-bubble pre code .token.function,
+.xtsql-msg-bubble pre code .token.operator,
+.xtsql-msg-bubble pre code .token.punctuation {
+  /* 占位：inline style 优先级最高，这些规则只是兜底；不写具体值 */
+}
+.xtsql-msg-bubble table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+  font-size: 12px;
+  border: 1px solid var(--xtsql-border);
+  border-radius: var(--xtsql-radius-sm);
+  overflow: hidden;
+}
+.xtsql-msg-bubble th,
+.xtsql-msg-bubble td {
+  border: 1px solid var(--xtsql-border);
+  padding: 6px 10px;
+  text-align: left;
+}
+.xtsql-msg-bubble th {
+  background: var(--xtsql-hover);
+  font-weight: 600;
+}
+
+/* 工具日志消息 */
+.xtsql-log {
+  display: flex;
+  justify-content: flex-start;
+  margin-left: 44px;
+  animation: xtsql-msg-in 0.24s ease;
+}
+.xtsql-log-card {
+  max-width: 75%;
+  border-radius: var(--xtsql-radius-md);
+  font-size: 11px;
+  border: 1px dashed var(--xtsql-border-strong);
+  background: var(--xtsql-bg-elevated);
+  overflow: hidden;
+}
+.xtsql-log-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  user-select: none;
+  font-size: 10px;
+  color: var(--xtsql-text-tertiary);
+  transition: background 0.15s;
+}
+.xtsql-log-header:hover { background: var(--xtsql-hover); }
+.xtsql-log-tag {
+  padding: 1px 6px;
+  border-radius: var(--xtsql-radius-pill);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+.xtsql-log-tag.llm { background: rgba(22, 119, 255, 0.12); color: var(--xtsql-accent); }
+.xtsql-log-tag.call { background: rgba(99, 102, 241, 0.12); color: #6366f1; }
+.xtsql-log-tag.return { background: rgba(245, 158, 11, 0.14); color: #d97706; }
+html.xtsql-dark .xtsql-log-tag.return { color: #fbbf24; }
+.xtsql-log-body {
+  padding: 8px 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
+  font-size: 10.5px;
+  max-height: 240px;
+  overflow-y: auto;
+  border-top: 1px dashed var(--xtsql-border);
+  color: var(--xtsql-text-secondary);
+}
+
+/* 消息操作按钮 */
+.xtsql-msg-actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+  justify-content: flex-end;
+  align-items: center;
+}
+.xtsql-msg-elapsed {
+  font-size: 11px;
+  color: var(--xtsql-text-secondary);
+  margin-right: 4px;
+  user-select: none;
+  cursor: default;
+}
+.xtsql-action-btn {
+  height: 28px;
+  padding: 0 12px !important;
+  font-size: 11px !important;
+  border-radius: var(--xtsql-radius-pill) !important;
+  display: flex !important;
+  align-items: center;
+  gap: 4px;
+  background: var(--xtsql-bg-elevated) !important;
+  border: 1px solid var(--xtsql-border) !important;
+  color: var(--xtsql-text-secondary) !important;
+  transition: all 0.18s ease;
+}
+.xtsql-action-btn:hover {
+  background: var(--xtsql-accent-soft) !important;
+  color: var(--xtsql-accent) !important;
+  border-color: var(--xtsql-accent-soft) !important;
+  transform: translateY(-1px);
+}
+.xtsql-action-btn.primary {
+  background: var(--xtsql-accent) !important;
+  border-color: var(--xtsql-accent) !important;
+  color: #fff !important;
+  box-shadow: var(--xtsql-accent-glow);
+}
+.xtsql-action-btn.primary:hover {
+  filter: brightness(1.05);
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .xtsql-msg-body { max-width: calc(100% - 60px); }
+}

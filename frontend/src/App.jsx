@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Layout, Input, Button, Table, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, InputNumber, Modal, Steps, Space, Dropdown, Avatar, Tooltip, Form, theme } from 'antd';
+import { Layout, Input, Button, Table, message, Spin, Drawer, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, Modal, Dropdown, Tooltip, theme } from 'antd';
 import 'react-resizable/css/styles.css';
 import './App.css';
 const { Panel } = Collapse;
@@ -11,6 +11,10 @@ import ChatMessage from './components/ChatMessage';
 import ConfigPanel from './components/ConfigPanel';
 import LoginPage from './components/LoginPage';
 import AppIcon from './components/AppIcon.jsx';
+import SessionMessagesModal from './components/modals/SessionMessagesModal.jsx';
+import ChangePasswordModal from './components/modals/ChangePasswordModal.jsx';
+import AddTableModal from './components/modals/AddTableModal.jsx';
+import ExplainAnalyzeModal from './components/modals/ExplainAnalyzeModal.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { useTheme } from './context/ThemeContext.jsx';
 import * as api from './api/index.js';
@@ -20,7 +24,7 @@ import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
 import './utils/monacoEnv';
 import { createMarkdownRenderers } from './components/markdownRenderers.jsx';
-import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles, getDomains, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages, saveFavoriteQuery, checkFavorites, unfavoriteQuery, getFavoriteSuggestions } from './api';
+import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages, saveFavoriteQuery, checkFavorites, unfavoriteQuery, getFavoriteSuggestions } from './api';
 
 const { TextArea } = Input;
 const { Sider, Content } = Layout;
@@ -94,17 +98,6 @@ function AuthenticatedApp({ user, logout }) {
   const [skillTreeActionsVisible, setSkillTreeActionsVisible] = useState(false);
   const [currentModel, setCurrentModel] = useState('');
   const [addTableModalOpen, setAddTableModalOpen] = useState(false);
-  const [addTableStep, setAddTableStep] = useState(1);
-  const [addTableName, setAddTableName] = useState('');
-  const [addTableChecking, setAddTableChecking] = useState(false);
-  const [addTableExists, setAddTableExists] = useState(false);
-  const [addTableDDL, setAddTableDDL] = useState('');
-  const [addTableDescription, setAddTableDescription] = useState('');
-  const [addTableDomains, setAddTableDomains] = useState([]);
-  const [addTableSelectedDomains, setAddTableSelectedDomains] = useState([]);
-  const [addTableDomainsLoading, setAddTableDomainsLoading] = useState(false);
-  const [addTableRelatedTables, setAddTableRelatedTables] = useState([]);
-  const [addTableCreating, setAddTableCreating] = useState(false);
   const [explainAnalyzeModalOpen, setExplainAnalyzeModalOpen] = useState(false);
   const [explainAnalysisContent, setExplainAnalysisContent] = useState('');
   const [explainAnalysisLoading, setExplainAnalysisLoading] = useState(false);
@@ -1142,78 +1135,6 @@ const exportToExcel = async (data, cols) => {
     }
   };
 
-  const handleAddTableStep1 = async () => {
-    if (!addTableName.trim()) return;
-    setAddTableChecking(true);
-    try {
-      const data = await checkTableExists(addTableName.trim());
-      setAddTableExists(data.exists);
-      if (data.exists) {
-        setAddTableStep(1.5);
-      } else {
-        setAddTableStep(2);
-        setAddTableDescription(data.tableComment || '');
-      }
-    } catch (e) {
-      message.error('检查失败: ' + e.message);
-    } finally {
-      setAddTableChecking(false);
-    }
-  };
-
-  const handleAddTableStep2 = async () => {
-    setAddTableChecking(true);
-    try {
-      const data = await fetchTableDDL(addTableName.trim());
-      if (data.success) {
-        setAddTableDDL(data.ddl);
-        setAddTableDescription(data.tableComment || addTableDescription);
-        setAddTableRelatedTables(data.relatedTables || []);
-        setAddTableStep(3);
-      } else {
-        message.error(data.message || '获取DDL失败');
-      }
-    } catch (e) {
-      message.error('获取DDL失败: ' + e.message);
-    } finally {
-      setAddTableChecking(false);
-    }
-  };
-
-  const handleAddTableStep3 = async () => {
-    setAddTableCreating(true);
-    try {
-      const data = await createTableFiles(addTableName.trim(), addTableDDL, addTableDescription, addTableSelectedDomains);
-      if (data.success) {
-        message.success(data.existed ? 'DDL文件已覆盖' : '表格文件创建成功');
-        setAddTableModalOpen(false);
-        loadSkillsList();
-        resetAddTableForm();
-      } else {
-        message.error(data.message || '创建失败');
-      }
-    } catch (e) {
-      message.error('创建失败: ' + e.message);
-    } finally {
-      setAddTableCreating(false);
-    }
-  };
-
-  const resetAddTableForm = () => {
-    setAddTableStep(1);
-    setAddTableName('');
-    setAddTableDDL('');
-    setAddTableDescription('');
-    setAddTableRelatedTables([]);
-    setAddTableExists(false);
-    setAddTableSelectedDomains([]);
-  };
-
-  const handleAddTableModalClose = () => {
-    setAddTableModalOpen(false);
-    resetAddTableForm();
-  };
-
 // 获取当前tab的结果
 const currentResults = activeTabKey !== 'chat' && tabs[activeTabKey]?.results ? tabs[activeTabKey].results : results;
 const currentRowCount = activeTabKey !== 'chat' && tabs[activeTabKey]?.rowCount ? tabs[activeTabKey].rowCount : rowCount;
@@ -1256,20 +1177,6 @@ const explainColumns = useMemo(() => explainResults.length > 0
       loadMessages(currentSessionId);
     }
   }, [currentSessionId]);
-
-  // 业务域：进入 step 3 时拉取一次
-  useEffect(() => {
-    if (addTableStep === 3 && addTableDomains.length === 0 && !addTableDomainsLoading) {
-      setAddTableDomainsLoading(true);
-      getDomains()
-        .then(d => {
-          if (d.success) setAddTableDomains(d.domains || []);
-          else message.error(d.message || '加载业务域失败');
-        })
-        .catch(e => message.error('加载业务域失败: ' + (e.message || e)))
-        .finally(() => setAddTableDomainsLoading(false));
-    }
-  }, [addTableStep]);
 
   // 组件卸载时清理 Monaco hover 隐藏定时器，覆盖 editor.onDidDispose 未触发的边界场景
   // （如 React 卸载先于 Monaco 异步销毁、Strict Mode 二次挂载等）
@@ -1767,38 +1674,12 @@ children: currentResults.length > 0 ? (
                 />
               )}
               
-              <Modal
-                title="会话消息详情"
+              <SessionMessagesModal
                 open={showMessagesModal}
-                onCancel={() => setShowMessagesModal(false)}
-                footer={null}
-                width={800}
-                styles={{ body: { padding: 0 } }}
-              >
-                <div style={{ padding: '12px 16px', background: 'var(--xtsql-hover)', borderBottom: '1px solid var(--xtsql-border)', fontSize: 12 }}>
-                  <span style={{ color: '#666' }}>消息上下文长度：</span>
-                  <span style={{ color: '#1890ff', fontWeight: 500, marginLeft: 4 }}>{sessionMessagesTokens}</span>
-                  <span style={{ color: '#666', marginLeft: 2 }}>tokens</span>
-                </div>
-                <div style={{ height: 480, borderTop: '1px solid var(--xtsql-border)' }}>
-                  <Editor
-                    height={480}
-                    defaultLanguage="json"
-                    value={sessionMessagesContent}
-                    theme="vs-dark"
-                    options={{
-                      minimap: { enabled: false },
-                      fontSize: 11,
-                      lineNumbers: 'on',
-                      scrollBeyondLastLine: false,
-                      automaticLayout: true,
-                      wordWrap: 'on',
-                      folding: true,
-                      readOnly: true
-                    }}
-                  />
-                </div>
-              </Modal>
+                onClose={() => setShowMessagesModal(false)}
+                content={sessionMessagesContent}
+                tokens={sessionMessagesTokens}
+              />
             </div>
             
             {activeTabKey === 'chat' && (
@@ -2084,254 +1965,22 @@ children: currentResults.length > 0 ? (
           </div>
         </Drawer>
         
-        <Modal
-          title="添加表格"
+        <AddTableModal
           open={addTableModalOpen}
-          onCancel={handleAddTableModalClose}
-          footer={null}
-          width={600}
-        >
-          <Steps current={addTableStep === 1.5 ? 1 : addTableStep - 1} style={{ marginBottom: 24 }}>
-            <Steps.Step title="输入表名" />
-            <Steps.Step title="获取DDL" />
-            <Steps.Step title="生成文件" />
-          </Steps>
-          
-          {addTableStep === 1 && (
-            <div>
-              <div style={{ marginBottom: 16 }}>
-                <Input 
-                  placeholder="请输入要添加的表名" 
-                  value={addTableName}
-                  onChange={e => setAddTableName(e.target.value)}
-                  onPressEnter={handleAddTableStep1}
-                />
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <Button type="primary" onClick={handleAddTableStep1} loading={addTableChecking} disabled={!addTableName.trim()}>
-                  下一步
-                </Button>
-              </div>
-            </div>
-          )}
-          
-          {addTableStep === 1.5 && (
-            <div>
-              <div style={{ marginBottom: 16, padding: 16, background: 'var(--xtsql-warning-bg)', border: '1px solid var(--xtsql-warning-border)', borderRadius: 4 }}>
-                表 <strong>{addTableName}</strong> 已存在，继续则仅覆盖 DDL 文件，table_index 和 field_config 不会修改
-              </div>
-              <div style={{ textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <Button onClick={handleAddTableModalClose}>取消</Button>
-                <Button onClick={() => { setAddTableStep(2); }}>继续</Button>
-              </div>
-            </div>
-          )}
-          
-          {addTableStep === 2 && (
-            <div>
-              {addTableChecking ? (
-                <div style={{ textAlign: 'center', padding: 32 }}>
-                  <Spin />
-                  <div style={{ marginTop: 12, color: 'var(--xtsql-text-secondary, #666)' }}>正在查询数据库获取DDL...</div>
-                </div>
-              ) : (
-                <div>
-                  <div style={{ marginBottom: 16, padding: 16, background: 'var(--xtsql-code-bg)', borderRadius: 4 }}>
-                    正在获取表 <strong>{addTableName}</strong> 的DDL...
-                  </div>
-                  <div style={{ textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                    <Button onClick={() => setAddTableStep(1)}>上一步</Button>
-                    <Button type="primary" onClick={handleAddTableStep2}>获取DDL</Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          
-          {addTableStep === 3 && (
-            <div>
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ marginBottom: 8, fontWeight: 500 }}>表名: {addTableName}</div>
-                {!addTableExists && (
-                  <>
-                    <div style={{ marginBottom: 8 }}>描述: <Input value={addTableDescription} onChange={e => setAddTableDescription(e.target.value)} placeholder="请输入表描述（可选）" /></div>
-                    {addTableRelatedTables.length > 0 && (
-                      <div style={{ marginBottom: 8 }}>关联表: {addTableRelatedTables.join(', ')}</div>
-                    )}
-                  </>
-                )}
-                <div style={{ marginBottom: 8 }}>
-                  <div style={{ marginBottom: 4, fontSize: 12 }}>
-                    业务域 <span style={{ color: '#ff4d4f' }}>*</span>
-                    <span style={{ color: '#999', marginLeft: 8, fontSize: 11 }}>
-                      悬停查看说明，至少选 1 个
-                    </span>
-                  </div>
-                  <Select
-                    mode="multiple"
-                    placeholder="请选择业务域"
-                    value={addTableSelectedDomains}
-                    onChange={setAddTableSelectedDomains}
-                    loading={addTableDomainsLoading}
-                    style={{ width: '100%' }}
-                    optionLabelProp="label"
-                    size="small"
-                  >
-                    {addTableDomains.map(d => (
-                      <Select.Option key={d.id} value={d.id} label={d.name}>
-                        <Tooltip title={d.description} placement="right">
-                          <span style={{ cursor: 'help' }}>{d.name}</span>
-                        </Tooltip>
-                      </Select.Option>
-                    ))}
-                  </Select>
-                </div>
-              </div>
-              <div style={{ marginBottom: 16, maxHeight: 200, overflow: 'auto', background: 'var(--xtsql-code-bg)', padding: 8, borderRadius: 4, fontSize: 11 }}>
-                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{addTableDDL}</pre>
-              </div>
-              <div style={{ textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <Button onClick={() => setAddTableStep(2)} disabled={addTableCreating}>上一步</Button>
-                <Button
-                  type="primary"
-                  onClick={handleAddTableStep3}
-                  loading={addTableCreating}
-                  disabled={addTableSelectedDomains.length === 0}
-                >
-                  {addTableExists ? '覆盖DDL' : '生成文件'}
-                </Button>
-              </div>
-            </div>
-          )}
-        </Modal>
+          onClose={() => setAddTableModalOpen(false)}
+          onCreated={loadSkillsList}
+        />
 
         <ChangePasswordModal open={changePwdOpen} onClose={() => setChangePwdOpen(false)} onChanged={() => { setChangePwdOpen(false); logout(); }} />
         
-        <Modal
-          title="AI 分析 EXPLAIN 结果"
+        <ExplainAnalyzeModal
           open={explainAnalyzeModalOpen}
-          onCancel={() => setExplainAnalyzeModalOpen(false)}
-          footer={null}
-          width={700}
-          style={{ top: 20 }}
-        >
-          <div style={{
-            maxHeight: '70vh',
-            overflow: 'auto',
-            padding: '8px 12px',
-            background: 'var(--xtsql-code-bg)',
-            borderRadius: 4
-          }}>
-            {explainAnalysisLoading && !explainAnalysisContent ? (
-              <><Spin /> 正在分析...</>
-            ) : (
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  p: ({node, ...props}) => <p style={{fontSize: 12, marginTop: 0, marginBottom: 8}} {...props} />,
-                  h1: ({node, ...props}) => <h1 style={{fontSize: 16, marginTop: 12, marginBottom: 8}} {...props} />,
-                  h2: ({node, ...props}) => <h2 style={{fontSize: 14, marginTop: 10, marginBottom: 6}} {...props} />,
-                  h3: ({node, ...props}) => <h3 style={{fontSize: 13, marginTop: 8, marginBottom: 6}} {...props} />,
-                  ul: ({node, ...props}) => <ul style={{fontSize: 12, paddingLeft: 20, marginTop: 4, marginBottom: 8}} {...props} />,
-                  li: ({node, ...props}) => <li style={{fontSize: 12, marginBottom: 4}} {...props} />,
-                  ...createMarkdownRenderers(theme === 'dark', { fontSize: 11 }),
-                }}
-              >{explainAnalysisContent || (explainAnalysisLoading ? '正在分析...' : '')}</ReactMarkdown>
-            )}
-          </div>
-        </Modal>
+          onClose={() => setExplainAnalyzeModalOpen(false)}
+          content={explainAnalysisContent}
+          loading={explainAnalysisLoading}
+          isDarkTheme={theme === 'dark'}
+        />
     </ConfigProvider>
-  );
-}
-
-// 修改密码弹窗
-function ChangePasswordModal({ open, onClose, onChanged }) {
-  const [form] = Form.useForm();
-  const [submitting, setSubmitting] = useState(false);
-
-  // 关闭时清空表单 —— 仅在 open 从 true → false 时 reset，
-  // 避免 open=false 初始化阶段（Form 还未挂载）调用 resetFields() 报
-  // "Instance created by useForm is not connected to any Form element" 警告
-  const prevOpenRef = useRef(open);
-  useEffect(() => {
-    if (prevOpenRef.current && !open) {
-      form.resetFields();
-    }
-    prevOpenRef.current = open;
-  }, [open, form]);
-
-  const handleOk = async () => {
-    try {
-      const values = await form.validateFields();
-      setSubmitting(true);
-      await api.changePasswordApi({
-        oldPassword: values.oldPassword,
-        newPassword: values.newPassword
-      });
-      message.success('密码已修改，请重新登录');
-      // 改密会吊销 token_version，前端必须退出登录态
-      onChanged && onChanged();
-    } catch (e) {
-      if (e?.errorFields) {
-        // antd 表单校验失败，不报错
-        return;
-      }
-      const msg = e?.response?.data?.error || e?.message || '修改失败';
-      message.error(msg);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <Modal
-      title="修改密码"
-      open={open}
-      onOk={handleOk}
-      onCancel={onClose}
-      confirmLoading={submitting}
-      okText="确认修改"
-      cancelText="取消"
-      destroyOnHidden
-    >
-      <Form form={form} layout="vertical" autoComplete="off">
-        <Form.Item
-          name="oldPassword"
-          label="当前密码"
-          rules={[{ required: true, message: '请输入当前密码' }]}
-        >
-          <Input.Password prefix={<LockOutlined />} placeholder="请输入当前密码" autoComplete="current-password" />
-        </Form.Item>
-        <Form.Item
-          name="newPassword"
-          label="新密码"
-          rules={[
-            { required: true, message: '请输入新密码' },
-            { min: 6, message: '新密码长度不能少于 6 位' }
-          ]}
-          hasFeedback
-        >
-          <Input.Password prefix={<LockOutlined />} placeholder="新密码（至少 6 位）" autoComplete="new-password" />
-        </Form.Item>
-        <Form.Item
-          name="confirmPassword"
-          label="确认新密码"
-          dependencies={['newPassword']}
-          hasFeedback
-          rules={[
-            { required: true, message: '请再次输入新密码' },
-            ({ getFieldValue }) => ({
-              validator(_, value) {
-                if (!value || getFieldValue('newPassword') === value) return Promise.resolve();
-                return Promise.reject(new Error('两次输入的密码不一致'));
-              }
-            })
-          ]}
-        >
-          <Input.Password prefix={<LockOutlined />} placeholder="再次输入新密码" autoComplete="new-password" />
-        </Form.Item>
-      </Form>
-    </Modal>
   );
 }
 

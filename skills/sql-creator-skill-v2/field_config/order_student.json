@@ -1,7 +1,15 @@
 {
   "table_name": "order_student",
   "field_aliases": {},
-  "field_enums": {},
+  "field_enums": {
+    "status": {
+      "1": "审批中",
+      "2": "驳回",
+      "3": "已通过",
+      "4": "已退款",
+      "5": "退款中"
+    }
+  },
   "virtual_associations": [
     {
       "name": "关联订单类型",

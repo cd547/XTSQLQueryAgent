@@ -1,0 +1,12 @@
+/* ==================== 抽屉美化 ==================== */
+.xtsql-drawer .ant-drawer-header {
+  border-bottom: 1px solid var(--xtsql-border);
+  padding: 16px 20px;
+}
+.xtsql-drawer .ant-drawer-title {
+  font-size: 15px;
+  font-weight: 600;
+}
+.xtsql-drawer .ant-drawer-body {
+  padding: 16px 20px;
+}

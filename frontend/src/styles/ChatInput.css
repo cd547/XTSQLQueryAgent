@@ -1,0 +1,128 @@
+/* ==================== 输入区 ==================== */
+.xtsql-input-wrap {
+  padding: 0 24px 16px;
+  background: transparent;
+}
+.xtsql-input-inner {
+  max-width: 880px;
+  margin: 0 auto;
+  position: relative;
+  background: var(--xtsql-bg-elevated);
+  border-radius: var(--xtsql-radius-xl);
+  border: 1px solid var(--xtsql-border);
+  box-shadow: var(--xtsql-shadow-md);
+  transition: all 0.2s ease;
+  overflow: hidden;
+}
+.xtsql-input-inner:focus-within {
+  border-color: var(--xtsql-accent);
+  box-shadow: 0 0 0 4px var(--xtsql-accent-soft), var(--xtsql-shadow-md);
+}
+.xtsql-input-textarea {
+  width: 100%;
+  border: none !important;
+  outline: none !important;
+  resize: none;
+  padding: 14px 18px 6px;
+  font-size: 13px;
+  line-height: 1.6;
+  background: transparent !important;
+  color: var(--xtsql-text) !important;
+  box-shadow: none !important;
+}
+.xtsql-input-textarea::placeholder { color: var(--xtsql-text-tertiary); }
+.xtsql-input-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px 8px 18px;
+  gap: 10px;
+}
+.xtsql-input-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 11px;
+  color: var(--xtsql-text-tertiary);
+  min-width: 0;
+  flex: 1;
+  overflow: hidden;
+}
+.xtsql-input-model-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 8px;
+  border-radius: var(--xtsql-radius-pill);
+  background: var(--xtsql-accent-soft);
+  color: var(--xtsql-accent);
+  font-weight: 500;
+  font-size: 10.5px;
+}
+.xtsql-token-bar {
+  width: 60px;
+  height: 6px;
+  background: var(--xtsql-hover);
+  border-radius: var(--xtsql-radius-pill);
+  overflow: hidden;
+  cursor: pointer;
+  border: 1px solid var(--xtsql-border);
+}
+.xtsql-token-bar-fill {
+  height: 100%;
+  border-radius: var(--xtsql-radius-pill);
+  transition: width 0.3s ease, background 0.3s;
+}
+.xtsql-send-btn {
+  width: 34px;
+  height: 34px;
+  border-radius: 50% !important;
+  background: linear-gradient(135deg, #1677ff 0%, #4f46e5 100%) !important;
+  border: none !important;
+  color: #fff !important;
+  display: flex !important;
+  align-items: center;
+  justify-content: center;
+  box-shadow: var(--xtsql-accent-glow);
+  transition: all 0.18s ease;
+  flex-shrink: 0;
+}
+.xtsql-send-btn:hover:not(:disabled) {
+  transform: scale(1.06);
+  filter: brightness(1.08);
+}
+.xtsql-send-btn:disabled {
+  background: var(--xtsql-border-strong) !important;
+  box-shadow: none;
+  cursor: not-allowed;
+}
+.xtsql-send-btn.danger {
+  background: var(--xtsql-danger) !important;
+}
+.xtsql-input-resizer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 6px;
+  cursor: ns-resize;
+  z-index: 5;
+}
+.xtsql-input-grip {
+  position: absolute;
+  top: 2px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 32px;
+  height: 3px;
+  border-radius: 2px;
+  background: var(--xtsql-border-strong);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+.xtsql-input-inner:hover .xtsql-input-grip { opacity: 0.7; }
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .xtsql-input-wrap { padding: 0 12px 12px; }
+}

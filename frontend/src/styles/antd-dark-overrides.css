@@ -1,0 +1,155 @@
+/* ==================== 暗色 antd 主题覆盖 ==================== */
+html.xtsql-dark .ant-layout,
+html.xtsql-dark .ant-layout-content,
+html.xtsql-dark .ant-layout-sider,
+html.xtsql-dark .ant-layout-header {
+  background: transparent !important;
+  color: var(--xtsql-text) !important;
+}
+html.xtsql-dark .ant-layout-sider,
+html.xtsql-dark .ant-layout-header {
+  background: var(--xtsql-bg-sider) !important;
+  border-color: var(--xtsql-border) !important;
+}
+html.xtsql-dark .ant-menu {
+  background: transparent !important;
+  color: var(--xtsql-text) !important;
+}
+html.xtsql-dark .ant-menu-item,
+html.xtsql-dark .ant-menu-submenu-title {
+  color: var(--xtsql-text) !important;
+}
+html.xtsql-dark .ant-menu-item:hover,
+html.xtsql-dark .ant-menu-submenu-title:hover {
+  background-color: var(--xtsql-hover) !important;
+  color: var(--xtsql-text) !important;
+}
+html.xtsql-dark .ant-menu-item-selected {
+  background-color: var(--xtsql-accent-soft) !important;
+  color: var(--xtsql-accent) !important;
+}
+
+html.xtsql-dark .ant-card,
+html.xtsql-dark .ant-drawer-content,
+html.xtsql-dark .ant-drawer-header,
+html.xtsql-dark .ant-modal-content,
+html.xtsql-dark .ant-modal-header,
+html.xtsql-dark .ant-modal-confirm-title,
+html.xtsql-dark .ant-modal-confirm-content,
+html.xtsql-dark .ant-popover-inner,
+html.xtsql-dark .ant-dropdown-menu,
+html.xtsql-dark .ant-select-dropdown {
+  background-color: var(--xtsql-bg-elevated) !important;
+  color: var(--xtsql-text) !important;
+  border-color: var(--xtsql-border) !important;
+}
+html.xtsql-dark .ant-modal-confirm-title { color: var(--xtsql-text) !important; }
+html.xtsql-dark .ant-modal-confirm-content { color: var(--xtsql-text-secondary) !important; }
+html.xtsql-dark .ant-modal-confirm-btns .ant-btn-default {
+  background-color: var(--xtsql-bg-elevated) !important;
+  color: var(--xtsql-text) !important;
+  border-color: var(--xtsql-border-strong) !important;
+}
+html.xtsql-dark .ant-drawer-mask,
+html.xtsql-dark .ant-modal-mask {
+  background-color: rgba(0, 0, 0, 0.65) !important;
+}
+
+html.xtsql-dark .ant-input,
+html.xtsql-dark .ant-input-affix-wrapper,
+html.xtsql-dark .ant-input-password,
+html.xtsql-dark .ant-input-number,
+html.xtsql-dark .ant-select-selector,
+html.xtsql-dark .ant-input-search,
+html.xtsql-dark textarea.ant-input,
+html.xtsql-dark .ant-picker {
+  background-color: var(--xtsql-bg-input) !important;
+  color: var(--xtsql-text) !important;
+  border-color: var(--xtsql-border-strong) !important;
+}
+html.xtsql-dark .ant-input::placeholder,
+html.xtsql-dark textarea.ant-input::placeholder {
+  color: var(--xtsql-text-tertiary) !important;
+}
+html.xtsql-dark .ant-select-selection-item,
+html.xtsql-dark .ant-select-arrow,
+html.xtsql-dark .ant-input-number-handler-wrap {
+  color: var(--xtsql-text) !important;
+}
+html.xtsql-dark .ant-input-number-handler {
+  border-color: var(--xtsql-border-strong) !important;
+}
+
+html.xtsql-dark .ant-btn {
+  background-color: var(--xtsql-bg-elevated) !important;
+  color: var(--xtsql-text) !important;
+  border-color: var(--xtsql-border-strong) !important;
+}
+html.xtsql-dark .ant-btn-text,
+html.xtsql-dark .ant-btn-link {
+  background: transparent !important;
+  border-color: transparent !important;
+}
+html.xtsql-dark .ant-btn-primary {
+  background: var(--xtsql-accent) !important;
+  border-color: var(--xtsql-accent) !important;
+  color: #fff !important;
+}
+
+html.xtsql-dark .ant-table,
+html.xtsql-dark .ant-table-thead > tr > th,
+html.xtsql-dark .ant-table-tbody > tr > td {
+  background-color: var(--xtsql-bg-elevated) !important;
+  color: var(--xtsql-text) !important;
+  border-color: var(--xtsql-border) !important;
+}
+html.xtsql-dark .ant-table-thead > tr > th {
+  background-color: #232833 !important;
+}
+html.xtsql-dark .ant-table-tbody > tr:hover > td {
+  background-color: var(--xtsql-hover) !important;
+}
+html.xtsql-dark .ant-table-placeholder:hover > td {
+  background: var(--xtsql-bg-elevated) !important;
+}
+
+html.xtsql-dark .ant-tabs-nav,
+html.xtsql-dark .ant-tabs-tab,
+html.xtsql-dark .ant-tabs-tab-active .ant-tabs-tab-btn,
+html.xtsql-dark .ant-tabs-ink-bar {
+  color: var(--xtsql-text) !important;
+}
+html.xtsql-dark .ant-tabs-tab:hover { color: var(--xtsql-accent) !important; }
+html.xtsql-dark .ant-collapse,
+html.xtsql-dark .ant-collapse-item,
+html.xtsql-dark .ant-collapse-header,
+html.xtsql-dark .ant-collapse-content,
+html.xtsql-dark .ant-collapse-content-box {
+  background-color: var(--xtsql-bg-elevated) !important;
+  color: var(--xtsql-text) !important;
+  border-color: var(--xtsql-border) !important;
+}
+html.xtsql-dark .ant-tree { background: transparent !important; color: var(--xtsql-text) !important; }
+html.xtsql-dark .ant-tree-node-content-wrapper:hover { background-color: var(--xtsql-hover) !important; }
+html.xtsql-dark .ant-tree-node-selected { background-color: var(--xtsql-accent-soft) !important; }
+
+html.xtsql-dark .ant-list,
+html.xtsql-dark .ant-list-item,
+html.xtsql-dark .ant-empty-description {
+  color: var(--xtsql-text-secondary) !important;
+}
+html.xtsql-dark .ant-list-item:hover { background-color: var(--xtsql-hover) !important; }
+
+html.xtsql-dark .ant-spin-text,
+html.xtsql-dark .ant-typography,
+html.xtsql-dark .ant-typography-secondary,
+html.xtsql-dark .ant-form-item-label > label,
+html.xtsql-dark .ant-form-item-extra {
+  color: var(--xtsql-text) !important;
+}
+html.xtsql-dark .ant-typography-secondary { color: var(--xtsql-text-secondary) !important; }
+html.xtsql-dark .ant-tooltip-inner { background-color: #434343 !important; color: #fff !important; }
+html.xtsql-dark .ant-tooltip-arrow::before { background: #434343 !important; }
+html.xtsql-dark .ant-tag { border-color: var(--xtsql-border-strong) !important; }
+html.xtsql-dark .ant-divider { border-color: var(--xtsql-divider) !important; }
+html.xtsql-dark { color-scheme: dark; }

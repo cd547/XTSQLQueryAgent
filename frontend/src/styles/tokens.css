@@ -1,0 +1,90 @@
+/* ==================== 设计 Token ==================== */
+:root {
+  --xtsql-bg: #f7f8fc;
+  --xtsql-bg-elevated: #ffffff;
+  --xtsql-bg-sider: #ffffff;
+  --xtsql-bg-header: rgba(255, 255, 255, 0.85);
+  --xtsql-bg-input: #ffffff;
+  --xtsql-text: #1f2937;
+  --xtsql-text-secondary: #4b5563;
+  --xtsql-text-tertiary: #9ca3af;
+  --xtsql-border: #e5e7eb;
+  --xtsql-border-strong: #d1d5db;
+  --xtsql-hover: #f3f4f6;
+  --xtsql-shadow-xs: 0 1px 2px rgba(15, 23, 42, 0.04);
+  --xtsql-shadow-sm: 0 2px 8px rgba(15, 23, 42, 0.06);
+  --xtsql-shadow-md: 0 8px 24px rgba(15, 23, 42, 0.08);
+  --xtsql-shadow-lg: 0 20px 40px rgba(15, 23, 42, 0.10);
+  --xtsql-radius-sm: 8px;
+  --xtsql-radius-md: 12px;
+  --xtsql-radius-lg: 16px;
+  --xtsql-radius-xl: 20px;
+  --xtsql-radius-pill: 999px;
+  --xtsql-scrollbar-track: transparent;
+  --xtsql-scrollbar-thumb: rgba(0, 0, 0, 0.18);
+  --xtsql-code-bg: #f6f8fa;
+  --xtsql-warning-bg: #fff7e6;
+  --xtsql-warning-border: #faad14;
+  --xtsql-message-user: linear-gradient(135deg, #1677ff 0%, #4096ff 100%);
+  --xtsql-message-user-text: #ffffff;
+  --xtsql-message-assistant: #ffffff;
+  --xtsql-message-assistant-text: #1f2937;
+  --xtsql-accent: #1677ff;
+  --xtsql-accent-soft: rgba(22, 119, 255, 0.10);
+  --xtsql-accent-glow: 0 4px 14px rgba(22, 119, 255, 0.32);
+  --xtsql-success: #10b981;
+  --xtsql-danger: #ef4444;
+  --xtsql-divider: rgba(0, 0, 0, 0.06);
+  --xtsql-app-bg: radial-gradient(1200px 600px at 0% 0%, rgba(22, 119, 255, 0.06), transparent 60%),
+                  radial-gradient(900px 500px at 100% 100%, rgba(99, 102, 241, 0.05), transparent 60%),
+                  #f7f8fc;
+}
+
+/* ==================== 暗色 Token ==================== */
+html.xtsql-dark,
+html.xtsql-dark body {
+  --xtsql-bg: #0f1115;
+  --xtsql-bg-elevated: #1a1d24;
+  --xtsql-bg-sider: #14171d;
+  --xtsql-bg-header: rgba(20, 23, 29, 0.85);
+  --xtsql-bg-input: #1a1d24;
+  --xtsql-text: #e5e7eb;
+  --xtsql-text-secondary: #9ca3af;
+  --xtsql-text-tertiary: #6b7280;
+  --xtsql-border: #2a2f3a;
+  --xtsql-border-strong: #3b4250;
+  --xtsql-hover: #232833;
+  --xtsql-shadow-xs: 0 1px 2px rgba(0, 0, 0, 0.3);
+  --xtsql-shadow-sm: 0 2px 8px rgba(0, 0, 0, 0.35);
+  --xtsql-shadow-md: 0 8px 24px rgba(0, 0, 0, 0.45);
+  --xtsql-shadow-lg: 0 20px 40px rgba(0, 0, 0, 0.55);
+  --xtsql-scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --xtsql-code-bg: #232833;
+  --xtsql-warning-bg: rgba(250, 173, 20, 0.12);
+  --xtsql-warning-border: rgba(250, 173, 20, 0.45);
+  --xtsql-message-user: linear-gradient(135deg, #1677ff 0%, #4f46e5 100%);
+  --xtsql-message-user-text: #ffffff;
+  --xtsql-message-assistant: #1a1d24;
+  --xtsql-message-assistant-text: #e5e7eb;
+  --xtsql-accent: #4f8cff;
+  --xtsql-accent-soft: rgba(79, 140, 255, 0.16);
+  --xtsql-accent-glow: 0 4px 14px rgba(79, 140, 255, 0.45);
+  --xtsql-divider: rgba(255, 255, 255, 0.06);
+  --xtsql-app-bg: radial-gradient(1200px 600px at 0% 0%, rgba(79, 140, 255, 0.10), transparent 60%),
+                  radial-gradient(900px 500px at 100% 100%, rgba(124, 58, 237, 0.08), transparent 60%),
+                  #0f1115;
+}
+
+html.xtsql-dark,
+html.xtsql-dark body {
+  background: var(--xtsql-app-bg);
+  color: var(--xtsql-text);
+}
+
+body, #root {
+  background: var(--xtsql-app-bg);
+  color: var(--xtsql-text);
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'PingFang SC', 'Hiragino Sans GB', 'Microsoft YaHei', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
