@@ -7,7 +7,7 @@ import AppIcon from './AppIcon.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { createMarkdownRenderers } from './markdownRenderers.jsx';
 
-const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, onOpenSqlTab, onCopyAndExecute, onFavorite, favoriteState, userQuestion }) {
+const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, onOpenSqlTab, onCopyAndExecute, onFavorite, favoriteState, userQuestion, userAvatar }) {
   const { theme: themeMode } = useTheme();
   const isUser = role === 'user';
   const isLog = role === 'log' || role === 'LLM' || role === 'tool' || role === 'tool_return';
@@ -88,7 +88,7 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
   return (
     <div className={`xtsql-msg ${isUser ? 'user' : 'assistant'}`}>
       <div className={`xtsql-msg-avatar ${isUser ? 'user' : 'assistant'}`}>
-        {isUser ? <UserOutlined /> : <AppIcon size={48} />}
+        {isUser ? (userAvatar || <UserOutlined />) : <AppIcon size={48} />}
       </div>
       <div className="xtsql-msg-body">
         <div className="xtsql-msg-meta">

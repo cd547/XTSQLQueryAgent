@@ -1225,29 +1225,29 @@ const handleResize = (columnKey) => (e, { size }) => {
 
 const columns = useMemo(() => currentResults.length > 0
 ? Object.keys(currentResults[0]).map((key, idx) => ({
-    title: (props) => (
-      <ResizableTitle width={columnWidths[key] || 150} onResize={handleResize(key)}>
-        <span style={{ fontSize: 12 }}>{key}</span>
-      </ResizableTitle>
-    ),
+    title: <span style={{ fontSize: 12 }}>{key}</span>,
     dataIndex: key,
     key: `col-${idx}`,
     ellipsis: true,
-    width: Math.min(300, Math.max(80, columnWidths[key] || 150))
+    width: Math.min(300, Math.max(80, columnWidths[key] || 150)),
+    onHeaderCell: () => ({
+      width: columnWidths[key] || 150,
+      onResize: handleResize(key),
+    }),
   }))
 : [], [currentResults, columnWidths]);
 
 const explainColumns = useMemo(() => explainResults.length > 0
 ? Object.keys(explainResults[0]).map((key, idx) => ({
-    title: (props) => (
-      <ResizableTitle width={columnWidths[key] || 150} onResize={handleResize(key)}>
-        <span style={{ fontSize: 12 }}>{key}</span>
-      </ResizableTitle>
-    ),
+    title: <span style={{ fontSize: 12 }}>{key}</span>,
     dataIndex: key,
     key: `col-${idx}`,
     ellipsis: true,
-    width: Math.min(300, Math.max(80, columnWidths[key] || 150))
+    width: Math.min(300, Math.max(80, columnWidths[key] || 150)),
+    onHeaderCell: () => ({
+      width: columnWidths[key] || 150,
+      onResize: handleResize(key),
+    }),
   }))
 : [], [explainResults, columnWidths]);
   
@@ -1501,6 +1501,7 @@ const explainColumns = useMemo(() => explainResults.length > 0
                           userQuestion={userQuestion}
                           favoriteState={favoriteStates[msg.id]}
                           onFavorite={userQuestion ? ({ userQuestion: uq, sqlOutput }) => handleFavorite({ msgId: msg.id, userQuestion: uq, sqlOutput }) : undefined}
+                          userAvatar={(user?.display_name || user?.username || 'U').slice(0, 1).toUpperCase()}
                         />
                       );
                     })}
@@ -1688,6 +1689,7 @@ children: currentResults.length > 0 ? (
                               <Table
                                 dataSource={currentResults}
                                 columns={columns}
+                                rowKey={(record, index) => record.id ?? `row-${index}`}
                                 components={{ header: { cell: ResizableTitle } }}
                                 pagination={{
                                   pageSize: pageSize,
@@ -1718,6 +1720,7 @@ children: currentResults.length > 0 ? (
                             <Table
                               dataSource={explainResults}
                               columns={explainColumns}
+                              rowKey={(record, index) => record.id ?? `row-${index}`}
                               pagination={{
                                 pageSize: pageSize,
                                 showSizeChanger: true,
