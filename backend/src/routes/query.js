@@ -797,6 +797,15 @@ ${JSON.stringify(explainResults, null, 2)}
       }
     });
 
+    // 整体 SSE 超时（5min）—— 防御 LLM 流异常长时间挂起（与 /generate 路由一致）
+    const OVERALL_TIMEOUT_MS = 5 * 60_000;
+    const overallTimer = setTimeout(() => {
+      if (!streamCompleted) {
+        logger.warn('EXPLAIN analyze overall timeout, aborting LLM request', { OVERALL_TIMEOUT_MS });
+        abortController.abort(new Error(`Overall timeout after ${OVERALL_TIMEOUT_MS}ms`));
+      }
+    }, OVERALL_TIMEOUT_MS);
+
     res.flushHeaders();
 
     let apiUrl;
@@ -879,11 +888,13 @@ ${JSON.stringify(explainResults, null, 2)}
       res.end();
     }
   } catch (error) {
+    clearTimeout(overallTimer);
     if (error.name === 'AbortError') {
       logger.info('EXPLAIN analyze: aborted by client');
     } else {
       logger.error('EXPLAIN analyze failed', { error: error.message });
-      if (!abortController.signal.aborted && !res.writableEnded) {
+      // abortController / overallTimer 可能在 abortController 声明前抛错，用 typeof 守卫
+      if (typeof abortController !== 'undefined' && !abortController.signal.aborted && !res.writableEnded) {
         try {
           res.write(`data: ${JSON.stringify({ type: 'error', content: error.message })}\n\n`);
           res.end();

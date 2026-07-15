@@ -711,8 +711,6 @@ export async function* generateSQLWithLangChainStreamGen_BAK(question, history =
   //const tableIndex = loadTableIndex();
 
   const systemMessage = `你是XTSQLQueryAgent。严格遵守以下规则，随后根据用户问题生成SQL。
-
-## SKILL.md 内容（只读）
 ${skillMd}`;
 
   let messages;
