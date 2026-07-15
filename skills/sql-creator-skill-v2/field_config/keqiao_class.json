@@ -9,9 +9,6 @@
       "join_condition": "keqiao_class_type.id = keqiao_class.keqiao_class_type_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "keqiao_class_type_id"
-      },
       "business_rule": ""
     },
     {
@@ -20,9 +17,6 @@
       "join_condition": "keqiao_class_category.id = keqiao_class.keqiao_class_category_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "keqiao_class_category_id"
-      },
       "business_rule": ""
     },
     {
@@ -31,9 +25,6 @@
       "join_condition": "edu_campus_school.id = keqiao_class.edu_campus_school_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "edu_campus_school_id"
-      },
       "business_rule": ""
     },
     {
@@ -42,9 +33,6 @@
       "join_condition": "edu_course_exam_subject.id = keqiao_class.edu_course_exam_subject_id",
       "type": "many_to_one",
       "description": "通过科目ID关联三级科目表",
-      "fields_mapping": {
-        "id": "edu_course_exam_subject_id"
-      },
       "business_rule": ""
     },
     {
@@ -53,9 +41,6 @@
       "join_condition": "edu_level_mapping.id = keqiao_class.edu_level_mapping_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "edu_level_mapping_id"
-      },
       "business_rule": ""
     },
     {
@@ -64,9 +49,6 @@
       "join_condition": "admin_user.id = keqiao_class.admin_user_id",
       "type": "many_to_one",
       "description": "通过操作人ID关联后台用户表",
-      "fields_mapping": {
-        "id": "admin_user_id"
-      },
       "business_rule": ""
     }
   ],

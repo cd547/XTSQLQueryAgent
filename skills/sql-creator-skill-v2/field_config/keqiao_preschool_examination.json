@@ -9,9 +9,6 @@
       "join_condition": "my_user.id = keqiao_preschool_examination.my_user_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "my_user_id"
-      },
       "business_rule": ""
     },
     {
@@ -20,9 +17,6 @@
       "join_condition": "edu_campus_school.id = keqiao_preschool_examination.edu_campus_school_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "edu_campus_school_id"
-      },
       "business_rule": ""
     }
   ],

@@ -9,9 +9,6 @@
       "join_condition": "my_user.id = my_user_openid.my_user_id",
       "type": "many_to_one",
       "description": "OpenID关联的用户",
-      "fields_mapping": {
-        "id": "my_user_id"
-      },
       "business_rule": ""
     }
   ],

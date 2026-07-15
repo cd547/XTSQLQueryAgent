@@ -1,41 +1,33 @@
 {
   "table_name": "customer_label_rel",
-
   "field_aliases": {
-    "customer_code": ["客户编码"],
-    "label_code": ["标签编码"]
+    "customer_code": [
+      "客户编码"
+    ],
+    "label_code": [
+      "标签编码"
+    ]
   },
-
   "field_enums": {},
-
   "virtual_associations": [
     {
       "name": "关联客户主表",
       "target_table": "customer_info",
       "join_condition": "customer_info.code = customer_label_rel.customer_code",
       "type": "many_to_one",
-      "description": "多条标签关系记录可属于同一客户",
-      "fields_mapping": {
-        "code": "customer_code"
-      }
+      "description": "多条标签关系记录可属于同一客户"
     },
     {
       "name": "关联标签定义",
       "target_table": "customer_label",
       "join_condition": "customer_label.code = customer_label_rel.label_code AND customer_label.deleted = 0",
       "type": "many_to_one",
-      "description": "多条标签关系记录可引用同一标签定义",
-      "fields_mapping": {
-        "code": "label_code"
-      }
+      "description": "多条标签关系记录可引用同一标签定义"
     }
   ],
-
   "calculated_fields": {},
-
   "business_constraints": {
     "usage_pattern": "通常在查询customer_info时通过EXISTS子查询条件使用，例如：EXISTS (SELECT 1 FROM customer_label_rel clr WHERE clr.customer_code = main.code AND clr.deleted = 0 AND clr.label_code IN (...))"
   },
-
   "business_rules": []
 }

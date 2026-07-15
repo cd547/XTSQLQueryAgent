@@ -9,9 +9,6 @@
       "join_condition": "keqiao_time_table.id = keqiao_surface.keqiao_time_table_id",
       "type": "many_to_one",
       "description": "多个课表可使用同一作息时间表",
-      "fields_mapping": {
-        "id": "keqiao_time_table_id"
-      },
       "business_rule": ""
     },
     {
@@ -20,9 +17,6 @@
       "join_condition": "edu_campus_school.id = keqiao_surface.edu_campus_school_id",
       "type": "many_to_one",
       "description": "多个课表可属于同一分校区",
-      "fields_mapping": {
-        "id": "edu_campus_school_id"
-      },
       "business_rule": ""
     }
   ],

@@ -9,9 +9,6 @@
       "join_condition": "order_student.id = order_contract.order_student_id",
       "type": "many_to_one",
       "description": "合同所属订单",
-      "fields_mapping": {
-        "id": "order_student_id"
-      },
       "business_rule": ""
     }
   ],

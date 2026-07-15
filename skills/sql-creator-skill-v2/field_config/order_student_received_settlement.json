@@ -9,9 +9,6 @@
       "join_condition": "order_student_received.id = order_student_received_settlement.order_student_received_id",
       "type": "many_to_one",
       "description": "佣金结算关联的回款计划",
-      "fields_mapping": {
-        "id": "order_student_received_id"
-      },
       "business_rule": ""
     },
     {
@@ -20,9 +17,6 @@
       "join_condition": "admin_user.id = order_student_received_settlement.admin_user_id",
       "type": "many_to_one",
       "description": "佣金结算的创建人",
-      "fields_mapping": {
-        "id": "admin_user_id"
-      },
       "business_rule": ""
     },
     {
@@ -31,9 +25,6 @@
       "join_condition": "admin_user_channel.id = order_student_received_settlement.admin_user_channel_id",
       "type": "many_to_one",
       "description": "佣金结算关联的渠道库",
-      "fields_mapping": {
-        "id": "admin_user_channel_id"
-      },
       "business_rule": ""
     },
     {
@@ -42,9 +33,6 @@
       "join_condition": "admin_category.id = order_student_received_settlement.admin_category_id",
       "type": "many_to_one",
       "description": "佣金结算关联的公司名称",
-      "fields_mapping": {
-        "id": "admin_category_id"
-      },
       "business_rule": ""
     }
   ],

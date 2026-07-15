@@ -9,9 +9,6 @@
       "join_condition": "keqiao_surface.id = keqiao_study.keqiao_surface_id",
       "type": "many_to_one",
       "description": "多条排课记录可属于同一课表",
-      "fields_mapping": {
-        "id": "keqiao_surface_id"
-      },
       "business_rule": ""
     },
     {
@@ -20,9 +17,6 @@
       "join_condition": "admin_user.id = keqiao_study.admin_user_id",
       "type": "many_to_one",
       "description": "多条排课记录可由同一操作人创建",
-      "fields_mapping": {
-        "id": "admin_user_id"
-      },
       "business_rule": ""
     },
     {
@@ -31,9 +25,6 @@
       "join_condition": "edu_course_exam_subject_name.id = keqiao_study.edu_course_exam_subject_name_id",
       "type": "many_to_one",
       "description": "多条排课记录可属于同一科目名称",
-      "fields_mapping": {
-        "id": "edu_course_exam_subject_name_id"
-      },
       "business_rule": ""
     },
     {
@@ -42,9 +33,6 @@
       "join_condition": "edu_campus_school.id = keqiao_study.edu_campus_school_id",
       "type": "many_to_one",
       "description": "多条排课记录可属于同一分校区",
-      "fields_mapping": {
-        "id": "edu_campus_school_id"
-      },
       "business_rule": ""
     },
     {
@@ -53,9 +41,6 @@
       "join_condition": "edu_campus_school_class.id = keqiao_study.edu_campus_school_class_id",
       "type": "many_to_one",
       "description": "多条排课记录可使用同一教室",
-      "fields_mapping": {
-        "id": "edu_campus_school_class_id"
-      },
       "business_rule": ""
     },
     {
@@ -64,9 +49,6 @@
       "join_condition": "keqiao_time_table.id = keqiao_study.keqiao_time_table_id",
       "type": "many_to_one",
       "description": "多条排课记录可使用同一作息时间表",
-      "fields_mapping": {
-        "id": "keqiao_time_table_id"
-      },
       "business_rule": ""
     }
   ],

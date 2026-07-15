@@ -9,9 +9,6 @@
       "join_condition": "keqiao_surface.id = keqiao_surface_table.keqiao_surface_id",
       "type": "many_to_one",
       "description": "多个课表记录可属于同一课表总表",
-      "fields_mapping": {
-        "id": "keqiao_surface_id"
-      },
       "business_rule": ""
     },
     {
@@ -20,9 +17,6 @@
       "join_condition": "keqiao_time_table.id = keqiao_surface_table.keqiao_time_table_id",
       "type": "many_to_one",
       "description": "多个课表记录可使用同一作息时间表",
-      "fields_mapping": {
-        "id": "keqiao_time_table_id"
-      },
       "business_rule": ""
     },
     {
@@ -31,9 +25,6 @@
       "join_condition": "keqiao_surface_subject.id = keqiao_surface_table.keqiao_surface_subject_id",
       "type": "many_to_one",
       "description": "多个课表单元格可对应同一科目",
-      "fields_mapping": {
-        "id": "keqiao_surface_subject_id"
-      },
       "business_rule": ""
     }
   ],

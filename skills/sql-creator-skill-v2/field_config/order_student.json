@@ -9,9 +9,6 @@
       "join_condition": "order_type.id = order_student.type_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "type_id"
-      },
       "business_rule": ""
     },
     {
@@ -20,9 +17,6 @@
       "join_condition": "edu_student_type.id = order_student.edu_student_type_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "edu_student_type_id"
-      },
       "business_rule": ""
     },
     {
@@ -31,9 +25,6 @@
       "join_condition": "edu_student_type_project.id = order_student.edu_student_type_project_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "edu_student_type_project_id"
-      },
       "business_rule": ""
     },
     {
@@ -42,9 +33,6 @@
       "join_condition": "order_pattern.id = order_student.pattern_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "pattern_id"
-      },
       "business_rule": ""
     },
     {
@@ -53,9 +41,6 @@
       "join_condition": "edu_goods.id = order_student.goods_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "goods_id"
-      },
       "business_rule": ""
     },
     {
@@ -64,9 +49,6 @@
       "join_condition": "admin_user.id = order_student.admin_user_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "admin_user_id"
-      },
       "business_rule": ""
     },
     {
@@ -75,9 +57,6 @@
       "join_condition": "edu_student.id = order_student.student_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "student_id"
-      },
       "business_rule": ""
     },
     {
@@ -86,9 +65,6 @@
       "join_condition": "order_entry.id = order_student.order_entry_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "order_entry_id"
-      },
       "business_rule": ""
     },
     {
@@ -97,9 +73,6 @@
       "join_condition": "edu_campus.id = order_student.edu_campus_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "edu_campus_id"
-      },
       "business_rule": ""
     },
     {
@@ -108,13 +81,12 @@
       "join_condition": "order_contract_template.id = order_student.order_contract_template_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "order_contract_template_id"
-      },
       "business_rule": ""
     }
   ],
   "calculated_fields": {},
   "business_constraints": {},
-  "business_rules": [ "订单金额通常指成交金额 transaction_amount，而非 total_amount（订单总金额）"]
+  "business_rules": [
+    "订单金额通常指成交金额 transaction_amount，而非 total_amount（订单总金额）"
+  ]
 }

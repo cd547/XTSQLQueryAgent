@@ -1,12 +1,16 @@
 {
   "table_name": "customer_education_info",
-
   "field_aliases": {
-    "customer_code": ["客户编码"],
-    "grade_value": ["年级"],
-    "school_name": ["学校名称"]
+    "customer_code": [
+      "客户编码"
+    ],
+    "grade_value": [
+      "年级"
+    ],
+    "school_name": [
+      "学校名称"
+    ]
   },
-
   "field_enums": {
     "grade_value": {
       "1": "小班及学前",
@@ -28,24 +32,16 @@
       "17": "未知"
     }
   },
-
   "virtual_associations": [
     {
       "name": "关联客户主表",
       "target_table": "customer_info",
       "join_condition": "customer_info.code = customer_education_info.customer_code",
       "type": "many_to_one",
-      "description": "多条教育信息记录属于不同客户（实际业务中1个客户只有1条教育信息）",
-      "fields_mapping": {
-        "code": "customer_code"
-      }
+      "description": "多条教育信息记录属于不同客户（实际业务中1个客户只有1条教育信息）"
     }
   ],
-
   "calculated_fields": {},
-
-  "business_constraints": {
-  },
-
+  "business_constraints": {},
   "business_rules": []
 }

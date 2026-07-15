@@ -2,7 +2,7 @@
   "table_name": "order_student_received",
   "field_aliases": {},
   "field_enums": {
-     "account_title_id": {
+    "account_title_id": {
       "6": "退款专用账户",
       "7": "内部调整专户",
       "22": "欠费排课账户",
@@ -16,9 +16,6 @@
       "join_condition": "order_student.id = order_student_received.order_student_id",
       "type": "many_to_one",
       "description": "回款计划关联的学生订单",
-      "fields_mapping": {
-        "id": "order_student_id"
-      },
       "business_rule": ""
     },
     {
@@ -27,9 +24,6 @@
       "join_condition": "order_student_received.id = order_student_received.refund_order_student_received_id",
       "type": "many_to_one",
       "description": "退款时关联的原回款计划",
-      "fields_mapping": {
-        "id": "refund_order_student_received_id"
-      },
       "business_rule": ""
     },
     {
@@ -38,9 +32,6 @@
       "join_condition": "order_type.id = order_student_received.type_id",
       "type": "many_to_one",
       "description": "回款计划关联的回款类型",
-      "fields_mapping": {
-        "id": "type_id"
-      },
       "business_rule": ""
     },
     {
@@ -49,9 +40,6 @@
       "join_condition": "order_student.id = order_student_received.return_order_student_id",
       "type": "many_to_one",
       "description": "回款计划的来源订单",
-      "fields_mapping": {
-        "id": "return_order_student_id"
-      },
       "business_rule": ""
     },
     {
@@ -60,9 +48,6 @@
       "join_condition": "edu_student_type.id = order_student_received.edu_student_type_id",
       "type": "many_to_one",
       "description": "回款计划关联的学生类型",
-      "fields_mapping": {
-        "id": "edu_student_type_id"
-      },
       "business_rule": ""
     },
     {
@@ -71,9 +56,6 @@
       "join_condition": "edu_student_type_project.id = order_student_received.edu_student_type_project_id",
       "type": "many_to_one",
       "description": "回款计划关联的报读项目",
-      "fields_mapping": {
-        "id": "edu_student_type_project_id"
-      },
       "business_rule": ""
     },
     {
@@ -82,9 +64,6 @@
       "join_condition": "order_list.id = order_student_received.order_list_id",
       "type": "many_to_one",
       "description": "回款计划关联的网站支付订单",
-      "fields_mapping": {
-        "id": "order_list_id"
-      },
       "business_rule": ""
     },
     {
@@ -93,9 +72,6 @@
       "join_condition": "admin_user.id = order_student_received.admin_user_id",
       "type": "many_to_one",
       "description": "回款计划的创建人",
-      "fields_mapping": {
-        "id": "admin_user_id"
-      },
       "business_rule": ""
     },
     {
@@ -104,9 +80,6 @@
       "join_condition": "admin_user.id = order_student_received.collection_admin_user_id",
       "type": "many_to_one",
       "description": "回款计划的收款人",
-      "fields_mapping": {
-        "id": "collection_admin_user_id"
-      },
       "business_rule": ""
     },
     {
@@ -115,9 +88,6 @@
       "join_condition": "admin_department_children.id = order_student_received.admin_department_children_id",
       "type": "many_to_one",
       "description": "回款创建人所在的部门",
-      "fields_mapping": {
-        "id": "admin_department_children_id"
-      },
       "business_rule": ""
     },
     {
@@ -126,13 +96,12 @@
       "join_condition": "admin_department_children.id = order_student_received.collection_admin_department_children_id",
       "type": "many_to_one",
       "description": "收款人所在的部门",
-      "fields_mapping": {
-        "id": "collection_admin_department_children_id"
-      },
       "business_rule": ""
     }
   ],
   "calculated_fields": {},
   "business_constraints": {},
-  "business_rules": ["collection_date字段存的是13位时间戳"]
+  "business_rules": [
+    "collection_date字段存的是13位时间戳"
+  ]
 }

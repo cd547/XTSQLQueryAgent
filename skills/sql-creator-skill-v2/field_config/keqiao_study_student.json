@@ -9,9 +9,6 @@
       "join_condition": "keqiao_study.id = keqiao_study_student.keqiao_study_id",
       "type": "many_to_one",
       "description": "通过排课ID关联排课日程表",
-      "fields_mapping": {
-        "id": "keqiao_study_id"
-      },
       "business_rule": ""
     },
     {
@@ -20,9 +17,6 @@
       "join_condition": "keqiao_class.id = keqiao_study_student.keqiao_class_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "keqiao_class_id"
-      },
       "business_rule": ""
     },
     {
@@ -31,9 +25,6 @@
       "join_condition": "edu_student.id = keqiao_study_student.edu_student_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "edu_student_id"
-      },
       "business_rule": ""
     },
     {
@@ -42,9 +33,6 @@
       "join_condition": "keqiao_study_leave.id = keqiao_study_student.keqiao_study_leave_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "keqiao_study_leave_id"
-      },
       "business_rule": ""
     },
     {
@@ -53,9 +41,6 @@
       "join_condition": "admin_user.id = keqiao_study_student.admin_user_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "admin_user_id"
-      },
       "business_rule": ""
     }
   ],

@@ -1,9 +1,6 @@
 {
   "table_name": "study_abroad_case_closure",
-
-  "field_aliases": {
-  },
-
+  "field_aliases": {},
   "field_enums": {
     "case_closure_status": {
       "0": "未结案",
@@ -18,25 +15,18 @@
       "1": "有规划服务"
     }
   },
-
   "virtual_associations": [
     {
       "name": "关联学生规划信息",
       "target_table": "study_abroad_planning_info",
       "join_condition": "study_abroad_planning_info.student_id = study_abroad_case_closure.student_id",
       "type": "one_to_one",
-      "description": "1个学生对应1条结案记录",
-      "fields_mapping": {
-        "id": "student_id"
-      }
+      "description": "1个学生对应1条结案记录"
     }
   ],
-
   "calculated_fields": {},
-
   "business_constraints": {
     "plan_service_staus": "planServiceStaus字段用于保存planStatus的正常状态值（1规划中、2申请中），在结案时将当前进度备份到此字段"
   },
-
   "business_rules": []
 }

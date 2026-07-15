@@ -9,9 +9,6 @@
       "join_condition": "order_student_received_settlement.id = order_student_received_settlement_log.admin_channel_settlement_id",
       "type": "many_to_one",
       "description": "结算日志关联的佣金结算记录",
-      "fields_mapping": {
-        "id": "admin_channel_settlement_id"
-      },
       "business_rule": ""
     },
     {
@@ -20,9 +17,6 @@
       "join_condition": "admin_user.id = order_student_received_settlement_log.admin_user_id",
       "type": "many_to_one",
       "description": "结算日志的操作人",
-      "fields_mapping": {
-        "id": "admin_user_id"
-      },
       "business_rule": ""
     }
   ],

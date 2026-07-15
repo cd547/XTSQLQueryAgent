@@ -9,9 +9,6 @@
       "join_condition": "edu_study.id = edu_study_student.edu_study_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "edu_study_id"
-      },
       "business_rule": ""
     },
     {
@@ -20,9 +17,6 @@
       "join_condition": "edu_student.id = edu_study_student.edu_student_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "edu_student_id"
-      },
       "business_rule": ""
     },
     {
@@ -31,9 +25,6 @@
       "join_condition": "admin_user.id = edu_study_student.admin_user_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "admin_user_id"
-      },
       "business_rule": ""
     }
   ],

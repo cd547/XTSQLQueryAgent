@@ -9,9 +9,6 @@
       "join_condition": "edu_goods.id = edu_goods_subject_name.goods_id",
       "type": "many_to_one",
       "description": "1个产品科目名称关联1个产品",
-      "fields_mapping": {
-        "id": "goods_id"
-      },
       "business_rule": ""
     },
     {
@@ -20,9 +17,6 @@
       "join_condition": "edu_course_exam_subject_name.id = edu_goods_subject_name.subject_name_id",
       "type": "many_to_one",
       "description": "1个产品科目名称关联1个科目名称",
-      "fields_mapping": {
-        "id": "subject_name_id"
-      },
       "business_rule": ""
     }
   ],

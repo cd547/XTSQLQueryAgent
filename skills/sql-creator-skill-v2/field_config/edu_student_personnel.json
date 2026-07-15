@@ -28,9 +28,6 @@
       "join_condition": "admin_user.id = edu_student_personnel.admin_user_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "admin_user_id"
-      },
       "business_rule": ""
     },
     {
@@ -39,9 +36,6 @@
       "join_condition": "edu_student.id = edu_student_personnel.student_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "student_id"
-      },
       "business_rule": ""
     }
   ],

@@ -9,9 +9,6 @@
       "join_condition": "keqiao_class.id = keqiao_class_student.keqiao_class_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "keqiao_class_id"
-      },
       "business_rule": ""
     },
     {
@@ -20,9 +17,6 @@
       "join_condition": "edu_student.id = keqiao_class_student.edu_student_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "edu_student_id"
-      },
       "business_rule": ""
     }
   ],

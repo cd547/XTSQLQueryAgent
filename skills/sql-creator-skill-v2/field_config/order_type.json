@@ -3,8 +3,14 @@
   "field_aliases": {},
   "field_enums": {
     "admin_division": {
-      "1": { "label": "机构", "description": "之前叫学通" },
-      "2": { "label": "学校", "description": "之前叫科桥" }
+      "1": {
+        "label": "机构",
+        "description": "之前叫学通"
+      },
+      "2": {
+        "label": "学校",
+        "description": "之前叫科桥"
+      }
     }
   },
   "virtual_associations": [
@@ -14,9 +20,6 @@
       "join_condition": "admin_division.id = order_type.admin_division",
       "type": "many_to_one",
       "description": "订单类型所属事业部",
-      "fields_mapping": {
-        "id": "admin_division"
-      },
       "business_rule": ""
     }
   ],

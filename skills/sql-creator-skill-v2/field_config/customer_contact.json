@@ -1,12 +1,16 @@
 {
   "table_name": "customer_contact",
-
   "field_aliases": {
-    "customer_code": ["客户编码"],
-    "concat_type": ["联系方式类型"],
-    "concat": ["联系内容"]
+    "customer_code": [
+      "客户编码"
+    ],
+    "concat_type": [
+      "联系方式类型"
+    ],
+    "concat": [
+      "联系内容"
+    ]
   },
-
   "field_enums": {
     "concat_type": {
       "0": "手机号",
@@ -14,37 +18,27 @@
       "2": "邮箱"
     }
   },
-
   "virtual_associations": [
     {
       "name": "关联客户主表",
       "target_table": "customer_info",
       "join_condition": "customer_info.code = customer_contact.customer_code",
       "type": "many_to_one",
-      "description": "多条联系方式记录可属于同一客户",
-      "fields_mapping": {
-        "code": "customer_code"
-      }
+      "description": "多条联系方式记录可属于同一客户"
     },
-        {
+    {
       "name": "关联线索家长表",
       "target_table": "customer_people",
       "join_condition": "customer_people.id = customer_contact.people_id",
       "type": "many_to_one",
-      "description": "多条联系方式记录可属于同一家长,people_id=0 表示线索本人的手机号",
-      "fields_mapping": {
-        "id": "people_id"
-      }
+      "description": "多条联系方式记录可属于同一家长,people_id=0 表示线索本人的手机号"
     }
   ],
-
   "calculated_fields": {},
-
   "business_constraints": {
     "deleted": "查询时需加 deleted = 0 过滤已删除数据",
     "usage_pattern": "通常在查询customer_info时通过EXISTS子查询条件按联系方式类型过滤，例如：EXISTS (SELECT 1 FROM customer_contact cc WHERE cc.customer_code = main.code AND cc.deleted = 0 AND cc.concat_type = 1 AND cc.concat = 'xxx')。也用于Java层批量查询后脱敏展示"
   },
-
   "business_rules": [
     {
       "rule": "联系方式脱敏",

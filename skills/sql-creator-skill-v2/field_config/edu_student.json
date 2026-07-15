@@ -9,9 +9,6 @@
       "join_condition": "customer_clue_info.customer_code = edu_student.student_code",
       "type": "one_to_one",
       "description": "一个学生一条线索",
-      "fields_mapping": {
-        "customer_code": "student_code"
-      },
       "business_rule": ""
     },
     {
@@ -20,9 +17,6 @@
       "join_condition": "my_user.id = edu_student.my_user_id",
       "type": "many_to_one",
       "description": "多个学生可对应同一个注册用户",
-      "fields_mapping": {
-        "my_user_id": "id"
-      },
       "business_rule": ""
     },
     {
@@ -31,9 +25,6 @@
       "join_condition": "my_user.id = edu_student.update_my_user_id",
       "type": "many_to_one",
       "description": "多个学生可被同一个微信用户更新资料",
-      "fields_mapping": {
-        "update_my_user_id": "id"
-      },
       "business_rule": ""
     },
     {
@@ -42,9 +33,6 @@
       "join_condition": "edu_campus_school.id = edu_student.campus_school_id",
       "type": "many_to_one",
       "description": "多个学生可属于同一个分校",
-      "fields_mapping": {
-        "campus_school_id": "id"
-      },
       "business_rule": ""
     },
     {
@@ -53,9 +41,6 @@
       "join_condition": "edu_student_type.id = edu_student.edu_student_type_id",
       "type": "many_to_one",
       "description": "多个学生可属于同一种学生类型",
-      "fields_mapping": {
-        "edu_student_type_id": "id"
-      },
       "business_rule": ""
     },
     {
@@ -64,9 +49,6 @@
       "join_condition": "edu_student_status.id = edu_student.edu_student_status_id",
       "type": "many_to_one",
       "description": "多个学生可处于同一种状态",
-      "fields_mapping": {
-        "edu_student_status_id": "id"
-      },
       "business_rule": ""
     },
     {
@@ -75,9 +57,6 @@
       "join_condition": "edu_student_type_project.id = edu_student.edu_student_type_project_id",
       "type": "many_to_one",
       "description": "多个学生可报读同一个项目",
-      "fields_mapping": {
-        "edu_student_type_project_id": "id"
-      },
       "business_rule": ""
     },
     {
@@ -86,9 +65,6 @@
       "join_condition": "edu_student_certificates_type.id = edu_student.certificates_type",
       "type": "many_to_one",
       "description": "多个学生可使用同一种证件类型",
-      "fields_mapping": {
-        "certificates_type": "id"
-      },
       "business_rule": ""
     }
   ],

@@ -1,15 +1,23 @@
 {
   "table_name": "admin_department_manage",
-  
   "field_aliases": {
-    "id": ["ID", "编号"],
-    "admin_department_type_id": ["权限ID"],
-    "admin_department_children_id": ["二级部门ID", "子部门ID"],
-    "admin_user_id": ["后台用户ID", "用户ID"]
+    "id": [
+      "ID",
+      "编号"
+    ],
+    "admin_department_type_id": [
+      "权限ID"
+    ],
+    "admin_department_children_id": [
+      "二级部门ID",
+      "子部门ID"
+    ],
+    "admin_user_id": [
+      "后台用户ID",
+      "用户ID"
+    ]
   },
-  
   "field_enums": {},
-  
   "virtual_associations": [
     {
       "name": "关联权限类型",
@@ -17,7 +25,6 @@
       "join_condition": "admin_department_type.id = admin_department_manage.admin_department_type_id",
       "type": "one_to_one",
       "description": "部门管理配置对应的权限类型",
-      "fields_mapping": {"id": "admin_department_type_id"},
       "business_rule": ""
     },
     {
@@ -26,7 +33,6 @@
       "join_condition": "admin_department_children.id = admin_department_manage.admin_department_children_id",
       "type": "one_to_one",
       "description": "部门管理配置对应的二级部门",
-      "fields_mapping": {"id": "admin_department_children_id"},
       "business_rule": ""
     },
     {
@@ -35,14 +41,12 @@
       "join_condition": "admin_user.id = admin_department_manage.admin_user_id",
       "type": "one_to_one",
       "description": "部门管理配置对应的后台用户",
-      "fields_mapping": {"id": "admin_user_id"},
       "business_rule": ""
     }
   ],
-  
   "calculated_fields": {},
-  
   "business_constraints": {},
-  
-  "business_rules": ["该表是配置部门与权限与人员的关系表"]
+  "business_rules": [
+    "该表是配置部门与权限与人员的关系表"
+  ]
 }
