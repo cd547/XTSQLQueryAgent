@@ -262,8 +262,8 @@ export function buildUserChoiceMarker(question, options, multiSelect, header) {
   const id = makeUserChoiceId();
   const payload = {
     id,
-    question: String(question || '').slice(0, 500),
-    options: (Array.isArray(options) ? options : []).slice(0, 8).map(o => String(o).slice(0, 100)),
+    question: String(question || '').slice(0, 200),
+    options: (Array.isArray(options) ? options : []).slice(0, 4).map(o => String(o).slice(0, 100)),
     multi_select: !!multiSelect,
     header: String(header || '').slice(0, 12)
   };
@@ -274,8 +274,70 @@ export function buildUserChoiceMarker(question, options, multiSelect, header) {
   };
 }
 
-export function requestUserChoice(question, options, multiSelect, header) {
-  return buildUserChoiceMarker(question, options, multiSelect, header);
+// ★ 校验 questions[] 数组：每条 question 必须 1-4 options + question ≤200 字
+// 返回 {ok, msg} —— ok=false 时 caller 应把 msg 当 error 返回 LLM 让其重试
+function validateQuestions(questions) {
+  if (!Array.isArray(questions) || questions.length === 0) {
+    return { ok: false, msg: "questions 必须是非空数组" };
+  }
+  if (questions.length > 3) {
+    return { ok: false, msg: `questions 最多 3 条（再多弹窗链过长），当前 ${questions.length}` };
+  }
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i] || {};
+    const idx = i + 1;
+    if (!q.question || typeof q.question !== 'string') {
+      return { ok: false, msg: `第 ${idx} 题 question 必填且为字符串` };
+    }
+    if (q.question.length > 200) {
+      return { ok: false, msg: `第 ${idx} 题 question ≤200 字（当前 ${q.question.length}）` };
+    }
+    if (!Array.isArray(q.options) || q.options.length < 1) {
+      return { ok: false, msg: `第 ${idx} 题 options 至少 1 个` };
+    }
+    if (q.options.length > 4) {
+      return { ok: false, msg: `第 ${idx} 题 options 最多 4 个（当前 ${q.options.length}）` };
+    }
+    for (let j = 0; j < q.options.length; j++) {
+      const opt = q.options[j];
+      if (!opt || typeof opt !== 'string') {
+        return { ok: false, msg: `第 ${idx} 题 第 ${j+1} 个 option 必填且为字符串` };
+      }
+      if (opt.length > 100) {
+        return { ok: false, msg: `第 ${idx} 题 第 ${j+1} 个 option ≤100 字（当前 ${opt.length}）` };
+      }
+    }
+  }
+  return { ok: true };
+}
+
+// ★ v3: request_user_choice(questions: [{...}]) 单调用多问题契约
+//  返回结构：
+//    success: {markers:[...], payloads:[...], ids:[...], content:"..."}
+//      - markers 给后端 phase 3 解析后 yield 给前端
+//      - payloads 是已 parse 的对象数组（直接给前端用）
+//      - ids 给 recordToolCall 写 registry
+//      - content 给 LLM 看的 tool 消息（多个 marker 拼接）
+//    error:   {error, content:"⚠️..."}
+//      - 后端不会终止 TURN 1，LLM 看到 content 修正后重试
+export function requestUserChoice(questions) {
+  const v = validateQuestions(questions);
+  if (!v.ok) {
+    return {
+      error: v.msg,
+      content: `⚠️ ${v.msg}。请修正后重新调用 request_user_choice(questions: [...])。`
+    };
+  }
+  const items = questions.map(q => {
+    const r = buildUserChoiceMarker(q.question, q.options, q.multi_select, q.header);
+    return { marker: r.marker, payload: r.payload, id: r.id };
+  });
+  return {
+    markers: items.map(it => it.marker),
+    payloads: items.map(it => it.payload),
+    ids: items.map(it => it.id),
+    content: items.map(it => it.marker).join(''),
+  };
 }
 
 // 表格卡片格式化：与 get_tables 输出保持一致，供 get_sliced_index 共用
@@ -437,49 +499,57 @@ export const tools = [
       return requestTagConfirmation(term, table, description || '');
     }
   }),
-  // ★ 新增：request_user_choice 工具（稳定工具组末尾，**严禁放首位**——会破坏 prefix cache）
-  // 位置：request_tag_confirmation 之后、get_domain_index 之前
+  // ★ request_user_choice 工具（v3: questions[] 数组契约）
+  //   位置：稳定工具组末尾，**严禁放首位**——会破坏 prefix cache
   new DynamicTool({
     name: "request_user_choice",
-    description: "【需要用户输入】当任务需要用户确认/选择/补充才能继续时调用。弹出选项+自由文本框，用户提交后 LLM 继续。调用后不要再生成任何文字——程序会自动结束当前轮次并弹出对话框。",
+    description: "【需要用户输入】当任务需要用户确认/选择/补充才能继续时调用。\n" +
+      "参数 questions: 1-3 个问题的数组，每个问题独立可答。\n" +
+      "  - question: 必填，问题文本，≤200 字\n" +
+      "  - options: 必填，1-4 个选项，每项 ≤100 字\n" +
+      "  - multi_select: 可选，true=多选(checkbox)，false=单选(radio)，默认 false\n" +
+      "  - header: 可选，问题分类标签，≤12 字\n" +
+      "调用后程序自动结束当前轮次并弹出对话框（链式展示 N 张卡片，按钮『下一个』→『完成』）。",
     params: {
       type: 'object',
       properties: {
-        question: { type: 'string', description: '向用户提问的内容（≤500字）' },
-        options: { type: 'array', items: { type: 'string' }, description: '候选选项（1-8 个字符串，每项 ≤100 字）' },
-        multi_select: { type: 'boolean', description: 'true=多选（checkbox），false=单选（radio），默认 false' },
-        header: { type: 'string', description: '弹窗短标题（≤12 字）' }
+        questions: {
+          type: 'array',
+          description: '1-3 个问题的数组',
+          minItems: 1, maxItems: 3,
+          items: {
+            type: 'object',
+            properties: {
+              question: { type: 'string', description: '问题文本，≤200 字' },
+              options: { type: 'array', items: { type: 'string' }, description: '1-4 个选项，每项 ≤100 字', minItems: 1, maxItems: 4 },
+              multi_select: { type: 'boolean', description: 'true=多选/checkbox，false=单选/radio，默认 false' },
+              header: { type: 'string', description: '问题分类标签，≤12 字' }
+            },
+            required: ['question', 'options']
+          }
+        }
       },
-      required: ['question', 'options']
+      required: ['questions']
     },
     func: (params) => {
-      // 解析（string/object 双兼容，与 request_tag_confirmation 一致）
-      let question, options, multiSelect, header;
+      // 解析（string/object 双兼容）
+      let questions;
       try {
         if (typeof params === 'object' && params !== null) {
-          ({ question, options, multiSelect, header } = params);
+          questions = params.questions;
         } else if (typeof params === 'string') {
           const parsed = JSON.parse(params);
-          question = parsed.question;
-          options = parsed.options;
-          multiSelect = parsed.multi_select;
-          header = parsed.header;
+          questions = parsed.questions;
         }
-      } catch (e) { logger.debug('Parse request_user_choice params failed', { error: e.message }); }
-
-      if (!question || typeof question !== 'string') {
-        return '请提供 question(问题) 参数';
+      } catch (e) {
+        logger.debug('Parse request_user_choice params failed', { error: e.message });
+        return { error: '参数解析失败', content: '⚠️ request_user_choice 参数解析失败，请传入合法 JSON。' };
       }
-      if (!Array.isArray(options) || options.length === 0) {
-        return '请提供 options(选项数组) 参数，至少 1 个';
-      }
-      if (options.length > 8) options = options.slice(0, 8);
 
-      // ★ 关键：tool.func 返回结构化对象 {id, marker, payload}
-      // - marker 用于 LLM 看到的 tool 消息 content
-      // - id 用于 recordToolCall 写入 registry（保证与 marker 内 id 一致）
-      // 如果只返回 marker 字符串，caller 拿不到 id，registry 会存 "uc_unknown_<timestamp>"，与 marker 内 id 失联
-      return requestUserChoice(question, options, multiSelect, header);
+      // ★ 校验 + 单调用拆 N marker
+      //   success: {markers, payloads, ids, content} 给后端 phase 3 解析
+      //   error:   {error, content} LLM 看到 content 修正后重试
+      return requestUserChoice(questions);
     }
   }),
   // ===== 可变工具：调用一次后会被剪枝（见 llm.js 中的剪枝逻辑）=====

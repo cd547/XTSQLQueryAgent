@@ -4,11 +4,11 @@
   "field_enums": {},
   "virtual_associations": [
     {
-      "name": "关联用户主表",
+      "name": "关联用户",
       "target_table": "admin_user",
       "join_condition": "admin_user.id = auth_user_role.user_id",
       "type": "one_to_many",
-      "description": "1条用户角色信息表信息对应多个用户",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -16,7 +16,7 @@
       "target_table": "auth_role",
       "join_condition": "auth_role.id = auth_user_role.role_id",
       "type": "one_to_one",
-      "description": "1条用户角色信息表信息对应一个角色",
+      "description": "",
       "business_rule": ""
     }
   ],

@@ -1563,7 +1563,19 @@
       "name": "customer_people",
       "description": "线索家长表",
       "tags": [],
-      "related_tables": ["customer_clue_info"],
+      "related_tables": [
+        "customer_clue_info"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "order_student_received_reject",
+      "description": "回款计划驳回记录",
+      "tags": [],
+      "related_tables": [
+        "order_student_received"
+      ],
       "business_constraints": [],
       "business_rules": []
     }

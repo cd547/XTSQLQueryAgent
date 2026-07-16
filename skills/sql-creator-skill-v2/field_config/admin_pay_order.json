@@ -4,11 +4,11 @@
   "field_enums": {},
   "virtual_associations": [
     {
-      "name": "关联线上支付订单",
+      "name": "关联网站支付订单",
       "target_table": "order_list",
       "join_condition": "order_list.id = admin_pay_order.order_list_id",
       "type": "many_to_one",
-      "description": "支付单关联的线上支付订单",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -16,7 +16,7 @@
       "target_table": "edu_student",
       "join_condition": "edu_student.id = admin_pay_order.edu_student_id",
       "type": "many_to_one",
-      "description": "支付单关联的学生",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -24,7 +24,7 @@
       "target_table": "goods_list",
       "join_condition": "goods_list.id = admin_pay_order.goods_list_id",
       "type": "many_to_one",
-      "description": "支付单关联的商品",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -32,7 +32,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = admin_pay_order.admin_user_id",
       "type": "many_to_one",
-      "description": "支付单的创建人",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -49,7 +49,7 @@
       "alias": "del_admin_user",
       "join_condition": "del_admin_user.id = admin_pay_order.del_admin_user_id",
       "type": "many_to_one",
-      "description": "取消支付单的操作人",
+      "description": "",
       "business_rule": ""
     }
   ],

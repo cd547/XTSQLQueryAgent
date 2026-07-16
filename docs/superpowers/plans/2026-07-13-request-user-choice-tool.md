@@ -1,9 +1,13 @@
 # `request_user_choice` 工具 — Agent ↔ 用户交互表单
 
 **日期**: 2026-07-13（持续修订中）
-**状态**: 待审批
+**状态**: ✅ 已上线（v1 ~ v5 全部合并 + bug 修复）
 **作者**: AI 协作
-**关联文件**: `backend/src/services/toolFuncs.js`, `backend/src/services/llm.js`, `backend/src/routes/query.js`, `frontend/src/App.jsx`, `frontend/src/components/UserChoiceDialog.jsx`, `skills/sql-creator-skill-v2/SKILL.md`
+**关联文件**: `backend/src/services/toolFuncs.js`, `backend/src/services/llm.js`, `backend/src/routes/query.js`, `frontend/src/App.jsx`, `frontend/src/components/UserChoiceDialog.jsx`, `frontend/src/styles/ChatInput.css`, `skills/sql-creator-skill-v2/SKILL.md`
+
+> **历史修订索引**（详细见 [CHANGELOG.md](../changelog/CHANGELOG.md) 2026-07-16 段）：
+
+**v1 初版**（2026-07-13）：4 个平铺参数（question/options/multi_select/header），单次工具调用单问题。
 
 **v2 修订**（2026-07-14）：外部 AI 评审指出 12 个问题，全部核实并修复：
 - 🔴 #1 tools 数组位置（破坏 prefix cache）→ 修复（§4.1, §4.2, §5.1）
@@ -14,6 +18,16 @@
 - 🟢 #6-#12 小问题 → 加 Enter 键绑定（R-51 风险）、更新 R-39 token 估算、grep 改辅助、registry 清理（R-49 风险）、结构化返回兜底（R-52 风险）
 
 **v3 修订**（2026-07-14）：修正 §2.5 与 §7 风险编号冲突（删除 §2.5 重复 R-47, R-48，重编号 §7 R-47→R-49, R-48→R-50），新增 R-51, R-52。
+
+**v4 改造**（2026-07-16）：**单调用多问题契约** — 工具参数从 4 个平铺改为 `questions: [{...}]` 数组（1-3 个完整问题对象），工具 func 内部拆 N 个独立 marker，前端链式弹窗按 `currentIndex` 依次展示。约束：options 1-4、question ≤200 字、header ≤12 字。详细：[§13 v4 改造补充](#13-v4-改造补充单调用多问题契约)
+
+**v5 增强**（2026-07-16）：**链式弹窗「上一步」按钮** — 多问题 + 非首题时显示「上一步」，答案存 `answers[]`，切回时从 `previousAnswer` 初始化 dialog state 回显。详细：[§14 v5 增强补充](#14-v5-增强补充链式弹窗上一步按钮)
+
+**v6 修复**（2026-07-16）：**UX bug 修复**
+- 🐛 流式期间「思考过程」无法展开：`reasoning_chunk` 累加时不再覆盖 `collapsed: true`；仅在新建消息时设默认折叠
+- 🐛 聊天输入框拉高时 footer 被顶下去：改用 flexbox 列布局（`display: flex; flex-direction: column`），TextArea 用 `flex: 1; min-height: 0` 填中间，footer 用 `flex-shrink: 0` 贴底
+
+详细：[§15 v6 UX Bug 修复补充](#15-v6-ux-bug-修复补充)
 
 ---
 
@@ -1361,11 +1375,350 @@ export default UserChoiceDialog;
 
 ## 13. 审批与签署
 
-- [ ] 用户审批本方案（含多轮模型 §2.4）
-- [ ] 用户审批 §2.5 前端 UX 连贯性硬约束（5 项：A 简洁 user 气泡 / B loading 连续 / C 过渡语 / D 继续角标 / E 聊天框锁定；**F/G 由简洁消息格式天然支持**）
-- [ ] 用户审批 §2.6 Checklist 生命周期硬约束（"checklist 不在历史 messages 中"）
-- [ ] 用户确认第 10 节"待决策"项（Q-01 ~ Q-10）
-- [ ] 用户确认第 9 节实施顺序（含 T9a 输入框锁 + T9b UX 连贯性 + T11a 多轮测试；**T9c 取消**）
-- [ ] 用户确认第 7 节风险登记册的缓解措施（含 R-31 ~ R-52 多轮专项风险）
+- [x] 用户审批本方案（含多轮模型 §2.4）— 2026-07-14
+- [x] 用户审批 §2.5 前端 UX 连贯性硬约束（5 项：A 简洁 user 气泡 / B loading 连续 / C 过渡语 / D 继续角标 / E 聊天框锁定；**F/G 由简洁消息格式天然支持**）— 2026-07-14
+- [x] 用户审批 §2.6 Checklist 生命周期硬约束（"checklist 不在历史 messages 中"）— 2026-07-14
+- [x] 用户确认第 10 节"待决策"项（Q-01 ~ Q-10）— 2026-07-14
+- [x] 用户确认第 9 节实施顺序（含 T9a 输入框锁 + T9b UX 连贯性 + T11a 多轮测试）— 2026-07-14
+- [x] 用户确认第 7 节风险登记册的缓解措施（含 R-31 ~ R-52 多轮专项风险）— 2026-07-14
+- [x] **v4 单调用多问题契约**改造 — 2026-07-16
+- [x] **v5 链式弹窗「上一步」按钮**增强 — 2026-07-16
+- [x] **v6 UX bug 修复**（thinking 折叠 + input footer 漂移）— 2026-07-16
 
-审批通过后按 T1-T15（含 T9a, T9b, T11a）顺序实施。
+v1 ~ v3 全部合并上线，v4 ~ v6 改造 + 修复已全部完成。
+
+---
+
+## 14. v4 改造补充：单调用多问题契约
+
+### 14.1 需求变更（2026-07-16）
+
+原 v1 契约要求 LLM 每次只能问 1 个问题（多次工具调用 = 多次 SSE 终止），但实际 LLM 经常一次抛多个相关问题：
+- **v1 痛点**：3 个问题需要 3 次 LLM 推理轮次 + 3 次 SSE 终止 + 3 次 `/generate` 请求，**token 浪费 + UX 断裂**
+- **v4 目标**：单次工具调用传 1-3 个完整问题，工具 func 内部拆为 N 个独立 marker，前端链式弹窗依次展示
+
+### 14.2 契约变更对比
+
+| 维度 | v1（4 个平铺参数） | v4（questions 数组） |
+|------|-------------------|----------------------|
+| 工具签名 | `request_user_choice(question, options, multi_select, header)` | `request_user_choice(questions: [{...}])` |
+| 一次调用问题数 | 1 个 | 1-3 个 |
+| 字段约束 | options 1-8、question ≤500 字 | options 1-4、question ≤200 字、header ≤12 字 |
+| LLM 守规 | 需多次调用 | 一次调用 |
+| 后端处理 | 单 marker | func 内拆 N 个 marker，返回 `{markers, payloads, ids, content}` |
+| 前端展示 | 1 张卡片 | N 张卡片链式弹窗，按 `currentIndex` 切换 |
+| 提交按钮 | "完成" | 单问题"完成" / 多问题非末尾"下一个" / 末尾"完成" |
+| 进度指示 | 无 | "问题 N / Total" Tag |
+
+### 14.3 工具函数实现
+
+**位置**：[toolFuncs.js:323-345](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/toolFuncs.js#L323-L345)（`requestUserChoice` 主函数）
+
+```js
+export function requestUserChoice(questions) {
+  const v = validateQuestions(questions);
+  if (!v.ok) {
+    return {
+      error: v.msg,
+      content: `⚠️ ${v.msg}。请修正后重新调用 request_user_choice(questions: [...])。`
+    };
+  }
+  const items = questions.map(q => {
+    const r = buildUserChoiceMarker(q.question, q.options, q.multi_select, q.header);
+    return { marker: r.marker, payload: r.payload, id: r.id };
+  });
+  return {
+    markers: items.map(it => it.marker),
+    payloads: items.map(it => it.payload),
+    ids: items.map(it => it.id),
+    content: items.map(it => it.marker).join('\n')  // 给 LLM 看的 tool 消息
+  };
+}
+```
+
+**校验函数** [toolFuncs.js:286-312](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/toolFuncs.js#L286-L312)（`validateQuestions`）：
+- questions 必须是非空数组，1-3 个元素
+- 每题必须有 `question`（≤200 字）、`options`（1-4 个，每项 ≤100 字）
+- `multi_select` 默认 false，`header` 可选（≤12 字）
+- 校验失败：返回 `{error, content}`，**后端不终止 TURN 1**，LLM 看到 `content` 修正后重试
+
+### 14.4 后端 `llm.js` 兼容处理
+
+**位置**：[llm.js:1151-1183](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L1151-L1183)（phase 3 终止分支）
+
+```js
+// ★ v4 兼容：同时支持新 payloads[] 数组 + 旧 marker 单 marker
+if (p.toolName === 'request_user_choice') {
+  const raw = p.rawResult || {};
+  if (Array.isArray(raw.payloads) && raw.payloads.length > 0) {
+    // v4 新契约：N 个 payload，yield userChoiceRequest 数组
+    pendingUserChoiceList = raw.payloads;  // 数组
+  } else if (raw.marker) {
+    // v1 旧契约：单 marker，包装成单元素数组
+    pendingUserChoiceList = [parseMarker(raw.marker)];
+  }
+  break;  // 双层 break（for tool_calls + while maxToolCalls）
+}
+```
+
+**SSE done 事件 payload** 变化：
+- v1：`user_choice_request: { id, question, options, ... }`（单对象）
+- v4：`user_choice_request: [{...}, {...}, ...]`（数组，前端按 currentIndex 展示）
+
+### 14.5 前端 `App.jsx` state 结构
+
+```jsx
+// v4 state 结构（替代 v1 的单对象）
+const [userChoiceRequest, setUserChoiceRequest] = useState({
+  visible: false,
+  requests: [],         // 问题数组（来自后端 userChoiceRequest 数组；1-3 个元素）
+  currentIndex: 0,      // 当前展示的问题索引
+  answers: []           // 与 requests 等长的答案数组，每个 {selected:[], text:''}
+});
+```
+
+**v4 关键决策**：
+
+| # | 决策 | 选择 |
+|---|------|------|
+| 1 | 工具签名 | `request_user_choice(questions: [{...}])` 1-3 个完整问题 |
+| 2 | 字段约束 | questions ≤3、question ≤200字、options 1-4 个（每项 ≤100字）、header ≤12字 |
+| 3 | 输入校验 | 工具 func 内 `validateQuestions` 严格 reject 越界，返回 error 让 LLM 重试 |
+| 4 | SKILL.md 精简 | 移除"1 question = 1 call"等冗余规则；契约 schema 写在工具 description，行为引导写在 SKILL.md |
+| 5 | 后端兼容 | llm.js phase 3 同时支持新 `rawResult.payloads[]` 数组 + 旧 `rawResult.marker` 单 marker |
+| 6 | UI 链式 | 单问题：按钮"完成"；多问题：非末尾"下一个"，末尾"完成"；进度指示"问题 N / Total" |
+| 7 | UI 字号 | 卡片内 question/options 字号 12px，tags 11px，缩小卡片视觉负担 |
+| 8 | 答案回显 | 提交后删除旧 wrapper `[用户对选择请求的回复]` 格式；改为简洁 `"label=answer; label=answer"` 拼接（v2 既有方案延续） |
+
+### 14.6 涉及文件
+
+- `backend/src/services/toolFuncs.js`（修改：`validateQuestions` + 工具 description/schema）
+- `backend/src/services/llm.js`（修改：phase 3 读 `rawResult.payloads[]` 数组 + 兼容旧版）
+- `skills/sql-creator-skill-v2/SKILL.md`（修改：精简"用户交互"段为 ~10 行）
+- `frontend/src/components/UserChoiceDialog.jsx`（修改：链式按钮 + 缩小字号 + v5 上一步）
+- `frontend/src/App.jsx`（修改：`userChoiceRequest` state 结构从单对象改为 `{visible, requests, currentIndex, answers}`）
+- `backend/test-request-user-choice.mjs`（重写：**53 条**测试全过）
+- `backend/test-request-user-choice-multi.mjs`（重写：**108 条**测试全过）
+
+### 14.7 验证
+
+- 边界：options 4 合法、5 reject；question 200 合法、201 reject；header 12 合法、>12 截断
+- 错误：null/string/空数组/4 问题/缺 question/option null/option >100字 全部返回 error
+- 旧版 marker 单 marker 路径仍兼容
+- tools 数组顺序保持（request_user_choice 仍在 index 5，稳定工具组末尾）
+
+---
+
+## 15. v5 增强补充：链式弹窗「上一步」按钮
+
+### 15.1 UX 缺陷（2026-07-16）
+
+v4 链式弹窗虽然支持 N 个问题顺序作答，但**缺少返回上题修改答案的机制**——用户答完 Q1 点"下一个"后无法回到 Q1 修改答案，必须从头答完。
+
+### 15.2 关键决策
+
+| # | 决策 | 选择 |
+|---|------|------|
+| 1 | 入口 | 多问题 + 非首题时显示「上一步」按钮（单问题不显示，首题不显示） |
+| 2 | 状态保留 | 答案已存在 `userChoiceRequest.answers[]`，切回时 dialog 从 `previousAnswer` 初始化本地 state |
+| 3 | 答案回显 | 单选/多选/文本均按已选状态回显；用户改完点"下一个"再保存到对应 index |
+| 4 | 边界 | `currentIndex === 0` 时按钮不显示（已是首题） |
+
+### 15.3 涉及文件
+
+- `frontend/src/components/UserChoiceDialog.jsx`（修改：+ 2 props + 「上一步」按钮 + useEffect 从 previousAnswer 初始化）
+- `frontend/src/App.jsx`（修改：+ `handlePrevUserChoice` handler + 传 `previousAnswer` / `canGoPrev` props）
+
+### 15.4 关键代码
+
+**UserChoiceDialog.jsx props**：
+```jsx
+function UserChoiceDialog({
+  visible, request, currentIndex = 0, totalCount = 1,
+  previousAnswer,    // ★ v5 新增：当前问题已保存的答案
+  canGoPrev = false, // ★ v5 新增：是否可以回到上一题
+  inputHeight, onSubmit, onPrev, onCancel  // ★ v5 新增 onPrev
+}) { ... }
+```
+
+**UserChoiceDialog.jsx useEffect** —— 切题时用 previousAnswer 初始化：
+```jsx
+useEffect(() => {
+  const pa = previousAnswer || {};
+  const savedSelected = Array.isArray(pa.selected) ? pa.selected : [];
+  if (multiSelect) {
+    setSelected(savedSelected);
+  } else {
+    setSelected(savedSelected.length > 0 ? savedSelected[0] : '');
+  }
+  setText(pa.text || '');
+  setMinimized(false);
+  // 仅依赖 currentIndex/visible，避免父组件重渲染覆盖本地答案
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+}, [currentIndex, visible]);
+```
+
+**App.jsx handler**：
+```jsx
+// ★ v5 "上一步"：让用户回到上题修改答案
+const handlePrevUserChoice = () => {
+  setUserChoiceRequest(prev => {
+    if (prev.currentIndex <= 0) return prev;
+    return { ...prev, currentIndex: prev.currentIndex - 1 };
+  });
+};
+```
+
+**UserChoiceDialog.jsx 按钮渲染**：
+```jsx
+<Space>
+  {canGoPrev && (
+    <Button size="small" onClick={() => onPrev && onPrev()}>
+      上一步
+    </Button>
+  )}
+  <Button type="primary" size="small" onClick={handleSubmit}>
+    {isLast ? '完成' : '下一个'}
+  </Button>
+  <Button size="small" onClick={onCancel}>取消</Button>
+</Space>
+```
+
+### 15.5 经验教训
+
+- **分步表单/向导必须有"返回修改"机制**：缺少会让用户卡死（必须从头重答）
+- **state 恢复不能仅依赖 `useState` lazy init**（只在 mount 时跑一次）——必须靠 `useEffect` 显式同步
+- **useEffect 依赖最小化**：只依赖 `[currentIndex, visible]`，避免父组件重渲染覆盖本地答案（注释里加 `eslint-disable-next-line react-hooks/exhaustive-deps` 说明）
+
+### 15.6 验证
+
+- 3 问题场景：答完 Q1 → Q2 → Q3 → 点「上一步」回 Q1 → 改完 Q1 答案 → 点「下一个」到 Q2 → 改 Q2 → 点「完成」
+- 提交的综合消息含所有修改后的答案（`label=answer; label=answer; ...`）
+
+---
+
+## 16. v6 UX Bug 修复补充
+
+### 16.1 Bug A：流式期间「思考过程」无法展开
+
+**问题**（2026-07-16 用户反馈）：
+- 现象：模型处理中（流式输出）点击「思考过程」卡片展开，**下一秒就被折叠回去**
+- 根因：[App.jsx:784-801](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L784-L801) `reasoning_chunk` 事件处理每 200ms 触发一次，每次都把 llm log 消息的 `collapsed: true` 强制重置，把用户刚点开的展开状态覆盖了；`reasoning_done` 结束时又重置一次
+
+**关键决策**：
+
+| # | 决策 | 选择 |
+|---|------|------|
+| 1 | 新建消息时 | 仍设 `collapsed: true`（默认折叠，节省屏幕空间） |
+| 2 | 累加内容时 | 不再覆盖 `collapsed`，让用户的选择生效 |
+| 3 | 思考结束时 | 不再强制折叠，保留用户当前选择 |
+
+**涉及文件**：
+- `frontend/src/App.jsx`（修改：`reasoning_chunk` 累加分支去掉 `collapsed: true`、`reasoning_done` 改为 no-op）
+
+**关键代码**：
+```jsx
+// reasoning_chunk 累加分支
+if (isCurrentRound) {
+  // ★ 累加内容时保留用户已选的 collapsed 状态（不再强制 true）
+  //   背景：之前每 chunk 都重置 collapsed=true，导致用户无法在流式期间展开查看
+  newMsgs[lastLlmLogIdx] = {
+    ...newMsgs[lastLlmLogIdx],
+    content: (newMsgs[lastLlmLogIdx].content || '') + data.content,
+    // ★ 不再写 collapsed: true
+  };
+} else {
+  const logMsg = {
+    id: `c-${++clientMsgIdRef.current}`,
+    role: 'log',
+    content: '💭 LLM思考过程:\n' + data.content,
+    timestamp: new Date().toISOString(),
+    collapsed: true,  // ★ 仅新建时设默认折叠
+    logType: 'llm',
+  };
+  newMsgs.splice(lastAssistantIdx, 0, logMsg);
+}
+
+// reasoning_done 改为 no-op（不再强制折叠）
+setMessages(prev => prev);  // 保留用户当前选择
+```
+
+**效果对比**：
+
+| 场景 | 旧行为 | 新行为 |
+|---|---|---|
+| 思考开始 | 折叠（默认） | 折叠（默认） |
+| 流式期间点开 | 下一秒被 chunk 折叠回去 | ✅ 保持展开 |
+| 思考结束 | 强制折叠 | ✅ 保留用户当前选择 |
+| 工具调用/工具返回 | 不受影响 | 不受影响 |
+
+**经验教训**（写入 project_memory.md）：**高频事件（流式 chunk、轮询、resize）累积 state 时，只更新必要字段，避免覆盖用户已交互的状态**。
+
+### 16.2 Bug B：聊天输入框拉高时 footer 被一起顶下去
+
+**问题**（2026-07-16 用户反馈）：
+- 现象：拖顶部把手拉高输入框时，**模型名称 / token 进度条 / 发送按钮**也跟着往上漂移，看起来像在悬浮
+- 根因：原布局是**正常文档流** —— TextArea 写死 `height: inputHeight - 44`，footer 在 TextArea 下面自然堆叠，TextArea 撑高时把 footer 一起顶下去
+
+**关键决策**：
+
+| # | 决策 | 选择 |
+|---|------|------|
+| 1 | 容器布局 | 改用 flexbox 列布局（`display: flex; flex-direction: column`） |
+| 2 | TextArea 高度 | 改 `flex: 1 1 auto; min-height: 0`，填中间剩余空间 |
+| 3 | Footer | 加 `flex-shrink: 0`，高度永远不被压 |
+| 4 | autoSize | 移除（flex 高度优先；内容超出走内部滚动） |
+
+**涉及文件**：
+- `frontend/src/styles/ChatInput.css`（修改：容器 / TextArea / footer 三处加 flex 规则）
+- `frontend/src/App.jsx`（修改：移除 TextArea 的 `style={{ height: inputHeight - 44 }}` 和 `autoSize`）
+
+**关键代码**：
+```css
+/* ChatInput.css */
+.xtsql-input-inner {
+  display: flex;
+  flex-direction: column;  /* ★ 改用 flexbox 列布局 */
+}
+.xtsql-input-textarea {
+  flex: 1 1 auto;          /* ★ 填中间剩余空间 */
+  min-height: 0;            /* ★ 关键：允许 flex 子项收缩到比内容小 */
+}
+.xtsql-input-footer {
+  flex-shrink: 0;           /* ★ footer 永远贴底，不被压 */
+}
+```
+
+**效果对比**：
+
+| 场景 | 旧行为 | 新行为 |
+|---|---|---|
+| 拖顶部把手拉高 | TextArea 撑高，footer 一起被顶下去 | TextArea 填中间空间，**footer 贴底不动** |
+| 拖到最小高度 (60px) | TextArea 缩到 16px，footer 还在原位 | TextArea 缩到 30px，**footer 贴底** |
+| 输入超长文本 | autoSize 控制 1-10 行 | 内部滚动（不再撑开容器） |
+
+容器 minHeight 仍由 inline `style={{ minHeight: inputHeight }}` 控制，配合顶部 resizer 的 60-300 范围限制。
+
+**经验教训**（写入 project_memory.md）：**可变高度容器内的"辅助元素"（如 footer、状态栏、操作按钮）必须与主内容区解耦——用 flex/grid 分离尺寸控制，不要让主内容的高度变化传递到辅助元素**。
+
+---
+
+## 17. 总结
+
+| 阶段 | 状态 | 关键产出 |
+|------|------|----------|
+| v1 初版 | ✅ 已上线 | 4 平铺参数，单次单问题 |
+| v2 修订 | ✅ 已上线 | 12 个评审问题全部修复 |
+| v3 修订 | ✅ 已上线 | 风险编号冲突修正 |
+| v4 改造 | ✅ 已上线 | 单调用多问题契约（1-3 个问题） |
+| v5 增强 | ✅ 已上线 | 链式弹窗「上一步」按钮 |
+| v6 修复 | ✅ 已上线 | 2 个 UX bug 修复（thinking 折叠 + footer 漂移） |
+
+**v4 ~ v6 累计改动**：
+- 后端：2 文件（`toolFuncs.js`, `llm.js`）+ 161 条测试
+- 前端：3 文件（`App.jsx`, `UserChoiceDialog.jsx`, `ChatInput.css`）+ 1 SKILL.md
+- 文档：1 CHANGELOG.md（已合并）+ 1 plan（本文件）+ 1 project_memory.md
+
+**关联文档**：
+- [CHANGELOG.md](../changelog/CHANGELOG.md) 2026-07-16 段（变更详情）
+- [project_memory.md](file:///c:/Users/wusiq/.trae-cn/memory/projects/-d-Ai-Program-Files-XTSQLQueryAgent/project_memory.md)（Hard Constraints + Lessons Learned）

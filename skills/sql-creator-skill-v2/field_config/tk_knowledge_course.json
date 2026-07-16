@@ -27,7 +27,7 @@
       "target_table": "edu_course",
       "join_condition": "edu_course.id = tk_knowledge_course.course_id",
       "type": "one_to_one",
-      "description": "1个知识点对应1个一级科目",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -35,7 +35,7 @@
       "target_table": "edu_course_exam",
       "join_condition": "edu_course_exam.order_id = tk_knowledge_course.exam_id",
       "type": "one_to_one",
-      "description": "1个知识点对应1个二级科目",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -43,7 +43,7 @@
       "target_table": "edu_course_exam_subject",
       "join_condition": "edu_course_exam_subject.id = tk_knowledge_course.subject_id",
       "type": "one_to_one",
-      "description": "1个知识点对应1个三级科目",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -51,7 +51,7 @@
       "target_table": "edu_course_exam_subject_name",
       "join_condition": "edu_course_exam_subject_name.id = tk_knowledge_course.subject_name_id",
       "type": "one_to_one",
-      "description": "1个知识点对应1个四级科目名称",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -59,7 +59,7 @@
       "target_table": "edu_course_exam_module",
       "join_condition": "edu_course_exam_module.id = tk_knowledge_course.module_id",
       "type": "one_to_one",
-      "description": "1个知识点对应1个五级模块",
+      "description": "",
       "business_rule": ""
     }
   ],

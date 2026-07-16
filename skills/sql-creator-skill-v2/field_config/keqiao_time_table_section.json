@@ -18,7 +18,7 @@
       "target_table": "keqiao_time_table",
       "join_condition": "keqiao_time_table.id = keqiao_time_table_section.keqiao_time_table_id",
       "type": "many_to_one",
-      "description": "多个课节可属于同一作息时间表",
+      "description": "",
       "business_rule": ""
     }
   ],

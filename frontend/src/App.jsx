@@ -108,14 +108,16 @@ function AuthenticatedApp({ user, logout }) {
     description: ''
   });
   // ★ request_user_choice 弹窗状态：由 SSE done 事件的 user_choice_request 字段驱动
-  // 提交/取消后合成新 user message，调 /generate 触发新一轮
+  // v2 (2026-07-15) 链式弹窗：单次 LLM 推理可问 1-3 个问题，前端按 currentIndex 顺序展示
+  //   - requests: 问题数组（来自后端 yield 的 userChoiceRequest 数组；1-3 个元素）
+  //   - currentIndex: 当前展示的问题索引
+  //   - answers: 与 requests 等长的答案数组，每个 {selected:[], text:''}，按 currentIndex 顺序填充
+  // 提交/取消后合成 1 个综合 user message（"label=answer" 用 ; 连接），调 /generate 触发新一轮
   const [userChoiceRequest, setUserChoiceRequest] = useState({
     visible: false,
-    requestId: '',
-    question: '',
-    options: [],
-    multiSelect: false,
-    header: ''
+    requests: [],
+    currentIndex: 0,
+    answers: []
   });
   const [isExplainResult, setIsExplainResult] = useState(false);
   const [explainResults, setExplainResults] = useState([]);
@@ -780,10 +782,11 @@ function AuthenticatedApp({ user, logout }) {
                   const isCurrentRound = lastLlmLogIdx !== -1 && lastLlmLogIdx === lastLogIdx;
 
                   if (isCurrentRound) {
+                    // ★ 累加内容时保留用户已选的 collapsed 状态（不再强制 true）
+                    //   背景：之前每 chunk 都重置 collapsed=true，导致用户无法在流式期间展开查看
                     newMsgs[lastLlmLogIdx] = {
                       ...newMsgs[lastLlmLogIdx],
                       content: (newMsgs[lastLlmLogIdx].content || '') + data.content,
-                      collapsed: true,
                     };
                   } else {
                     const logMsg = {
@@ -791,7 +794,7 @@ function AuthenticatedApp({ user, logout }) {
                       role: 'log',
                       content: '💭 LLM思考过程:\n' + data.content,
                       timestamp: new Date().toISOString(),
-                      collapsed: true,
+                      collapsed: true,  // ★ 仅新建时设默认折叠
                       logType: 'llm',
                     };
                     newMsgs.splice(lastAssistantIdx, 0, logMsg);
@@ -806,15 +809,9 @@ function AuthenticatedApp({ user, logout }) {
                   });
                 }
               } else if (data.type === 'reasoning_done') {
-                // 思考过程结束：折叠最近一个 llm log 消息，与历史默认行为保持一致
-                setMessages(prev => {
-                  const newMsgs = [...prev];
-                  const lastLlmLogIdx = newMsgs.findLastIndex(m => m.role === 'log' && m.logType === 'llm');
-                  if (lastLlmLogIdx !== -1) {
-                    newMsgs[lastLlmLogIdx] = { ...newMsgs[lastLlmLogIdx], collapsed: true };
-                  }
-                  return newMsgs;
-                });
+                // ★ 思考过程结束：保留用户已选的 collapsed 状态（之前强制 true 会把用户展开的内容又折叠回去）
+                setMessages(prev => prev);
+                return;
               } else if (data.type === 'message_final') {
                 // 后处理：剥离 LLM 误倒进 content 的 thinking 后，用清理后的 content 替换 assistant 消息
                 setMessages(prev => {
@@ -858,15 +855,24 @@ function AuthenticatedApp({ user, logout }) {
                   setCurrentTokens(prev => prev + data.totalTokens);
                 }
                 // ★ 检测 user_choice_request 弹窗（来自 llm.js 终止分支）
-                // null 表示 DB 写失败降级 / 正常路径无 user_choice 调用
+                // v2 链式弹窗：后端 yield 的是数组（1-3 个问题）；兼容旧版单值 fallback
                 if (data.user_choice_request) {
+                  const rawReqs = Array.isArray(data.user_choice_request)
+                    ? data.user_choice_request
+                    : [data.user_choice_request];
+                  // 归一化每个元素为 {id, question, options, multiSelect, header}
+                  const reqs = rawReqs.map(r => ({
+                    id: r.id || '',
+                    question: r.question || '',
+                    options: Array.isArray(r.options) ? r.options : [],
+                    multiSelect: !!r.multi_select,
+                    header: r.header || ''
+                  }));
                   setUserChoiceRequest({
                     visible: true,
-                    requestId: data.user_choice_request.id || '',
-                    question: data.user_choice_request.question || '',
-                    options: Array.isArray(data.user_choice_request.options) ? data.user_choice_request.options : [],
-                    multiSelect: !!data.user_choice_request.multi_select,
-                    header: data.user_choice_request.header || ''
+                    requests: reqs,
+                    currentIndex: 0,
+                    answers: reqs.map(() => ({ selected: [], text: '' }))
                   });
                 }
               }
@@ -919,20 +925,46 @@ function AuthenticatedApp({ user, logout }) {
     setConfirmTagAdd(prev => ({ ...prev, visible: false }));
   };
 
-  // ★ request_user_choice 提交处理：合成简洁 user message，调 /generate 触发新一轮
-  // 多轮 UX 连贯性：先插气泡 → 关弹窗 → setLoading → 触发 generateSQL
-  // 不要传 wrapper 格式（[用户对选择请求的回复]...）—— LLM 通过上下文自然理解
-  const handleSubmitUserChoice = async (selected, text) => {
-    const { question } = userChoiceRequest;
-    // 简洁答案：直接拼接 "已选" + "补充"，不用 wrapper
-    // 例如："近7天, 华东区"
-    const parts = [];
-    if (Array.isArray(selected) && selected.length > 0) parts.push(selected.join(', '));
-    if (text) parts.push(text);
-    const answer = parts.length > 0 ? parts.join(', ') : '用户未选择任何选项';
-    setUserChoiceRequest(prev => ({ ...prev, visible: false }));
-    // 直接调 handleSend 或 generateSQL —— 复用同一管线
-    await handleSend(answer);
+  // ★ request_user_choice 链式提交处理 (v2: 1-3 个问题串联)
+  //   - 非最后一个问题：保存当前答案 + currentIndex++ (弹窗不关，只换问题)
+  //   - 最后一个问题：保存答案 + 合成 1 个综合 user message + 关闭弹窗 + 调 /generate
+  // 综合消息格式: "label=answer; label=answer; ..."（label 优先用 header，缺失时退化为"问题N"）
+  // 方案 A: messages 数组只追加 1 个 user 消息（不像旧版 N 轮展开），节省 token
+  const handleSubmitUserChoice = (selected, text) => {
+    setUserChoiceRequest(prev => {
+      if (!prev.visible || prev.requests.length === 0) return prev;
+      const newAnswers = [...prev.answers];
+      newAnswers[prev.currentIndex] = { selected: selected || [], text: text || '' };
+      const isLast = prev.currentIndex >= prev.requests.length - 1;
+      if (!isLast) {
+        // 链式：保存当前答案 + 进入下一个问题
+        return { ...prev, currentIndex: prev.currentIndex + 1, answers: newAnswers };
+      }
+      // 最后一个：合成综合 user 消息
+      const combined = newAnswers.map((a, i) => {
+        const req = prev.requests[i] || {};
+        const label = (req.header && String(req.header).trim()) || `问题${i + 1}`;
+        const sel = Array.isArray(a.selected) && a.selected.length > 0 ? a.selected.join(', ') : '';
+        const txt = (a.text || '').trim();
+        const ans = [sel, txt].filter(Boolean).join(' + ');
+        return `${label}=${ans || '（无）'}`;
+      }).join('; ');
+      // 关闭弹窗 + 触发新一轮（setTimeout 0 避免在 reducer 中嵌套 setState）
+      setTimeout(() => {
+        handleSend(combined || '用户未回答');
+      }, 0);
+      return { visible: false, requests: [], currentIndex: 0, answers: [] };
+    });
+  };
+
+  // ★ v3 (2026-07-16) "上一步"：让用户回到上题修改答案
+  //   - 答案已存在 answers[] 中，dialog 的 useEffect 会从 previousAnswer 初始化本地 state
+  //   - 边界：currentIndex === 0 时按钮不显示
+  const handlePrevUserChoice = () => {
+    setUserChoiceRequest(prev => {
+      if (prev.currentIndex <= 0) return prev;
+      return { ...prev, currentIndex: prev.currentIndex - 1 };
+    });
   };
 
   // ★ 取消处理：合成 "用户取消了选择" 消息，提交新一轮
@@ -1660,16 +1692,20 @@ children: currentResults.length > 0 ? (
                 />
               )}
 
-              {/* ★ request_user_choice 弹窗：与 ConfirmDialog 并列，按 userChoiceRequest.visible 渲染 */}
-              {activeTabKey === 'chat' && userChoiceRequest.visible && (
+              {/* ★ request_user_choice 弹窗（v2 链式：单卡片按问题数切换"下一个/完成"） */}
+              {activeTabKey === 'chat' && userChoiceRequest.visible && userChoiceRequest.requests.length > 0 && (
                 <UserChoiceDialog
                   visible={true}
-                  question={userChoiceRequest.question}
-                  options={userChoiceRequest.options}
-                  multiSelect={userChoiceRequest.multiSelect}
-                  header={userChoiceRequest.header}
+                  request={userChoiceRequest.requests[userChoiceRequest.currentIndex] || {}}
+                  currentIndex={userChoiceRequest.currentIndex}
+                  totalCount={userChoiceRequest.requests.length}
+                  // v3: 传当前题已保存的答案（让"上一步"切回时能回显用户原答案）
+                  previousAnswer={userChoiceRequest.answers[userChoiceRequest.currentIndex] || { selected: [], text: '' }}
+                  // v3: 多问题且非首题时显示"上一步"按钮
+                  canGoPrev={userChoiceRequest.requests.length > 1 && userChoiceRequest.currentIndex > 0}
                   inputHeight={inputHeight}
                   onSubmit={handleSubmitUserChoice}
+                  onPrev={handlePrevUserChoice}
                   onCancel={handleCancelUserChoice}
                 />
               )}
@@ -1717,8 +1753,9 @@ children: currentResults.length > 0 ? (
                     onPressEnter={e => { if (!e.shiftKey) { e.preventDefault(); handleSend(); } }}
                     placeholder={userChoiceRequest.visible ? "请先完成弹窗中的选择" : "输入自然语言查询，按Enter发送，Shift+Enter换行"}
                     disabled={userChoiceRequest.visible}
-                    autoSize={{ minRows: 1, maxRows: 10 }}
-                    style={{ height: inputHeight - 44 }}
+                    // ★ 由 .xtsql-input-inner 的 flex 布局控制高度（flex: 1 填中间空间）
+                    //   不再写死 style.height，避免拉高容器时把 footer 顶下去
+                    //   autoSize 也移除（flex 高度优先；内容超出走内部滚动）
                   />
                   <div className="xtsql-input-footer">
                     <div className="xtsql-input-meta">

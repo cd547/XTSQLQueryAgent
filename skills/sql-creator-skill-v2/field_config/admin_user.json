@@ -22,7 +22,7 @@
       "target_table": "admin_character",
       "join_condition": "admin_character.id = admin_user.character_id",
       "type": "one_to_one",
-      "description": "1个用户对应1个角色",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -30,7 +30,7 @@
       "target_table": "admin_department_children",
       "join_condition": "admin_department_children.id = admin_user.department_id",
       "type": "one_to_one",
-      "description": "1个用户对应1个二级部门",
+      "description": "",
       "business_rule": ""
     },
     {

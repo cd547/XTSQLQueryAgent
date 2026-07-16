@@ -1,5 +1,132 @@
 # 更新日志
 
+## 2026-07-16
+
+### 改造：`request_user_choice` 工具契约 v3（单调用多问题）
+
+#### 需求
+原 v2 契约要求 LLM 每次只能问 1 个问题（多次对话式弹窗），但实际 LLM 经常一次抛多个问题，导致 token 浪费 + UX 差。改造为**单次工具调用传 1-3 个完整问题**，工具 func 内部拆为 N 个独立 marker，前端链式弹窗依次展示。
+
+#### 关键决策
+| # | 决策 | 选择 |
+|---|------|------|
+| 1 | 工具签名 | `request_user_choice(questions: [{...}])` 1-3 个完整问题 |
+| 2 | 字段约束 | questions ≤3、question ≤200字、options 1-4 个（每项 ≤100字）、header ≤12字 |
+| 3 | 输入校验 | 工具 func 内 `validateQuestions` 严格 reject 越界，返回 error 让 LLM 重试 |
+| 4 | SKILL.md 精简 | 移除"1 question = 1 call"等冗余规则；契约 schema 写在工具 description，行为引导写在 SKILL.md |
+| 5 | 后端兼容 | llm.js phase 3 同时支持新 `rawResult.payloads[]` 数组 + 旧 `rawResult.marker` 单 marker |
+| 6 | UI 链式 | 单问题：按钮"完成"；多问题：非末尾"下一个"，末尾"完成"；进度指示"问题 N / Total" |
+| 7 | UI 字号 | 卡片内 question/options 字号 12px，tags 11px，缩小卡片视觉负担 |
+| 8 | 答案回显 | 提交后删除旧 wrapper `[用户对选择请求的回复]` 格式；改为简洁 `"label=answer; label=answer"` 拼接（v2 既有方案延续） |
+
+#### 涉及文件
+- `backend/src/services/toolFuncs.js`（修改：`validateQuestions` + 工具 description/schema）
+- `backend/src/services/llm.js`（修改：phase 3 读 `rawResult.payloads[]` 数组 + 兼容旧版）
+- `skills/sql-creator-skill-v2/SKILL.md`（修改：精简"用户交互"段为 ~10 行）
+- `frontend/src/components/UserChoiceDialog.jsx`（修改：链式按钮 + 缩小字号）
+- `frontend/src/App.jsx`（修改：`userChoiceRequest` state 结构从单对象改为 `{visible, requests, currentIndex, answers}`）
+- `backend/test-request-user-choice.mjs`（重写：**53 条**测试全过）
+- `backend/test-request-user-choice-multi.mjs`（重写：**108 条**测试全过）
+
+#### 验证
+- 边界：options 4 合法、5 reject；question 200 合法、201 reject；header 12 合法、>12 截断
+- 错误：null/string/空数组/4 问题/缺 question/option null/option >100字 全部返回 error
+- 旧版 marker 单 marker 路径仍兼容
+- tools 数组顺序保持（request_user_choice 仍在 index 4，稳定工具组末尾）
+
+---
+
+### 新增：`request_user_choice` 链式弹窗「上一步」按钮
+
+#### 需求
+原 v3 链式弹窗中，用户答完第 1 题点"下一个"后无法回到第 1 题修改答案 —— 只能提交后整体重发，UX 差。
+
+#### 关键决策
+| # | 决策 | 选择 |
+|---|------|------|
+| 1 | 入口 | 多问题 + 非首题时显示「上一步」按钮（单问题不显示，首题不显示） |
+| 2 | 状态保留 | 答案已存在 `userChoiceRequest.answers[]`，切回时 dialog 从 `previousAnswer` 初始化本地 state |
+| 3 | 答案回显 | 单选/多选/文本均按已选状态回显；用户改完点"下一个"再保存到对应 index |
+| 4 | 边界 | `currentIndex === 0` 时按钮不显示（已是首题） |
+
+#### 涉及文件
+- `frontend/src/components/UserChoiceDialog.jsx`（修改：+ 2 props + 「上一步」按钮 + useEffect 从 previousAnswer 初始化）
+- `frontend/src/App.jsx`（修改：+ `handlePrevUserChoice` handler + 传 `previousAnswer` / `canGoPrev` props）
+
+#### 关键代码
+```jsx
+// UserChoiceDialog.jsx useEffect —— 切题时用 previousAnswer 初始化
+useEffect(() => {
+  const pa = previousAnswer || {};
+  const savedSelected = Array.isArray(pa.selected) ? pa.selected : [];
+  setSelected(multiSelect ? savedSelected : (savedSelected[0] || ''));
+  setText(pa.text || '');
+  setMinimized(false);
+  // 仅依赖 currentIndex/visible，避免父组件重渲染覆盖本地答案
+}, [currentIndex, visible]);
+```
+
+#### 验证
+- 3 问题场景：答完 Q1 → Q2 → Q3 → 点「上一步」回 Q1 → 改完 Q1 答案 → 点「下一个」到 Q2 → 改 Q2 → 点「完成」
+- 提交的综合消息含所有修改后的答案（`label=answer; label=answer; ...`）
+
+---
+
+### 修复：流式期间「思考过程」无法展开
+
+#### 问题
+- 现象：模型处理中（流式输出）点击「思考过程」卡片展开，**下一秒就被折叠回去**
+- 根因：[App.jsx](file:///d:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx) `reasoning_chunk` 事件处理每 200ms 触发一次，每次都把 llm log 消息的 `collapsed: true` 强制重置，把用户刚点开的展开状态覆盖了；`reasoning_done` 结束时又重置一次
+
+#### 关键决策
+| # | 决策 | 选择 |
+|---|------|------|
+| 1 | 新建消息时 | 仍设 `collapsed: true`（默认折叠，节省屏幕空间） |
+| 2 | 累加内容时 | 不再覆盖 `collapsed`，让用户的选择生效 |
+| 3 | 思考结束时 | 不再强制折叠，保留用户当前选择 |
+
+#### 涉及文件
+- `frontend/src/App.jsx`（修改：`reasoning_chunk` 累加分支去掉 `collapsed: true`、`reasoning_done` 改为 no-op）
+
+#### 效果
+| 场景 | 旧行为 | 新行为 |
+|---|---|---|
+| 思考开始 | 折叠（默认） | 折叠（默认） |
+| 流式期间点开 | 下一秒被 chunk 折叠回去 | ✅ 保持展开 |
+| 思考结束 | 强制折叠 | ✅ 保留用户当前选择 |
+| 工具调用/工具返回 | 不受影响 | 不受影响 |
+
+---
+
+### 修复：聊天输入框拉高时 footer 被一起顶下去
+
+#### 问题
+- 现象：拖顶部把手拉高输入框时，**模型名称 / token 进度条 / 发送按钮**也跟着往上漂移，看起来像在悬浮
+- 根因：原布局是**正常文档流** —— TextArea 写死 `height: inputHeight - 44`，footer 在 TextArea 下面自然堆叠，TextArea 撑高时把 footer 一起顶下去
+
+#### 关键决策
+| # | 决策 | 选择 |
+|---|------|------|
+| 1 | 容器布局 | 改用 flexbox 列布局（`display: flex; flex-direction: column`） |
+| 2 | TextArea 高度 | 改 `flex: 1 1 auto; min-height: 0`，填中间剩余空间 |
+| 3 | Footer | 加 `flex-shrink: 0`，高度永远不被压 |
+| 4 | autoSize | 移除（flex 高度优先；内容超出走内部滚动） |
+
+#### 涉及文件
+- `frontend/src/styles/ChatInput.css`（修改：容器 / TextArea / footer 三处加 flex 规则）
+- `frontend/src/App.jsx`（修改：移除 TextArea 的 `style={{ height: inputHeight - 44 }}` 和 `autoSize`）
+
+#### 效果
+| 场景 | 旧行为 | 新行为 |
+|---|---|---|
+| 拖顶部把手拉高 | TextArea 撑高，footer 一起被顶下去 | TextArea 填中间空间，**footer 贴底不动** |
+| 拖到最小高度 (60px) | TextArea 缩到 16px，footer 还在原位 | TextArea 缩到 30px，**footer 贴底** |
+| 输入超长文本 | autoSize 控制 1-10 行 | 内部滚动（不再撑开容器） |
+
+容器 minHeight 仍由 inline `style={{ minHeight: inputHeight }}` 控制，配合顶部 resizer 的 60-300 范围限制。
+
+---
+
 ## 2026-07-01
 
 ### 新增功能：我的查询（收藏常用 SQL）

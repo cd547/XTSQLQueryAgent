@@ -16,7 +16,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = edu_student_info.recruitment_admin_user_id",
       "type": "many_to_one",
-      "description": "通过招生办联系人ID关联后台用户",
+      "description": "",
       "business_rule": ""
     }
   ],

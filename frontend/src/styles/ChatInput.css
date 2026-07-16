@@ -13,6 +13,10 @@
   box-shadow: var(--xtsql-shadow-md);
   transition: all 0.2s ease;
   overflow: hidden;
+  /* ★ flex 列布局：让 footer 始终贴底，TextArea 填中间剩余空间
+     解决"用户拉高输入框时 footer 被顶下去"的问题 */
+  display: flex;
+  flex-direction: column;
 }
 .xtsql-input-inner:focus-within {
   border-color: var(--xtsql-accent);
@@ -29,6 +33,10 @@
   background: transparent !important;
   color: var(--xtsql-text) !important;
   box-shadow: none !important;
+  /* ★ flex 填满 TextArea 与 footer 之间的剩余空间
+     min-height: 0 允许内容超出时内部滚动，而不是撑开容器 */
+  flex: 1 1 auto;
+  min-height: 0;
 }
 .xtsql-input-textarea::placeholder { color: var(--xtsql-text-tertiary); }
 .xtsql-input-footer {
@@ -37,6 +45,8 @@
   justify-content: space-between;
   padding: 6px 10px 8px 18px;
   gap: 10px;
+  /* ★ 固定 footer 高度，不被 TextArea 压缩 */
+  flex-shrink: 0;
 }
 .xtsql-input-meta {
   display: flex;

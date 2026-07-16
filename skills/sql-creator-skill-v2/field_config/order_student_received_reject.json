@@ -1,12 +1,12 @@
 {
-  "table_name": "order_contract",
+  "table_name": "order_student_received_reject",
   "field_aliases": {},
   "field_enums": {},
   "virtual_associations": [
     {
-      "name": "关联订单",
-      "target_table": "order_student",
-      "join_condition": "order_student.id = order_contract.order_student_id",
+      "name": "关联回款",
+      "target_table": "order_student_received",
+      "join_condition": "order_student_received.id = order_student_received_reject.order_student_received_id",
       "type": "many_to_one",
       "description": "",
       "business_rule": ""

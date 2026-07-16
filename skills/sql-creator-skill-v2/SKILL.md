@@ -19,7 +19,7 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL 5.7 SQL
    - 使用 `CASE WHEN` 实现字段选择。
    - 若提供了 `sql_template`，直接按照模板填充变量生成表达式。
 
-5. **字段**：字段名必须来自 DDL，输出时严格按 DDL 字段名，禁止自造或修改字段名。通过 `get_table_schema` 获取字段别名（`field_aliases`）、枚举映射（`field_enums`）、业务约束。禁止猜测。若字段有枚举映射，默认使用 CASE WHEN 或关联枚举表转为业务显示值输出。多表查询时所有字段必须带表别名（如 t1.id）。
+5. **字段**：字段名必须来自 DDL，输出时严格按 DDL 字段名，禁止自造或修改字段名。通过 `get_table_schema` 获取字段别名（`field_aliases`）、枚举映射（`field_enums`）、业务约束。禁止猜测。若字段有枚举映射，默认使用 CASE WHEN 或关联枚举表转为业务显示值输出。多表查询时所有字段必须带表别名（如 t1.id）。business_rules 中的每一条规则，在生成 SQL 时都必须以 WHERE、JOIN 或 CASE WHEN 的形式显式体现，不能只当作注释或背景说明。
 
 6. **字段别名**：别名含特殊字符（括号、空格、中文括号等）时必须用反引号：`amount AS \`金额(元)\``。
 
@@ -61,7 +61,13 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL 5.7 SQL
 - 示例：用户说"aa表就是edu_student" → `request_tag_confirmation(term=["aa"], table="edu_student", description="学生")`
 
 ## 用户交互
-任务缺信息时（时间范围、报表口径等）调 `request_user_choice` 弹窗让用户选/填：
-- 调用前在 content 中**自然语言描述问题**（便于历史回看）
-- 调用后**不再生成任何文字**（程序自动结束本轮并弹窗）
-- 用户答案简洁（例："近7天, 华东区"），直接基于此继续生成 SQL
+任务缺信息时调 `request_user_choice(questions: [...])`，传入 1-3 个完整问题。
+- 调用前在 content 中自然语言描述问题
+- 调用后程序自动结束本轮并弹出对话框
+
+**multi_select 决策**：
+- 互斥（必选其一）→ false，例：`"时间范围：近7天 / 近30天"`
+- 可叠加（可选多个）→ true，例：`"业务域：用户 / 订单 / 财务"`
+- 不确定 → false
+
+**用户答案**：简洁（如"近7天, 华东"），直接基于此继续生成 SQL

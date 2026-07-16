@@ -23,7 +23,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = admin_user_campus.admin_user_id",
       "type": "one_to_one",
-      "description": "1个用户校区对应1个后台用户",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -31,7 +31,7 @@
       "target_table": "edu_campus",
       "join_condition": "edu_campus.id = admin_user_campus.edu_campus_id",
       "type": "one_to_one",
-      "description": "1个用户校区对应1个校区",
+      "description": "",
       "business_rule": ""
     }
   ],

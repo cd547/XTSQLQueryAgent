@@ -4,11 +4,11 @@
   "field_enums": {},
   "virtual_associations": [
     {
-      "name": "关联回款计划",
+      "name": "关联回款",
       "target_table": "order_student_received",
       "join_condition": "order_student_received.id = order_student_received_settlement.order_student_received_id",
       "type": "many_to_one",
-      "description": "佣金结算关联的回款计划",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -16,7 +16,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = order_student_received_settlement.admin_user_id",
       "type": "many_to_one",
-      "description": "佣金结算的创建人",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -24,7 +24,7 @@
       "target_table": "admin_user_channel",
       "join_condition": "admin_user_channel.id = order_student_received_settlement.admin_user_channel_id",
       "type": "many_to_one",
-      "description": "佣金结算关联的渠道库",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -32,7 +32,7 @@
       "target_table": "admin_category",
       "join_condition": "admin_category.id = order_student_received_settlement.admin_category_id",
       "type": "many_to_one",
-      "description": "佣金结算关联的公司名称",
+      "description": "",
       "business_rule": ""
     }
   ],

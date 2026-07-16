@@ -7,23 +7,39 @@
       "7": "内部调整专户",
       "22": "欠费排课账户",
       "100": "其他账户"
+    },
+    "type": {
+      "1":"回款",
+      "2":"退款"
+    },
+    "status": {
+      "1":"审核中",
+      "2":"驳回",
+      "3":"已通过"
+    },
+    "settlement_status":{
+      "1":"未申请",
+      "2":"已申请(审批通过)",
+      "3":"已结算",
+      "4":"审批中",
+      "5":"不结算"
     }
   },
   "virtual_associations": [
     {
-      "name": "关联学生订单",
+      "name": "关联订单",
       "target_table": "order_student",
       "join_condition": "order_student.id = order_student_received.order_student_id",
       "type": "many_to_one",
-      "description": "回款计划关联的学生订单",
+      "description": "",
       "business_rule": ""
     },
     {
-      "name": "关联退款回款",
+      "name": "关联回款",
       "target_table": "order_student_received",
       "join_condition": "order_student_received.id = order_student_received.refund_order_student_received_id",
       "type": "many_to_one",
-      "description": "退款时关联的原回款计划",
+      "description": "关联这笔回款类型是退款（type = 2）对应的回款",
       "business_rule": ""
     },
     {
@@ -31,7 +47,7 @@
       "target_table": "order_type",
       "join_condition": "order_type.id = order_student_received.type_id",
       "type": "many_to_one",
-      "description": "回款计划关联的回款类型",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -39,7 +55,7 @@
       "target_table": "order_student",
       "join_condition": "order_student.id = order_student_received.return_order_student_id",
       "type": "many_to_one",
-      "description": "回款计划的来源订单",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -47,7 +63,7 @@
       "target_table": "edu_student_type",
       "join_condition": "edu_student_type.id = order_student_received.edu_student_type_id",
       "type": "many_to_one",
-      "description": "回款计划关联的学生类型",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -55,7 +71,7 @@
       "target_table": "edu_student_type_project",
       "join_condition": "edu_student_type_project.id = order_student_received.edu_student_type_project_id",
       "type": "many_to_one",
-      "description": "回款计划关联的报读项目",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -63,7 +79,7 @@
       "target_table": "order_list",
       "join_condition": "order_list.id = order_student_received.order_list_id",
       "type": "many_to_one",
-      "description": "回款计划关联的网站支付订单",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -71,7 +87,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = order_student_received.admin_user_id",
       "type": "many_to_one",
-      "description": "回款计划的创建人",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -79,7 +95,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = order_student_received.collection_admin_user_id",
       "type": "many_to_one",
-      "description": "回款计划的收款人",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -87,7 +103,7 @@
       "target_table": "admin_department_children",
       "join_condition": "admin_department_children.id = order_student_received.admin_department_children_id",
       "type": "many_to_one",
-      "description": "回款创建人所在的部门",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -95,7 +111,7 @@
       "target_table": "admin_department_children",
       "join_condition": "admin_department_children.id = order_student_received.collection_admin_department_children_id",
       "type": "many_to_one",
-      "description": "收款人所在的部门",
+      "description": "",
       "business_rule": ""
     }
   ],
