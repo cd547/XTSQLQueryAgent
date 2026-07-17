@@ -434,7 +434,9 @@ export const tools = [
         }
       } catch (e) { logger.debug('Parse tableNames failed', { error: e.message }); }
       if (!Array.isArray(tableNames) || tableNames.length === 0) return '请提供 table_names 参数（表名数组）';
-      return JSON.stringify(await getTableSchema(tableNames), null, 2);
+      // 紧凑 JSON：无缩进。deepseek-v3 对 JSON 结构化数据解析无差别，
+      // 但能省 25-40% token（多表场景节省更显著），且对多轮上下文累积友好。
+      return JSON.stringify(await getTableSchema(tableNames));
     }
   }),
   new DynamicTool({
