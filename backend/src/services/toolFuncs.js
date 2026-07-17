@@ -372,47 +372,47 @@ function formatTableInfo(tables) {
 }
 
 export const tools = [
-  new DynamicTool({
-    name: "get_tables",
-    description: "【兜底工具，谨慎使用】返回全部表信息。仅在 get_domain_index/get_sliced_index 都不够用时调用。",
-    params: {
-      type: 'object',
-      properties: {},
-      required: []
-    },
-    func: async () => {
-      const tableIndex = await loadTableIndex();
-      if (!tableIndex || !tableIndex.tables) return '暂无表数据';
+  // new DynamicTool({
+  //   name: "get_tables",
+  //   description: "【兜底工具，谨慎使用】返回全部表信息。仅在 get_domain_index/get_sliced_index 都不够用时调用。",
+  //   params: {
+  //     type: 'object',
+  //     properties: {},
+  //     required: []
+  //   },
+  //   func: async () => {
+  //     const tableIndex = await loadTableIndex();
+  //     if (!tableIndex || !tableIndex.tables) return '暂无表数据';
 
-      return tableIndex.tables.map(t => {
-        let info = `- ${t.name}: ${t.description || ''}`;
-        if (t.tags?.length) info += `\n  标签: ${t.tags.join(', ')}`;
-        if (t.related_tables?.length) info += `\n  关联表: ${t.related_tables.join(', ')}`;
-        if (t.business_constraints?.length) {
-          info += `\n  业务约束:`;
-          t.business_constraints.forEach(c => {
-            if (typeof c === 'string') {
-              info += `\n    - ${c}`;
-            } else {
-              info += `\n    - ${c.name}: ${c.description}`;
-            }
-          });
-        }
-        if (t.business_rules?.length) {
-          info += `\n  业务规则:`;
-          t.business_rules.forEach(r => {
-            if (typeof r === 'string') {
-              info += `\n    - ${r}`;
-            } else {
-              info += `\n    - ${r.rule || r.description}: ${r.description}`;
-              if (r.query) info += `\n      示例: ${r.query}`;
-            }
-          });
-        }
-        return info;
-      }).join('\n\n');
-    }
-  }),
+  //     return tableIndex.tables.map(t => {
+  //       let info = `- ${t.name}: ${t.description || ''}`;
+  //       if (t.tags?.length) info += `\n  标签: ${t.tags.join(', ')}`;
+  //       if (t.related_tables?.length) info += `\n  关联表: ${t.related_tables.join(', ')}`;
+  //       if (t.business_constraints?.length) {
+  //         info += `\n  业务约束:`;
+  //         t.business_constraints.forEach(c => {
+  //           if (typeof c === 'string') {
+  //             info += `\n    - ${c}`;
+  //           } else {
+  //             info += `\n    - ${c.name}: ${c.description}`;
+  //           }
+  //         });
+  //       }
+  //       if (t.business_rules?.length) {
+  //         info += `\n  业务规则:`;
+  //         t.business_rules.forEach(r => {
+  //           if (typeof r === 'string') {
+  //             info += `\n    - ${r}`;
+  //           } else {
+  //             info += `\n    - ${r.rule || r.description}: ${r.description}`;
+  //             if (r.query) info += `\n      示例: ${r.query}`;
+  //           }
+  //         });
+  //       }
+  //       return info;
+  //     }).join('\n\n');
+  //   }
+  // }),
   new DynamicTool({
     name: "get_table_schema",
     description: "获取指定表的字段详情（别名、枚举、约束、业务、关联），支持多表。",

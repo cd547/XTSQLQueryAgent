@@ -1578,6 +1578,16 @@
       ],
       "business_constraints": [],
       "business_rules": []
+    },
+    {
+      "name": "edu_teacher_work",
+      "description": "老师可排班时间",
+      "tags": [],
+      "related_tables": [
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
     }
   ]
 }

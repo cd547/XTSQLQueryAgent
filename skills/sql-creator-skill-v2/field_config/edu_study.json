@@ -8,7 +8,7 @@
       "target_table": "edu_course_exam_subject_name",
       "join_condition": "edu_course_exam_subject_name.id = edu_study.edu_course_exam_subject_name_id",
       "type": "many_to_one",
-      "description": "多条排课记录可属于同一科目名称",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -16,7 +16,7 @@
       "target_table": "edu_class_type",
       "join_condition": "edu_class_type.id = edu_study.edu_class_type_id",
       "type": "many_to_one",
-      "description": "多条排课记录可属于同一班级类型",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -24,7 +24,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = edu_study.edu_admin_user_id",
       "type": "many_to_one",
-      "description": "多条排课记录可由同一老师授课",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -32,7 +32,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = edu_study.admin_user_id",
       "type": "many_to_one",
-      "description": "多条排课记录可由同一操作人创建",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -40,7 +40,7 @@
       "target_table": "edu_campus_school_class",
       "join_condition": "edu_campus_school_class.id = edu_study.edu_campus_school_class_id",
       "type": "many_to_one",
-      "description": "多条排课记录可使用同一教室",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -48,15 +48,24 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = edu_study.update_admin_user_id",
       "type": "many_to_one",
-      "description": "多条排课记录可由同一人更新",
+      "description": "",
       "business_rule": ""
     }
   ],
   "calculated_fields": {},
-  "business_constraints": {
-    "科目展示": "一般根据edu_course_exam_subject_name_id，找到4级科目，然后以一到四级科目的顺序展示"
-  },
+  "business_constraints": {},
   "business_rules": [
-    "class_time_start和class_time_end是13位时间戳"
+    {
+      "name": "class_time_start和class_time_end格式",
+      "description": "class_time_start和class_time_end是13位时间戳"
+    },
+    {
+      "name": "科目名称展示",
+      "description": "根据edu_course_exam_subject_name_id，通过关联 edu_course_exam_subject（三级）、edu_course_exam（二级）、edu_course（一级），按 '一级-二级-三级-四级' 的顺序拼接展示，例如使用 CONCAT(c1.name, '-', c2.name, '-', c3.name, '-', c4.name) AS full_subject_name"
+    },
+    {
+      "name": "授课形式展示",
+      "description": "CASE \n  WHEN es.english_teaching = 2 AND es.jingsai_teaching = 2 THEN CONCAT('英语授课，竞赛', CASE WHEN es.trial_teaching = 2 THEN '，试听课' ELSE '' END) \n  WHEN es.english_teaching = 2 AND es.jingsai_teaching = 1 THEN CONCAT('英语授课', CASE WHEN es.trial_teaching = 2 THEN '，试听课' ELSE '' END) \n  WHEN es.english_teaching = 1 AND es.jingsai_teaching = 2 THEN CONCAT('竞赛', CASE WHEN es.trial_teaching = 2 THEN '，试听课' ELSE '' END) \n  ELSE CASE WHEN es.trial_teaching = 2 THEN '试听课' ELSE '常规课' END \nEND"
+    }
   ]
 }

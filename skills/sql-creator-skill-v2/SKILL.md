@@ -11,7 +11,6 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL 5.7 SQL
    b. 分析用户问题语义，确定涉及哪些域（通常 1-3 个）
    c. 调用 `get_sliced_index(domain_ids)` 获取这些域内所有表的完整卡片信息
    d. 从候选表中确定需要的表，再调用 `get_table_schema` / `get_table_ddl` 获取字段详情
-   e. **禁止跳过域路由直接调 `get_tables`**。`get_tables` 仅在所有域都不匹配时作为最后兜底。
 
 4. **关联表**：先用候选表的 `related_tables` 确定 JOIN 方向，再用 `field_config` 中的 `virtual_associations` 获取精确 JOIN 条件（含 `join_condition`，必须优先采用）。禁止猜测 JOIN 条件。
 4.1 当 `virtual_associations` 的 `type` 为 `conditional_many_to_one` 时：
@@ -19,15 +18,15 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL 5.7 SQL
    - 使用 `CASE WHEN` 实现字段选择。
    - 若提供了 `sql_template`，直接按照模板填充变量生成表达式。
 
-5. **字段**：字段名必须来自 DDL，输出时严格按 DDL 字段名，禁止自造或修改字段名。通过 `get_table_schema` 获取字段别名（`field_aliases`）、枚举映射（`field_enums`）、业务约束。禁止猜测。若字段有枚举映射，默认使用 CASE WHEN 或关联枚举表转为业务显示值输出。多表查询时所有字段必须带表别名（如 t1.id）。business_rules 中的每一条规则，在生成 SQL 时都必须以 WHERE、JOIN 或 CASE WHEN 的形式显式体现，不能只当作注释或背景说明。
+1. **字段**：字段名必须来自 DDL，输出时严格按 DDL 字段名，禁止自造或修改字段名。通过 `get_table_schema` 获取字段别名（`field_aliases`）、枚举映射（`field_enums`）、业务约束。禁止猜测。若字段有枚举映射，默认使用 CASE WHEN 或关联枚举表转为业务显示值输出。多表查询时所有字段必须带表别名（如 t1.id）。business_rules 中的每一条规则，在生成 SQL 时都必须以 WHERE、JOIN 或 CASE WHEN 的形式显式体现，不能只当作注释或背景说明。
 
-6. **字段别名**：别名含特殊字符（括号、空格、中文括号等）时必须用反引号：`amount AS \`金额(元)\``。
+2. **字段别名**：别名含特殊字符（括号、空格、中文括号等）时必须用反引号：`amount AS \`金额(元)\``。
 
-7. **MySQL 5.7 限制**：禁止窗口函数、CTE(WITH)、JSON_TABLE。替代方案：子查询、临时表、JSON_EXTRACT。
+3. **MySQL 5.7 限制**：禁止窗口函数、CTE(WITH)、JSON_TABLE。替代方案：子查询、临时表、JSON_EXTRACT。
 
-8. **歧义处理**：一个业务词匹配多个候选表 → 调用 request_user_choice 询问用户，禁止猜测。
+4. **歧义处理**：一个业务词匹配多个候选表 → 调用 request_user_choice 询问用户，禁止猜测。
 
-9. **【铁律】最终输出前冻结**：
+5. **【铁律】最终输出前冻结**：
    - "信息已全"判定（必须同时满足 4 项）：① 目标表 DDL ② 表关联 virtual_associations ③ 字段别名/枚举 ④ 业务规则
    - 调用 get_table_schema / get_table_ddl 时必须一次性传入所有需要的表名，禁止分批
    - 满足以上 4 项后立即生成 SQL；禁止重复调用相同参数的工具（已查过的表 DDL/schema 不要再查）

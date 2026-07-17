@@ -255,9 +255,9 @@ function getOrCreateRegistry(sessionId) {
       getDomainIndexCalled: false,
       slicedDomains: new Set(),       // 已通过 get_sliced_index 加载过的域 ID
       tableSchema: new Set(),
-      // get_table_ddl 注册表：tableName -> Set<'short=0'|'short=1'>
-      // 必须按 (table, short) 组合判断重复，因为 short=0(完整DDL含索引/外键) 与 short=1(仅列定义) 返回内容不同
-      tableDdl: new Map(),
+      // get_table_ddl 注册表：v4 起改为 Set<tableName>,只按表名去重
+      // 关联/外键信息应通过 get_table_schema (virtual_associations) 获取,不应重复查 ddl 补充
+      tableDdl: new Set(),
       termConfirmed: new Set(),
       // request_user_choice 注册表：key = id (uc_xxx) —— 记录已问过哪些问题
       // 用于 checklist 显示 + 拦截完全相同 (question, options) 组合的重复调用（Q-09 = B）
@@ -277,22 +277,14 @@ function buildChecklist(reg) {
   const domainIndexFlag = reg.getDomainIndexCalled ? '已调用' : '未调用';
   const slicedDomainsList = [...reg.slicedDomains].sort().join(', ') || '无';
   const schemaList = [...reg.tableSchema].sort().join(', ') || '无';
-  const ddlShort0 = [];
-  const ddlShort1 = [];
-  for (const [t, shorts] of reg.tableDdl.entries()) {
-    if (shorts.has('short=0')) ddlShort0.push(t);
-    if (shorts.has('short=1')) ddlShort1.push(t);
-  }
-  const ddlShort0List = ddlShort0.sort().join(', ') || '无';
-  const ddlShort1List = ddlShort1.sort().join(', ') || '无';
+  const ddlList = [...reg.tableDdl].sort().join(', ') || '无';
   const tablesFlag = reg.getTablesCalled ? '已调用' : '未调用';
   return [
     `- get_domain_index: ${domainIndexFlag}`,
     `- get_sliced_index 已覆盖的域: ${slicedDomainsList}`,
     `- get_tables: ${tablesFlag}`,
     `- 已获取 field_config 的表: ${schemaList}`,
-    `- 已获取 DDL (short=0, 完整含索引/外键) 的表: ${ddlShort0List}`,
-    `- 已获取 DDL (short=1, 仅列定义) 的表: ${ddlShort1List}`,
+    `- 已获取 DDL 的表: ${ddlList}`,
   ].join('\n');
 }
 
@@ -313,14 +305,8 @@ function buildToolCallChecklistMessage(reg) {
   if (reg.slicedDomains.size > 0) parts.push(`get_sliced_index:[${[...reg.slicedDomains].sort().join(',')}]`);
   if (reg.tableSchema.size > 0) parts.push(`get_table_schema:[${[...reg.tableSchema].sort().join(',')}]`);
   if (reg.tableDdl.size > 0) {
-    const s0 = [];
-    const s1 = [];
-    for (const [t, shorts] of reg.tableDdl.entries()) {
-      if (shorts.has('short=0')) s0.push(t);
-      if (shorts.has('short=1')) s1.push(t);
-    }
-    if (s0.length > 0) parts.push(`get_table_ddl(s0):[${s0.sort().join(',')}]`);
-    if (s1.length > 0) parts.push(`get_table_ddl(s1):[${s1.sort().join(',')}]`);
+    // v4: 不再区分 short,只列已查询表名
+    parts.push(`get_table_ddl:[${[...reg.tableDdl].sort().join(',')}]`);
   }
   if (reg.termConfirmed.size > 0) {
     const items = [...reg.termConfirmed].map(s => s.replace('::', '@'));
@@ -437,38 +423,30 @@ function checkAndFilterDuplicateCall(toolName, args, sessionId) {
   }
 
   if (toolName === 'get_table_ddl') {
-    // get_table_ddl 必须按 (table, short) 组合判断重复：
-    //   short=0 → 完整 DDL 含索引/外键；short=1 → 仅列定义。两种返回内容不同，不应相互替代。
+    // v4: 去掉 short 维度,只按表名去重
+    // 关联/外键信息应通过 get_table_schema (virtual_associations) 获取,
+    // 不应通过重复 get_table_ddl 来补充
     const requested = normalizeTableNames(args.table_names);
     if (requested.length === 0) return { block: false, args };
-    const short = (args.short === 0 || args.short === '0') ? 0 : 1;
-    const shortKey = `short=${short}`;
-    const dupes = requested.filter(n => {
-      const shorts = reg.tableDdl.get(n);
-      return shorts && shorts.has(shortKey);
-    });
-    const fresh = requested.filter(n => {
-      const shorts = reg.tableDdl.get(n);
-      return !shorts || !shorts.has(shortKey);
-    });
+    const dupes = requested.filter(n => reg.tableDdl.has(n));
+    const fresh = requested.filter(n => !reg.tableDdl.has(n));
 
     if (dupes.length === requested.length) {
       return {
         block: true,
         message:
-          `⚠️ 【重复调用已被程序拦截】工具 get_table_ddl 中所有 (table, ${shortKey}) 组合在本会话中都已被获取过: ${dupes.join(', ')}。\n\n` +
+          `⚠️ 【重复调用已被程序拦截】工具 get_table_ddl 中所有表在本会话中都已被获取过: ${dupes.join(', ')}。\n\n` +
           `📋 已有信息清单:\n${buildChecklist(reg)}\n\n` +
           `请直接复用已有信息，禁止重复调用 get_table_ddl。\n` +
-          `如需获取尚未在清单中的 (table, short) 组合，请重新传入只包含新表的 table_names 参数；` +
-          `如需 short=0/1 之外的版本（如已用 short=1 查过，但需要 short=0 的完整 DDL），需明确传入 short=0。`
+          `如需关联/外键信息，请使用 get_table_schema（其返回的 virtual_associations 含 join_condition）。`
       };
     }
     if (dupes.length > 0) {
       return {
         block: false,
-        args: { ...args, table_names: fresh, short },
+        args: { ...args, table_names: fresh },
         notice:
-          `ℹ️ 自动过滤重复 (table, ${shortKey}) 组合（已在清单中）: ${dupes.join(', ')}。仅对 [${fresh.join(', ')}] 执行 get_table_ddl。\n` +
+          `ℹ️ 自动过滤重复表（已在清单中）: ${dupes.join(', ')}。仅对 [${fresh.join(', ')}] 执行 get_table_ddl。\n` +
           `📋 已有信息清单:\n${buildChecklist(reg)}`
       };
     }
@@ -544,13 +522,8 @@ function recordToolCall(toolName, args, sessionId, overrideId = null) {
   } else if (toolName === 'get_table_schema') {
     normalizeTableNames(args.table_names).forEach(n => reg.tableSchema.add(n));
   } else if (toolName === 'get_table_ddl') {
-    // 按 (table, short) 组合记录，允许同一表同时记录 short=0 和 short=1
-    const short = (args.short === 0 || args.short === '0') ? 0 : 1;
-    const shortKey = `short=${short}`;
-    normalizeTableNames(args.table_names).forEach(n => {
-      if (!reg.tableDdl.has(n)) reg.tableDdl.set(n, new Set());
-      reg.tableDdl.get(n).add(shortKey);
-    });
+    // v4: 改为只存表名,不再区分 short
+    normalizeTableNames(args.table_names).forEach(n => reg.tableDdl.add(n));
   } else if (toolName === 'request_tag_confirmation') {
     const termsRaw = args.term;
     const terms = Array.isArray(termsRaw) ? termsRaw : (termsRaw ? [termsRaw] : []);
