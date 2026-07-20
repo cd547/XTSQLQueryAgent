@@ -371,6 +371,49 @@ function formatTableInfo(tables) {
   }).join('\n\n');
 }
 
+// 折叠版表格卡片：去掉 related_tables（schema 的 virtual_associations 可替代），
+// 保留 name/description/tags/business_constraints/business_rules。
+// 供 compactConsumedToolResults 使用，与 formatTableInfo 区别仅在于不输出 related_tables。
+// 注意：business_constraints / business_rules 两处并行修复了 formatTableInfo 的
+//   "label/desc 任一缺失时显示 undefined" 缺陷（原模式 `${label}: ${desc}` 在任一为空时产生 "undefined: D" 或 "X: undefined"）。
+export function formatTableInfoCompact(tables) {
+  return tables.map(t => {
+    let info = `- ${t.name}: ${t.description || ''}`;
+    if (t.tags?.length) info += `\n  标签: ${t.tags.join(', ')}`;
+    // 注意：不输出 related_tables，由 schema 的 virtual_associations 替代
+    if (t.business_constraints?.length) {
+      info += `\n  业务约束:`;
+      t.business_constraints.forEach(c => {
+        if (typeof c === 'string') {
+          info += `\n    - ${c}`;
+        } else if (c.name) {
+          info += `\n    - ${c.name}: ${c.description || ''}`;
+        } else if (c.description) {
+          info += `\n    - ${c.description}`;
+        } else {
+          info += `\n    - (空约束)`;
+        }
+      });
+    }
+    if (t.business_rules?.length) {
+      info += `\n  业务规则:`;
+      t.business_rules.forEach(r => {
+        if (typeof r === 'string') {
+          info += `\n    - ${r}`;
+        } else if (r.rule) {
+          info += `\n    - ${r.rule}: ${r.description || ''}`;
+        } else if (r.description) {
+          info += `\n    - ${r.description}`;
+        } else {
+          info += `\n    - (空规则)`;
+        }
+        if (r.query) info += `\n      示例: ${r.query}`;
+      });
+    }
+    return info;
+  }).join('\n\n');
+}
+
 export const tools = [
   // new DynamicTool({
   //   name: "get_tables",

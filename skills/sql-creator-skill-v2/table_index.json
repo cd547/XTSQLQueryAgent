@@ -1588,6 +1588,25 @@
       ],
       "business_constraints": [],
       "business_rules": []
+    },
+    {
+      "name": "keqiao_class_grade",
+      "description": "班级年级",
+      "tags": [],
+      "related_tables": [
+        "keqiao_class",
+        "keqiao_grade"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "keqiao_grade",
+      "description": "年级",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
     }
   ]
 }

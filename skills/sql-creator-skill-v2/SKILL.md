@@ -17,16 +17,22 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL 5.7 SQL
    - 必须 LEFT JOIN `default.target_table` 和每个 `conditions[].target_table`。
    - 使用 `CASE WHEN` 实现字段选择。
    - 若提供了 `sql_template`，直接按照模板填充变量生成表达式。
+4.2 `del`/`deleted` 在连表时**默认不过滤**——LEFT JOIN ... ON 中不得追加 `AND t_b.del = 0`。
+   - "特殊说明"特指：field_config 的 `join_condition` 字符串中已显式包含该条件，
+     或 `business_rules` 显式声明"该关联需过滤 del=0"。
+   - 业务上确实要"过滤掉 B 已删除的关联行"时，统一用 WHERE 子句
+     `WHERE t_b.id IS NULL OR t_b.del = 0`，不要塞进 ON 末尾。
+   - 无法判定（既无特殊说明，业务意图也不清晰）→ 必须调用 `request_user_choice` 询问用户，**禁止自行决定**。
 
-5. **字段**：字段名必须来自 DDL，输出时严格按 DDL 字段名，禁止自造或修改字段名。通过 `get_table_schema` 获取字段别名（`field_aliases`）、枚举映射（`field_enums`）、业务约束。禁止猜测。若字段有枚举映射，默认使用 CASE WHEN 或关联枚举表转为业务显示值输出。多表查询时所有字段必须带表别名（如 t1.id）。business_rules 中的每一条规则，在生成 SQL 时都必须以 WHERE、JOIN 或 CASE WHEN 的形式显式体现，不能只当作注释或背景说明。
+1. **字段**：字段名必须来自 DDL，输出时严格按 DDL 字段名，禁止自造或修改字段名。通过 `get_table_schema` 获取字段别名（`field_aliases`）、枚举映射（`field_enums`）、业务约束。禁止猜测。若字段有枚举映射，默认使用 CASE WHEN 或关联枚举表转为业务显示值输出。多表查询时所有字段必须带表别名（如 t1.id）。business_rules 中的每一条规则，在生成 SQL 时都必须以 WHERE、JOIN 或 CASE WHEN 的形式显式体现，不能只当作注释或背景说明。
 
-6. **字段别名**：别名含特殊字符（括号、空格、中文括号等）时必须用反引号：`amount AS \`金额(元)\``。
+2. **字段别名**：别名含特殊字符（括号、空格、中文括号等）时必须用反引号：`amount AS \`金额(元)\``。
 
-7. **MySQL 5.7 限制**：禁止窗口函数、CTE(WITH)、JSON_TABLE。替代方案：子查询、临时表、JSON_EXTRACT。
+3. **MySQL 5.7 限制**：禁止窗口函数、CTE(WITH)、JSON_TABLE。替代方案：子查询、临时表、JSON_EXTRACT。
 
-8. **歧义处理**：一个业务词匹配多个候选表 → 调用 request_user_choice 询问用户，禁止猜测。
+4. **歧义处理**：一个业务词匹配多个候选表 → 调用 request_user_choice 询问用户，禁止猜测。
 
-9. **【铁律】最终输出前冻结**：
+5. **【铁律】最终输出前冻结**：
    - "信息已全"判定（满足以下条件后立即生成 SQL，禁止再调用任何工具）：
      - 目标表 DDL ✓
      - 字段别名/枚举 ✓
@@ -39,7 +45,9 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL 5.7 SQL
 ## 系统约定
 以下为系统字段语义，生成 SQL 时必须遵循。如 field_config 有特殊定义则以 field_config 为准：
 - **当前日期**： 时间过滤必须使用 MySQL 日期函数（`CURDATE()` 等），禁止硬编码年份。
-- `del` / `deleted`：0=未删除，1=已删除，查询必须过滤 `= 0`。
+- `del` / `deleted`：0=未删除，1=已删除。
+     WHERE 子句默认过滤 `= 0`（如 `WHERE t_main.del = 0`）。
+     连表 JOIN 子句默认不过滤——见核心规则 4.2。 
 - 时间字段：若字段名含时间含义且类型为 BIGINT(11/13)，值为时间戳（毫秒）。
 - 时间字段输出格式：
   - 对于 `timestamp` 或 `datetime` 类型的字段，必须使用 `DATE_FORMAT(字段名, '%Y-%m-%d %H:%i:%s')` 转换为 `YYYY-MM-DD HH:MM:SS` 格式。

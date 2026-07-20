@@ -29,6 +29,8 @@
     "keqiao_surface_subject_teacher",
     "edu_activities",
     "edu_activities_student",
-    "edu_teacher_work"
+    "edu_teacher_work",
+    "keqiao_class_grade",
+    "keqiao_grade"
   ]
 }

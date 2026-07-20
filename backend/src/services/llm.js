@@ -1,6 +1,6 @@
 import { getLlmConfig, getAgentConfig } from './config.js';
 import { logger } from '../logger.js';
-import { loadTableIndex, loadSkillMd, tools } from './toolFuncs.js';
+import { loadTableIndex, loadSkillMd, tools, formatTableInfoCompact, sliceTableIndexByDomains } from './toolFuncs.js';
 import { getDb } from '../db/sqlite.js';
 import { countMessagesTokens } from './tokenizer.js';
 import fs from 'fs';
@@ -601,6 +601,119 @@ export function getSessionChecklist(sessionId) {
   return buildChecklist(reg);
 }
 
+/**
+ * 折叠已消费的 get_sliced_index tool result，降低已消费历史区的 token 开销与注意力稀释。
+ *
+ * 折叠策略：
+ *   - "当前消费区"（最后一个含 tool_calls 的 assistant 及其之后）不折叠，LLM 需完整信息选表
+ *   - "已消费历史区"（该 assistant 之前）：用精简版卡片替换，去掉 related_tables
+ *     （schema 的 virtual_associations 可替代），保留 name/description/tags/business_constraints/business_rules
+ *     （business_rules/constraints 与 field_config 不完全一致，部分表 field_config 为空）
+ *
+ * 折叠边界：只折叠 messages 中"最后一个含 tool_calls 的 assistant 之前"的 tool 消息（已消费历史区）。
+ *   - 之后的 tool result 属于当前消费区，即将被下一轮 LLM 消费，必须完整
+ *
+ * 缓存：单请求级 cache-aside。foldedCache 由调用方传入，作用域为单次 /generate 调用。
+ *   - key = tool_call_id，value = 折叠后 content
+ *   - 缓存命中直接用，丢失则重新加载原始数据折叠并写入缓存
+ *   - 函数作用域天然隔离多用户，不可能窜
+ *
+ * DeepSeek thinking_mode 协议兼容性：
+ *   - 只改 tool 消息的 content 字段，不改 role / tool_call_id 结构
+ *   - assistant.tool_calls 和 reasoning_content 保持不变（协议要求完整回传）
+ *
+ * @param {Array} messages - 累积的 messages 数组
+ * @param {Map} foldedCache - 折叠缓存（单请求级，由调用方创建并传入）
+ * @returns {Array} 折叠后的新数组（不修改原数组）
+ */
+async function compactConsumedToolResults(messages, foldedCache) {
+  if (!Array.isArray(messages) || messages.length === 0 || !foldedCache) return messages;
+
+  // 找到最后一个有 tool_calls 的 assistant 位置
+  let lastToolCallIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i].role === 'assistant' && messages[i].tool_calls && messages[i].tool_calls.length > 0) {
+      lastToolCallIdx = i;
+      break;
+    }
+  }
+  // 没有历史 tool_call，或只有当前轮（lastToolCallIdx=0 时前面无历史）→ 不折叠
+  if (lastToolCallIdx <= 0) return messages;
+
+  // 构建 tool_call_id → {toolName, args} 映射（只看 lastToolCallIdx 之前的 assistant）
+  const toolCallInfo = new Map();
+  for (let i = 0; i < lastToolCallIdx; i++) {
+    const m = messages[i];
+    if (m.role === 'assistant' && m.tool_calls) {
+      for (const tc of m.tool_calls) {
+        if (tc.id && tc.function?.name) {
+          let args = {};
+          try { args = JSON.parse(tc.function.arguments || '{}'); } catch {}
+          toolCallInfo.set(tc.id, { name: tc.function.name, args });
+        }
+      }
+    }
+  }
+
+  let compactedCount = 0;
+  const result = [];
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+
+    // 仅折叠 lastToolCallIdx 之前的 tool 消息
+    if (i >= lastToolCallIdx || m.role !== 'tool') {
+      result.push(m);
+      continue;
+    }
+
+    const info = m.tool_call_id ? toolCallInfo.get(m.tool_call_id) : null;
+    if (!info || info.name !== 'get_sliced_index') {
+      result.push(m);
+      continue;
+    }
+
+    // cache-aside: 命中直接用
+    if (foldedCache.has(m.tool_call_id)) {
+      result.push({ ...m, content: foldedCache.get(m.tool_call_id) });
+      compactedCount++;
+      continue;
+    }
+
+    // 缓存丢失：从 tool_calls 参数提取 domain_ids，重新加载原始数据折叠
+    const domainIds = info.args?.domain_ids;
+    if (!Array.isArray(domainIds) || domainIds.length === 0) {
+      // 参数解析失败，不折叠（保持原 content）
+      result.push(m);
+      continue;
+    }
+
+    try {
+      const sliced = await sliceTableIndexByDomains(domainIds);
+      if (!sliced.tables || sliced.tables.length === 0) {
+        result.push(m);
+        continue;
+      }
+      const foldedContent = formatTableInfoCompact(sliced.tables);
+      foldedCache.set(m.tool_call_id, foldedContent);
+      result.push({ ...m, content: foldedContent });
+      compactedCount++;
+    } catch (e) {
+      logger.warn('compactConsumedToolResults: fold failed, keep original', {
+        tool_call_id: m.tool_call_id, error: e.message
+      });
+      result.push(m);
+    }
+  }
+
+  if (compactedCount > 0) {
+    logger.debug('Compacted consumed tool results', {
+      compactedCount, lastToolCallIdx, totalMessages: messages.length
+    });
+  }
+
+  return result;
+}
+
 function queueLog(content, immediate = false, username = null) {
   // username 由调用方（generateSQLWithLangChainStreamGen_BAK）注入，
   // 写到 LOG_BUFFER 时一起打包，flushLogs 按用户分组聚合后再写盘
@@ -758,6 +871,11 @@ ${skillMd}`;
   let pendingUserChoiceList = [];
   const MAX_USER_CHOICE_PER_TURN = 3;
 
+  // 折叠缓存（单请求级）：跨 LLM 轮次复用折叠结果，请求结束自动 GC。
+  // 作用域为本次 /generate 调用，函数闭包天然隔离多用户，不可能窜。
+  // cache-aside: 缓存命中直接用，丢失则重新折叠并写入缓存。
+  const foldedCache = new Map();
+
   while (maxToolCalls > 0) {
     // 每轮 LLM 请求前，临时向 messages 追加"已调用工具清单"消息（仅用于本轮请求，不持久化）。
     // 目的：让 LLM 在生成 tool_call 决策前明确看到本会话已调用的工具 + 参数，
@@ -797,7 +915,10 @@ ${skillMd}`;
     //
     // 保留：所有 tool_calls 的 assistant.reasoning_content（多轮推理链必需）
     // 剥除：无 tool_calls 的 assistant.reasoning_content（节省 token + 减少注意力污染）
-    const requestMessages = (checklistMsg ? [...messages, checklistMsg] : messages).map(m => {
+    // 折叠已消费的 get_sliced_index tool result（去掉 related_tables，保留 rules/constraints），
+    // 降低已消费历史区的 token 开销与注意力稀释。不修改原 messages 数组。
+    const compactedMessages = await compactConsumedToolResults(messages, foldedCache);
+    const requestMessages = (checklistMsg ? [...compactedMessages, checklistMsg] : compactedMessages).map(m => {
       if (m.role === 'assistant' && m.reasoning_content && !m.tool_calls) {
         const { reasoning_content, ...rest } = m;
         return rest;
