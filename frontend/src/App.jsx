@@ -854,6 +854,27 @@ function AuthenticatedApp({ user, logout }) {
                 if (data.totalTokens) {
                   setCurrentTokens(prev => prev + data.totalTokens);
                 }
+                // ★ 关键修复：后端 SSE done 事件返回的 sessionId 是权威值。
+                //   场景：用户清空日志后第一次问时前端 currentSessionId=null，
+                //   后端会 auto-create 一个 session；若前端不捕获并回写，
+                //   下次（user_choice 答案/重发）handleSend 还会以 null 调 /generate，
+                //   后端又会 auto-create 一个新 session → 上下文丢失、registry 重置、
+                //   LLM 重新调 get_domain_index/get_sliced_index。
+                if (data.sessionId && data.sessionId !== currentSessionId) {
+                  const newId = data.sessionId;
+                  setCurrentSessionId(newId);
+                  // 把新 session 插到左侧列表（避免下次刷新才看到）
+                  setSessions(prev => {
+                    if (prev.some(s => s.id === newId)) return prev;
+                    return [{
+                      id: newId,
+                      name: '新对话',
+                      created_at: new Date().toISOString(),
+                      total_tokens: data.totalTokens || 0
+                    }, ...prev];
+                  });
+                  setSessionsTotal(prev => prev + 1);
+                }
                 // ★ 检测 user_choice_request 弹窗（来自 llm.js 终止分支）
                 // v2 链式弹窗：后端 yield 的是数组（1-3 个问题）；兼容旧版单值 fallback
                 if (data.user_choice_request) {

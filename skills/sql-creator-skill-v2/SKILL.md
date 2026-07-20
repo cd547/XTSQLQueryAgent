@@ -33,6 +33,8 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL 5.7 SQL
 4. **歧义处理**：一个业务词匹配多个候选表 → 调用 request_user_choice 询问用户，禁止猜测。
 
 5. **【铁律】最终输出前冻结**：
+   - **只调用当前会话给定的工具**——你看到的 tools 列表就是全部可用工具，
+     列表外的工具一律不可调用，调用会被程序拒绝。
    - "信息已全"判定（满足以下条件后立即生成 SQL，禁止再调用任何工具）：
      - 目标表 DDL ✓
      - 字段别名/枚举 ✓
@@ -60,20 +62,39 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL 5.7 SQL
 - 库: MySQL 5.7
 - 表: {表名1}, {表名2}
 - 规则: {应用的业务规则}
-- **SQL**: SQL语句
+- **SQL**:
+  ```sql
+  {SQL语句}
+  ```
 - **说明**: 业务说明（限200字内）
 - **警告**: 如有风险操作
 ```
+
+**【硬性要求】** `**SQL**:` 后面必须是 ```sql ... ``` 代码块，SQL 语句写在代码块内。
+否则前端无法识别 SQL，前端会按 markdown 全文降级渲染 → 高亮丢失。
+- ✅ 正例：` **SQL**:\n  ```sql\n  SELECT ...\n  ``` `
+- ❌ 反例：` **SQL**: SELECT ... `（裸 SQL 文本，无 sql 围栏）
 
 ## 标签纠正
 用户给出术语→表名映射时，调用 `request_tag_confirmation(term, table, description)`。
 - `term`：术语数组（支持多个），`table`：表名，`description`：可选描述。
 - 示例：用户说"aa表就是edu_student" → `request_tag_confirmation(term=["aa"], table="edu_student", description="学生")`
 
+**【重要】不要把 `request_user_choice` 的答案误判为术语映射。**
+- `request_user_choice` 答案格式是 `label=answer`（如 `排课体系选择=学通排课`），这只是用户对选择题的回答，**不是** "排课体系 / 学通排课 是某张表的术语"。
+- 仅在用户**主动**给业务术语与表名做等价声明时（如"aa表就是edu_student"、"`会员号`就是指 customer_id"）才调 request_tag_confirmation。
+- 反例：用户选"排课体系选择=学通排课"后**禁止**调 `request_tag_confirmation(term=["排课体系","学通排课"], table="edu_study")`——这是 user_choice 的答案，不是术语映射声明。
+
 ## 用户交互
 任务缺信息时调 `request_user_choice(questions: [...])`，传入 1-3 个完整问题。
 - 调用前在 content 中自然语言描述问题
 - 调用后程序自动结束本轮并弹出对话框
+
+【关键约束】question / options 字符串内部**禁止**使用 ASCII 双引号 `"`——
+  arguments 是 JSON 字符串，内部裸 `"` 会破坏语法导致 JSON.parse 失败。
+  - 引用用户原文时改用：中文引号 `""`「」或反引号 ``
+  - 反例：question: "您说的"内部用的..." " ← 触发 JSON 解析失败
+  - 正例：question: "您说的『内部用的...』是指？" ← 安全
 
 **multi_select 决策**：
 - 互斥（必选其一）→ false，例：`"时间范围：近7天 / 近30天"`
