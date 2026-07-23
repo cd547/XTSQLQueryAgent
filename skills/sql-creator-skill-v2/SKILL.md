@@ -51,8 +51,8 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL 5.7 SQL
      连表 JOIN 子句默认不过滤——见核心规则 4.2。 
 - 时间字段（字段名含时间含义）：
   - `timestamp`/`datetime` → `DATE_FORMAT(字段, '%Y-%m-%d %H:%i:%s')`
-  - BIGINT 毫秒 (`BIGINT(13)`) → `FROM_UNIXTIME(字段/1000, '%Y-%m-%d %H:%i:%s')`
-  - BIGINT 秒 (`BIGINT(10/11)`) → `FROM_UNIXTIME(字段, '%Y-%m-%d %H:%i:%s')`
+  - BIGINT 毫秒 (`BIGINT(11/13)`) → `FROM_UNIXTIME(字段/1000, '%Y-%m-%d %H:%i:%s')`
+  - BIGINT 秒 (`BIGINT(10)`) → `FROM_UNIXTIME(字段, '%Y-%m-%d %H:%i:%s')`
 - 金额字段：单位均为分。
 - 查询必须包含 `LIMIT`，默认 1000。
 
