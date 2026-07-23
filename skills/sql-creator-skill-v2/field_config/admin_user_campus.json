@@ -1,26 +1,29 @@
 {
   "table_name": "admin_user_campus",
-  
   "field_aliases": {
-    "id": ["ID", "编号"],
-    "admin_user_id": ["后台用户ID", "用户ID"],
-    "edu_campus_id": ["校区ID"],
-    "created_time": ["创建时间"]
+    "id": [
+      "ID",
+      "编号"
+    ],
+    "admin_user_id": [
+      "后台用户ID",
+      "用户ID"
+    ],
+    "edu_campus_id": [
+      "校区ID"
+    ],
+    "created_time": [
+      "创建时间"
+    ]
   },
-  
-  "field_enums": {
-  },
-  
+  "field_enums": {},
   "virtual_associations": [
     {
       "name": "关联后台用户",
       "target_table": "admin_user",
       "join_condition": "admin_user.id = admin_user_campus.admin_user_id",
       "type": "one_to_one",
-      "description": "1个用户校区对应1个后台用户",
-      "fields_mapping": {
-        "id": "admin_user_id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
@@ -28,17 +31,11 @@
       "target_table": "edu_campus",
       "join_condition": "edu_campus.id = admin_user_campus.edu_campus_id",
       "type": "one_to_one",
-      "description": "1个用户校区对应1个校区",
-      "fields_mapping": {
-        "id": "edu_campus_id"
-      },
+      "description": "",
       "business_rule": ""
     }
   ],
-  
   "calculated_fields": {},
-  
   "business_constraints": {},
-  
   "business_rules": []
 }

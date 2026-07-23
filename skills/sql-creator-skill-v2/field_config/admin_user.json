@@ -1,26 +1,28 @@
 {
   "table_name": "admin_user",
-  
   "field_aliases": {
-    "parent_id": ["上级ID"],
-    "character_id": ["角色ID"],
-    "department_id": ["部门ID", "二级部门ID"],
-    "user":["用户名"]
+    "parent_id": [
+      "上级ID"
+    ],
+    "character_id": [
+      "角色ID"
+    ],
+    "department_id": [
+      "部门ID",
+      "二级部门ID"
+    ],
+    "user": [
+      "用户名"
+    ]
   },
-  
-  "field_enums": {
-  },
-  
+  "field_enums": {},
   "virtual_associations": [
     {
       "name": "关联角色",
       "target_table": "admin_character",
       "join_condition": "admin_character.id = admin_user.character_id",
       "type": "one_to_one",
-      "description": "1个用户对应1个角色",
-      "fields_mapping": {
-        "id": "character_id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
@@ -28,10 +30,7 @@
       "target_table": "admin_department_children",
       "join_condition": "admin_department_children.id = admin_user.department_id",
       "type": "one_to_one",
-      "description": "1个用户对应1个二级部门",
-      "fields_mapping": {
-        "id": "department_id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
@@ -40,17 +39,11 @@
       "alias": "parent_admin_user",
       "join_condition": "admin_user.parent_id = parent_admin_user.id",
       "type": "self_join",
-      "description": "用户父子关系自关联",
-      "fields_mapping": {
-        "id": "parent_id"
-      }
+      "description": "用户父子关系自关联"
     }
   ],
-  
   "calculated_fields": {},
-  
   "business_constraints": {},
-  
   "business_rules": [
     {
       "name": "查询用户名",

@@ -1,17 +1,26 @@
 {
   "table_name": "order_student_received_approvalsettlement",
   "field_aliases": {},
-  "field_enums": {},
+  "field_enums": {
+    "status": {
+      "1": "审批中",
+      "2": "已驳回",
+      "3": "已通过"
+    },
+    "level": {
+      "1": "一级审批",
+      "2": "二级审批",
+      "3": "三级审批"
+    }
+
+  },
   "virtual_associations": [
     {
-      "name": "关联回款计划",
+      "name": "关联回款",
       "target_table": "order_student_received",
       "join_condition": "order_student_received.id = order_student_received_approvalsettlement.order_student_received_id",
       "type": "many_to_one",
-      "description": "佣金结算审批关联的回款计划",
-      "fields_mapping": {
-        "id": "order_student_received_id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
@@ -19,10 +28,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = order_student_received_approvalsettlement.admin_user_id",
       "type": "many_to_one",
-      "description": "佣金结算审批的发起人",
-      "fields_mapping": {
-        "id": "admin_user_id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
@@ -30,10 +36,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = order_student_received_approvalsettlement.level_admin_user_id",
       "type": "many_to_one",
-      "description": "佣金结算审批的当前节点审批人",
-      "fields_mapping": {
-        "id": "level_admin_user_id"
-      },
+      "description": "",
       "business_rule": ""
     }
   ],

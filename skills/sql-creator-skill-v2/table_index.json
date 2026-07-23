@@ -1558,6 +1558,55 @@
       ],
       "business_constraints": [],
       "business_rules": []
+    },
+    {
+      "name": "customer_people",
+      "description": "线索家长表",
+      "tags": [],
+      "related_tables": [
+        "customer_clue_info"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "order_student_received_reject",
+      "description": "回款计划驳回记录",
+      "tags": [],
+      "related_tables": [
+        "order_student_received"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_teacher_work",
+      "description": "老师可排班时间",
+      "tags": [],
+      "related_tables": [
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "keqiao_class_grade",
+      "description": "班级年级",
+      "tags": [],
+      "related_tables": [
+        "keqiao_class",
+        "keqiao_grade"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "keqiao_grade",
+      "description": "年级",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
     }
   ]
 }

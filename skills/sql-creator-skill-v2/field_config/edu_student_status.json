@@ -1,7 +1,13 @@
 {
   "table_name": "edu_student_status",
   "field_aliases": {},
-  "field_enums": {},
+  "field_enums": {
+    "type":{
+      "1":"学通学生",
+      "2":"客户",
+      "3":"科桥、克勒学生"
+    }
+  },
   "virtual_associations": [],
   "calculated_fields": {},
   "business_constraints": {},

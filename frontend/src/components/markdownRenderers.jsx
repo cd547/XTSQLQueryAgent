@@ -78,12 +78,22 @@ export function createMarkdownRenderers(isDark, opts = {}) {
     // 或 ```text，此时第一个分支不触发，落到下面的"启发式检测 SQL 关键字"——但 text
     // 第一行是 "- 库:" 而非 SELECT，整段降级为无高亮的 <pre><code>，内层 ```sql 也跟着没高亮。
     // 修复：去掉 lang 限制，剥壳正则也放宽为接受任意语言。
-    if (/^```/m.test(text)) {
+    //
+    // 历史 bug 2：检测嵌套的正则 `^````（无 \s*）要求行首直接是 ```。
+    // 实际 LLM 输出经常把外层 ```markdown 写在顶层、内层 ```sql 用 2 空格缩进排版，
+    // 此时内层 ``` 所在行不是以 ``` 开头而是 "  ```sql"，正则在 /m 下也不匹配，
+    // 整段落到 SyntaxHighlighter(language=markdown)，但 markdown 未注册 → 无高亮。
+    // 修复：检测行首允许 \s*，并 fallback 兜底"text 内任意位置出现 ``` 围栏"即认为嵌套。
+    const hasNestedFence = /^\s*```/m.test(text) || /```[\s\S]*?```/m.test(text);
+    if (hasNestedFence) {
       // 容忍任意语言：开头的 ``` 后可能跟 markdown / md / text / <空> / 其它语言标识，
       // 一律剥到第一个换行（含换行本身）。
-      const inner = text
-        .replace(/^```[^\n`]*\n?/, '')
-        .replace(/\n?```\s*$/, '');
+      // 仅当 text 真的以 ``` 开头（外层是无 language 的裸 ```...```）才剥壳；
+      // 外层是 ```markdown/text 的情况 text 由 react-markdown 已去掉外层围栏，
+      // 直接递归渲染即可（strip 是 no-op，不影响结果）。
+      const inner = /^```/.test(text)
+        ? text.replace(/^```[^\n`]*\n?/, '').replace(/\n?```\s*$/, '')
+        : text;
       return (
         <div className="xtsql-nested-markdown xtsql-msg-bubble" style={{ margin: '8px 0', padding: 0, background: 'transparent' }}>
           <ReactMarkdown

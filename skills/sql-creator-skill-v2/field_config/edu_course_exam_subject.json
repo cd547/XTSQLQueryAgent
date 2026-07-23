@@ -1,15 +1,22 @@
 {
   "table_name": "edu_course_exam_subject",
-  
   "field_aliases": {
-    "id": ["ID", "编号", "三级科目ID", "科目ID"],
-    "name": ["科目名称", "三级科目名称", "科目"],
-    "score": ["学分"]
+    "id": [
+      "ID",
+      "编号",
+      "三级科目ID",
+      "科目ID"
+    ],
+    "name": [
+      "科目名称",
+      "三级科目名称",
+      "科目"
+    ],
+    "score": [
+      "学分"
+    ]
   },
-  
-  "field_enums": {
-  },
-  
+  "field_enums": {},
   "virtual_associations": [
     {
       "name": "关联考试局",
@@ -17,16 +24,10 @@
       "join_condition": "edu_course_exam.id = edu_course_exam_subject.exam_id",
       "type": "one_to_one",
       "description": "1个科目对应1个考试局",
-      "fields_mapping": {
-        "id": "exam_id"
-      },
       "business_rule": ""
     }
   ],
-  
   "calculated_fields": {},
-  
   "business_constraints": {},
-  
   "business_rules": []
 }

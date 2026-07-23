@@ -1,0 +1,18 @@
+{
+  "table_name": "order_student_received_reject",
+  "field_aliases": {},
+  "field_enums": {},
+  "virtual_associations": [
+    {
+      "name": "关联回款",
+      "target_table": "order_student_received",
+      "join_condition": "order_student_received.id = order_student_received_reject.order_student_received_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}

@@ -1,15 +1,116 @@
-import { getLlmConfig, getAgentConfig } from './config.js';
-import { logger } from '../logger.js';
-import { loadTableIndex, loadSkillMd, tools } from './toolFuncs.js';
-import { getDb } from '../db/sqlite.js';
-import { countMessagesTokens } from './tokenizer.js';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { config } from '../config.js';
+import { getLlmConfig, getAgentConfig } from "./config.js";
+import { logger } from "../logger.js";
+import {
+  loadTableIndex,
+  loadSkillMd,
+  tools,
+  formatTableInfoCompact,
+  sliceTableIndexByDomains,
+} from "./toolFuncs.js";
+import { getDb } from "../db/sqlite.js";
+import { countMessagesTokens } from "./tokenizer.js";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import { config } from "../config.js";
+import { ensureDir } from "../utils/fs.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const LOGS_PATH = config.logPath;
+
+/**
+ * 把任意用户名清洗为文件系统安全的形式：
+ *   - 仅保留 [a-zA-Z0-9_-]，其它字符替换为 _
+ *   - 长度上限 50 字符
+ *   - 空结果回退为 "unknown"（保证日志文件不会因为边界值缺失）
+ */
+function sanitizeUsername(name) {
+  if (!name || typeof name !== "string") return "unknown";
+  const cleaned = name.replace(/[^a-zA-Z0-9_-]/g, "_").slice(0, 50);
+  return cleaned || "unknown";
+}
+
+/**
+ * 修复 LLM tool_call arguments 字符串中"字符串值"内的裸 ASCII 双引号。
+ *
+ * LLM 经常在 question/options 等自由文本字段里直接引用用户原话：
+ *   {"q": "您说的"内部"是指？"}          ← 非法 JSON（结构分隔符被破坏）
+ *
+ * 状态机策略：
+ *   - 跟踪是否在字符串值内（inString）
+ *   - 遇到 " 时如果不在字符串内 → 进入字符串（保留）
+ *   - 在字符串内遇到 "：peek 下一个非空白字符
+ *       - 是 , ] } :  或 EOF → 字符串结束（保留）
+ *       - 否则 → 字符串内的裸引号 → 替换为右中文引号 "
+ *   - 跳过转义序列 \" \\ \/ \n \t 等，避免误判
+ *
+ * 不会破坏：
+ *   - 合法 JSON（结构边界是 , ] } : 或 EOF）
+ *   - 已转义的引号 \"（跳过整段转义序列）
+ *
+ * 仅在 JSON.parse 失败的 catch 块内调用，正常情况不动原始字符串。
+ */
+function fixBareQuotesInJsonArgs(s) {
+  let result = '';
+  let inString = false;
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    // 跳过转义序列
+    if (inString && c === '\\' && i + 1 < s.length) {
+      result += c + s[i + 1];
+      i += 2;
+      continue;
+    }
+    if (c === '"') {
+      if (!inString) {
+        inString = true;
+        result += c;
+      } else {
+        // peek 下一个非空白字符
+        let j = i + 1;
+        while (j < s.length && /\s/.test(s[j])) j++;
+        const next = j < s.length ? s[j] : '';
+        // 字符串结束标志
+        if (next === ',' || next === ']' || next === '}' || next === ':' || next === '') {
+          inString = false;
+          result += c;
+        } else {
+          // 字符串内裸引号 → 替换为右中文引号
+          result += '\u201D';
+        }
+      }
+    } else {
+      result += c;
+    }
+    i++;
+  }
+  return result;
+}
+
+/**
+ * 计算当前日期键（YYYY-MM-DD），用于按天分子目录。
+ */
+function todayKey() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * 计算用户 LLM 日志文件绝对路径：logs/YYYY-MM-DD/{username}_llm.log
+ * 边界：usernane 为空时落 _system_llm.log（与 Winston 系统日志风格一致）
+ */
+function llmLogFileFor(username) {
+  const safe = sanitizeUsername(username);
+  const dateDir = path.join(LOGS_PATH, todayKey());
+  ensureDir(dateDir, "llm log date dir");
+  // 当无法归属用户（如未登录、系统调用）时统一走 _system_ 命名
+  const prefix = safe === "unknown" ? "_system" : safe;
+  return path.join(dateDir, `${prefix}_llm.log`);
+}
 
 /* ============================ 超时配置（BUG-7 修复） ============================ */
 
@@ -27,8 +128,8 @@ const LOGS_PATH = config.logPath;
  *   - T3 (5min) 防御 30 轮全部接近超时边界的极端情况
  */
 export const LLM_TIMEOUTS = {
-  FETCH_MS: 120_000,    // T2: 单轮 LLM API 调用上限
-  READ_MS:   30_000,    // T4: 单次流式 read 上限
+  FETCH_MS: 120_000, // T2: 单轮 LLM API 调用上限
+  READ_MS: 30_000, // T4: 单次流式 read 上限
 };
 
 /**
@@ -49,17 +150,20 @@ export function withTimeout(externalSignal, timeoutMs, label) {
 
   const timeoutId = setTimeout(() => {
     controller.abort(new Error(`${label} timeout after ${timeoutMs}ms`));
-    logger.warn(`${label} timed out`, { timeoutMs, elapsedMs: Date.now() - startedAt });
+    logger.warn(`${label} timed out`, {
+      timeoutMs,
+      elapsedMs: Date.now() - startedAt,
+    });
   }, timeoutMs);
 
   // externalSignal 可选：未传时只保留内部超时能力，不挂外部 abort 监听
   let onExternalAbort = null;
-  if (externalSignal && typeof externalSignal.addEventListener === 'function') {
+  if (externalSignal && typeof externalSignal.addEventListener === "function") {
     onExternalAbort = () => {
       clearTimeout(timeoutId);
       controller.abort(externalSignal.reason);
     };
-    externalSignal.addEventListener('abort', onExternalAbort, { once: true });
+    externalSignal.addEventListener("abort", onExternalAbort, { once: true });
   }
 
   return {
@@ -67,7 +171,7 @@ export function withTimeout(externalSignal, timeoutMs, label) {
     cancel: () => {
       clearTimeout(timeoutId);
       if (onExternalAbort && externalSignal) {
-        externalSignal.removeEventListener('abort', onExternalAbort);
+        externalSignal.removeEventListener("abort", onExternalAbort);
       }
     },
     isExternalAbort: () => !!(externalSignal && externalSignal.aborted),
@@ -86,47 +190,83 @@ export function withTimeout(externalSignal, timeoutMs, label) {
  * @param {() => void}      [onAbort]      - 外部 abort / 超时触发时调用（清理资源）
  * @returns {Promise<T>}
  */
-export async function withPromiseTimeout(fn, externalSignal, timeoutMs, label, onAbort) {
+export async function withPromiseTimeout(
+  fn,
+  externalSignal,
+  timeoutMs,
+  label,
+  onAbort,
+) {
   let timeoutId;
   let externalListener = null;
   const cleanup = () => {
     if (timeoutId !== undefined) clearTimeout(timeoutId);
     if (externalListener && externalSignal) {
-      externalSignal.removeEventListener('abort', externalListener);
+      externalSignal.removeEventListener("abort", externalListener);
     }
   };
   return new Promise((resolve, reject) => {
     timeoutId = setTimeout(() => {
       cleanup();
-      if (onAbort) try { onAbort(); } catch (_) {}
+      if (onAbort)
+        try {
+          onAbort();
+        } catch (_) {}
       logger.warn(`${label} timed out`, { timeoutMs });
       reject(new Error(`${label} timeout after ${timeoutMs}ms`));
     }, timeoutMs);
 
-    if (externalSignal && typeof externalSignal.addEventListener === 'function') {
+    if (
+      externalSignal &&
+      typeof externalSignal.addEventListener === "function"
+    ) {
       externalListener = () => {
         cleanup();
-        if (onAbort) try { onAbort(); } catch (_) {}
+        if (onAbort)
+          try {
+            onAbort();
+          } catch (_) {}
         reject(externalSignal.reason);
       };
-      externalSignal.addEventListener('abort', externalListener, { once: true });
+      externalSignal.addEventListener("abort", externalListener, {
+        once: true,
+      });
     }
 
     fn().then(
-      (v) => { cleanup(); resolve(v); },
-      (e) => { cleanup(); reject(e); }
+      (v) => {
+        cleanup();
+        resolve(v);
+      },
+      (e) => {
+        cleanup();
+        reject(e);
+      },
     );
   });
 }
 
-function writeLlmLog(content) {
+function writeLlmLog(content, username) {
+  // 按"日期 / 用户"分文件落盘
+  //  - 路径：logs/YYYY-MM-DD/{username}_llm.log（username 缺失则 _system_llm.log）
+  //  - 用户名经 sanitizeUsername 清洗（保留 a-zA-Z0-9_-，超 50 截断）
+  //  - 仍走 fs.appendFileSync（项目当前部署是单进程，不引入锁；与原实现行为一致）
   const now = new Date();
-  const dateStr = now.toISOString().slice(0, 10);
-  const logFile = path.join(LOGS_PATH, `llm_${dateStr}.log`);
   const timestamp = now.toISOString();
+  let logFile;
+  try {
+    logFile = llmLogFileFor(username);
+  } catch (e) {
+    // 路径解析/目录创建失败 → 回退到 _system_llm.log，避免日志写入整链路挂掉
+    const dateDir = path.join(LOGS_PATH, todayKey());
+    try {
+      ensureDir(dateDir, "llm log date dir fallback");
+    } catch (_) {}
+    logFile = path.join(dateDir, "_system_llm.log");
+  }
   const logLine = `${timestamp}: ${content}\n`;
   try {
-    fs.appendFileSync(logFile, logLine, 'utf-8');
+    fs.appendFileSync(logFile, logLine, "utf-8");
   } catch (e) {
     // 日志写入失败不应该让 LLM 调用挂掉，但要让用户能排查（web/electron 是否同目录、权限、磁盘等）
     // eslint-disable-next-line no-console
@@ -147,29 +287,46 @@ function writeLlmLog(content) {
  * @returns {{ content: string, extraThinking: string }}
  */
 function splitThinkingFromContent(responseText) {
-  if (!responseText || typeof responseText !== 'string' || !responseText.includes('```')) {
-    return { content: responseText || '', extraThinking: '' };
+  if (
+    !responseText ||
+    typeof responseText !== "string" ||
+    !responseText.includes("```")
+  ) {
+    return { content: responseText || "", extraThinking: "" };
   }
-  const firstCodeBlockIdx = responseText.indexOf('```');
+  const firstCodeBlockIdx = responseText.indexOf("```");
   const before = responseText.substring(0, firstCodeBlockIdx).trim();
   const after = responseText.substring(firstCodeBlockIdx);
   const isLongPrefix = before.length > 100;
-  const hasThinkingMarker = /(让我|等等|我发现|我注意到|我决定|实际上|让我再想|让我先|我先|继续|我开始|我准备|让我再)/.test(before);
+  const hasThinkingMarker =
+    /(让我|等等|我发现|我注意到|我决定|实际上|让我再想|让我先|我先|继续|我开始|我准备|让我再)/.test(
+      before,
+    );
   const hasMultipleLines = (before.match(/\n/g) || []).length >= 2;
   if (isLongPrefix && hasThinkingMarker && hasMultipleLines) {
     return { content: after.trim(), extraThinking: before };
   }
-  return { content: responseText, extraThinking: '' };
+  return { content: responseText, extraThinking: "" };
 }
 
+// LLM 日志缓冲：每条记录带 username（"日期 / 用户"分文件场景下，按用户聚合后再 flush）
+// 结构：{ username, content } — flush 时按 username 分组聚合，再走 writeLlmLog
 const LOG_BUFFER = [];
 let flushTimer = null;
 
 function flushLogs() {
   if (LOG_BUFFER.length === 0) return;
   const flushing = LOG_BUFFER.splice(0);
-  const content = flushing.join('\n');
-  writeLlmLog(content);
+  // 按 username 分组聚合后批量写盘，减少 appendFileSync 次数（系统级合并到 _system）
+  const byUser = new Map();
+  for (const item of flushing) {
+    const u = item.username || null;
+    if (!byUser.has(u)) byUser.set(u, []);
+    byUser.get(u).push(item.content);
+  }
+  for (const [u, lines] of byUser) {
+    writeLlmLog(lines.join("\n"), u);
+  }
 }
 
 // 进程级全局缓存：记录最近一次 LLM 调用的完整 messages 数组。
@@ -195,12 +352,15 @@ function getOrCreateRegistry(sessionId) {
     sessionToolRegistries.set(sessionId, {
       getTablesCalled: false,
       getDomainIndexCalled: false,
-      slicedDomains: new Set(),       // 已通过 get_sliced_index 加载过的域 ID
+      slicedDomains: new Set(), // 已通过 get_sliced_index 加载过的域 ID
       tableSchema: new Set(),
-      // get_table_ddl 注册表：tableName -> Set<'short=0'|'short=1'>
-      // 必须按 (table, short) 组合判断重复，因为 short=0(完整DDL含索引/外键) 与 short=1(仅列定义) 返回内容不同
-      tableDdl: new Map(),
+      // get_table_ddl 注册表：v4 起改为 Set<tableName>,只按表名去重
+      // 关联/外键信息应通过 get_table_schema (virtual_associations) 获取,不应重复查 ddl 补充
+      tableDdl: new Set(),
       termConfirmed: new Set(),
+      // request_user_choice 注册表：key = id (uc_xxx) —— 记录已问过哪些问题
+      // 用于 checklist 显示 + 拦截完全相同 (question, options) 组合的重复调用（Q-09 = B）
+      userChoiceAsked: new Map(), // id -> {question, options, multiSelect, header, signature}
     });
   }
   return sessionToolRegistries.get(sessionId);
@@ -208,31 +368,25 @@ function getOrCreateRegistry(sessionId) {
 
 function normalizeTableNames(arr) {
   if (!Array.isArray(arr)) return [];
-  return [...new Set(arr.filter(n => typeof n === 'string' && n.trim()))].sort();
+  return [
+    ...new Set(arr.filter((n) => typeof n === "string" && n.trim())),
+  ].sort();
 }
 
 function buildChecklist(reg) {
-  if (!reg) return '（空）';
-  const domainIndexFlag = reg.getDomainIndexCalled ? '已调用' : '未调用';
-  const slicedDomainsList = [...reg.slicedDomains].sort().join(', ') || '无';
-  const schemaList = [...reg.tableSchema].sort().join(', ') || '无';
-  const ddlShort0 = [];
-  const ddlShort1 = [];
-  for (const [t, shorts] of reg.tableDdl.entries()) {
-    if (shorts.has('short=0')) ddlShort0.push(t);
-    if (shorts.has('short=1')) ddlShort1.push(t);
-  }
-  const ddlShort0List = ddlShort0.sort().join(', ') || '无';
-  const ddlShort1List = ddlShort1.sort().join(', ') || '无';
-  const tablesFlag = reg.getTablesCalled ? '已调用' : '未调用';
+  if (!reg) return "（空）";
+  const domainIndexFlag = reg.getDomainIndexCalled ? "已调用" : "未调用";
+  const slicedDomainsList = [...reg.slicedDomains].sort().join(", ") || "无";
+  const schemaList = [...reg.tableSchema].sort().join(", ") || "无";
+  const ddlList = [...reg.tableDdl].sort().join(", ") || "无";
+  const tablesFlag = reg.getTablesCalled ? "已调用" : "未调用";
   return [
     `- get_domain_index: ${domainIndexFlag}`,
     `- get_sliced_index 已覆盖的域: ${slicedDomainsList}`,
     `- get_tables: ${tablesFlag}`,
     `- 已获取 field_config 的表: ${schemaList}`,
-    `- 已获取 DDL (short=0, 完整含索引/外键) 的表: ${ddlShort0List}`,
-    `- 已获取 DDL (short=1, 仅列定义) 的表: ${ddlShort1List}`,
-  ].join('\n');
+    `- 已获取 DDL 的表: ${ddlList}`,
+  ].join("\n");
 }
 
 /**
@@ -247,29 +401,41 @@ function buildChecklist(reg) {
 function buildToolCallChecklistMessage(reg) {
   if (!reg) return null;
   const parts = [];
-  if (reg.getDomainIndexCalled) parts.push('get_domain_index:✓');
-  if (reg.getTablesCalled) parts.push('get_tables:✓');
-  if (reg.slicedDomains.size > 0) parts.push(`get_sliced_index:[${[...reg.slicedDomains].sort().join(',')}]`);
-  if (reg.tableSchema.size > 0) parts.push(`get_table_schema:[${[...reg.tableSchema].sort().join(',')}]`);
+  if (reg.getDomainIndexCalled) parts.push("get_domain_index:✓");
+  if (reg.getTablesCalled) parts.push("get_tables:✓");
+  if (reg.slicedDomains.size > 0)
+    parts.push(`get_sliced_index:[${[...reg.slicedDomains].sort().join(",")}]`);
+  if (reg.tableSchema.size > 0)
+    parts.push(`get_table_schema:[${[...reg.tableSchema].sort().join(",")}]`);
   if (reg.tableDdl.size > 0) {
-    const s0 = [];
-    const s1 = [];
-    for (const [t, shorts] of reg.tableDdl.entries()) {
-      if (shorts.has('short=0')) s0.push(t);
-      if (shorts.has('short=1')) s1.push(t);
-    }
-    if (s0.length > 0) parts.push(`get_table_ddl(s0):[${s0.sort().join(',')}]`);
-    if (s1.length > 0) parts.push(`get_table_ddl(s1):[${s1.sort().join(',')}]`);
+    // v4: 不再区分 short,只列已查询表名
+    parts.push(`get_table_ddl:[${[...reg.tableDdl].sort().join(",")}]`);
   }
   if (reg.termConfirmed.size > 0) {
-    const items = [...reg.termConfirmed].map(s => s.replace('::', '@'));
-    parts.push(`request_tag_confirmation:[${items.join(',')}]`);
+    const items = [...reg.termConfirmed].map((s) => s.replace("::", "@"));
+    parts.push(`request_tag_confirmation:[${items.join(",")}]`);
+  }
+  if (reg.userChoiceAsked && reg.userChoiceAsked.size > 0) {
+    // 显示所有 userChoiceAsked 项（id + question 预览 50 字符），不截断
+    // 不同 question 都允许，重复由 checkAndFilterDuplicateCall 拦截
+    const items = [...reg.userChoiceAsked.entries()].map(([id, v]) => {
+      const q = String(v?.question || "")
+        .slice(0, 50)
+        .replace(/[|:]/g, " ");
+      return `${id}:"${q}"`;
+    });
+    parts.push(`request_user_choice:[${items.join("|")}]`);
   }
   if (parts.length === 0) return null;
   return {
-    role: 'system',
-    content: `[已调用] ${parts.join(' | ')}\n\n` +
-      `核对清单：相同工具+相同关键参数（table_names/domain_ids/term+table）请直接复用历史结果，避免重复调用。`
+    role: "system",
+    content:
+      `🚫 【冻结工具清单 - 绝对禁止重复调用】\n` +
+      `[已调用] ${parts.join(" | ")}\n\n` +
+      `【铁律】以上工具的结果已在你的上下文中。\n` +
+      `【禁止】任何"为了保险再调一次"、"再确认"、"重新看看"等重复调用。\n` +
+      `【禁止】在 SQL 生成阶段再次调用这些工具——会被程序拦截并造成 token 浪费。\n` +
+      `【判定】若信息已全 → 立即输出 SQL，不要再调用任何工具。`,
   };
 }
 
@@ -283,46 +449,46 @@ function checkAndFilterDuplicateCall(toolName, args, sessionId) {
   const reg = getOrCreateRegistry(sessionId);
   if (!reg) return { block: false, args };
 
-  if (toolName === 'get_tables') {
+  if (toolName === "get_tables") {
     if (reg.getTablesCalled) {
       return {
         block: true,
         message:
           `⚠️ 【重复调用已被程序拦截】get_tables 在本会话中已被调用过一次，table_index 数据已存在于你的上下文中。\n\n` +
           `📋 已有信息清单:\n${buildChecklist(reg)}\n\n` +
-          `请直接复用已有信息，禁止再次调用 get_tables。`
+          `请直接复用已有信息，禁止再次调用 get_tables。`,
       };
     }
     return { block: false, args };
   }
 
-  if (toolName === 'get_domain_index') {
+  if (toolName === "get_domain_index") {
     if (reg.getDomainIndexCalled) {
       return {
         block: true,
         message:
           `⚠️ 【重复调用已被程序拦截】get_domain_index 在本会话中已被调用过一次，业务域列表已存在于你的上下文中。\n\n` +
           `📋 已有信息清单:\n${buildChecklist(reg)}\n\n` +
-          `请直接复用已有域列表，禁止再次调用 get_domain_index。`
+          `请直接复用已有域列表，禁止再次调用 get_domain_index。`,
       };
     }
     return { block: false, args };
   }
 
-  if (toolName === 'get_sliced_index') {
+  if (toolName === "get_sliced_index") {
     const requestedDomains = normalizeTableNames(args.domain_ids);
     if (requestedDomains.length === 0) return { block: false, args };
-    const dupes = requestedDomains.filter(d => reg.slicedDomains.has(d));
-    const fresh = requestedDomains.filter(d => !reg.slicedDomains.has(d));
+    const dupes = requestedDomains.filter((d) => reg.slicedDomains.has(d));
+    const fresh = requestedDomains.filter((d) => !reg.slicedDomains.has(d));
 
     if (dupes.length === requestedDomains.length) {
       return {
         block: true,
         message:
-          `⚠️ 【重复调用已被程序拦截】get_sliced_index 中所有域在本会话中都已被加载过: ${dupes.join(', ')}。\n\n` +
+          `⚠️ 【重复调用已被程序拦截】get_sliced_index 中所有域在本会话中都已被加载过: ${dupes.join(", ")}。\n\n` +
           `📋 已有信息清单:\n${buildChecklist(reg)}\n\n` +
           `请直接复用已有信息，禁止重复加载相同域。\n` +
-          `如需加载尚未覆盖的域，请重新传入只包含新域的 domain_ids 参数。`
+          `如需加载尚未覆盖的域，请重新传入只包含新域的 domain_ids 参数。`,
       };
     }
     if (dupes.length > 0) {
@@ -330,28 +496,28 @@ function checkAndFilterDuplicateCall(toolName, args, sessionId) {
         block: false,
         args: { ...args, domain_ids: fresh },
         notice:
-          `ℹ️ 自动过滤已加载域: ${dupes.join(', ')}。仅对 [${fresh.join(', ')}] 执行 get_sliced_index。\n` +
-          `📋 已有信息清单:\n${buildChecklist(reg)}`
+          `ℹ️ 自动过滤已加载域: ${dupes.join(", ")}。仅对 [${fresh.join(", ")}] 执行 get_sliced_index。\n` +
+          `📋 已有信息清单:\n${buildChecklist(reg)}`,
       };
     }
     return { block: false, args };
   }
 
-  if (toolName === 'get_table_schema') {
+  if (toolName === "get_table_schema") {
     const requested = normalizeTableNames(args.table_names);
     if (requested.length === 0) return { block: false, args };
     const target = reg.tableSchema;
-    const dupes = requested.filter(n => target.has(n));
-    const fresh = requested.filter(n => !target.has(n));
+    const dupes = requested.filter((n) => target.has(n));
+    const fresh = requested.filter((n) => !target.has(n));
 
     if (dupes.length === requested.length) {
       return {
         block: true,
         message:
-          `⚠️ 【重复调用已被程序拦截】工具 get_table_schema 中的所有表在本会话中都已被获取过: ${dupes.join(', ')}。\n\n` +
+          `⚠️ 【重复调用已被程序拦截】工具 get_table_schema 中的所有表在本会话中都已被获取过: ${dupes.join(", ")}。\n\n` +
           `📋 已有信息清单:\n${buildChecklist(reg)}\n\n` +
           `请直接复用已有信息，禁止重复调用 get_table_schema。\n` +
-          `如需获取尚未在清单中的表，请重新传入只包含新表的 table_names 参数。`
+          `如需获取尚未在清单中的表，请重新传入只包含新表的 table_names 参数。`,
       };
     }
     if (dupes.length > 0) {
@@ -359,73 +525,91 @@ function checkAndFilterDuplicateCall(toolName, args, sessionId) {
         block: false,
         args: { ...args, table_names: fresh },
         notice:
-          `ℹ️ 自动过滤重复表（已在清单中）: ${dupes.join(', ')}。仅对 [${fresh.join(', ')}] 执行 get_table_schema。\n` +
-          `📋 已有信息清单:\n${buildChecklist(reg)}`
+          `ℹ️ 自动过滤重复表（已在清单中）: ${dupes.join(", ")}。仅对 [${fresh.join(", ")}] 执行 get_table_schema。\n` +
+          `📋 已有信息清单:\n${buildChecklist(reg)}`,
       };
     }
     return { block: false, args };
   }
 
-  if (toolName === 'get_table_ddl') {
-    // get_table_ddl 必须按 (table, short) 组合判断重复：
-    //   short=0 → 完整 DDL 含索引/外键；short=1 → 仅列定义。两种返回内容不同，不应相互替代。
+  if (toolName === "get_table_ddl") {
+    // v4: 去掉 short 维度,只按表名去重
+    // 关联/外键信息应通过 get_table_schema (virtual_associations) 获取,
+    // 不应通过重复 get_table_ddl 来补充
     const requested = normalizeTableNames(args.table_names);
     if (requested.length === 0) return { block: false, args };
-    const short = (args.short === 0 || args.short === '0') ? 0 : 1;
-    const shortKey = `short=${short}`;
-    const dupes = requested.filter(n => {
-      const shorts = reg.tableDdl.get(n);
-      return shorts && shorts.has(shortKey);
-    });
-    const fresh = requested.filter(n => {
-      const shorts = reg.tableDdl.get(n);
-      return !shorts || !shorts.has(shortKey);
-    });
+    const dupes = requested.filter((n) => reg.tableDdl.has(n));
+    const fresh = requested.filter((n) => !reg.tableDdl.has(n));
 
     if (dupes.length === requested.length) {
       return {
         block: true,
         message:
-          `⚠️ 【重复调用已被程序拦截】工具 get_table_ddl 中所有 (table, ${shortKey}) 组合在本会话中都已被获取过: ${dupes.join(', ')}。\n\n` +
+          `⚠️ 【重复调用已被程序拦截】工具 get_table_ddl 中所有表在本会话中都已被获取过: ${dupes.join(", ")}。\n\n` +
           `📋 已有信息清单:\n${buildChecklist(reg)}\n\n` +
           `请直接复用已有信息，禁止重复调用 get_table_ddl。\n` +
-          `如需获取尚未在清单中的 (table, short) 组合，请重新传入只包含新表的 table_names 参数；` +
-          `如需 short=0/1 之外的版本（如已用 short=1 查过，但需要 short=0 的完整 DDL），需明确传入 short=0。`
+          `如需关联/外键信息，请使用 get_table_schema（其返回的 virtual_associations 含 join_condition）。`,
       };
     }
     if (dupes.length > 0) {
       return {
         block: false,
-        args: { ...args, table_names: fresh, short },
+        args: { ...args, table_names: fresh },
         notice:
-          `ℹ️ 自动过滤重复 (table, ${shortKey}) 组合（已在清单中）: ${dupes.join(', ')}。仅对 [${fresh.join(', ')}] 执行 get_table_ddl。\n` +
-          `📋 已有信息清单:\n${buildChecklist(reg)}`
+          `ℹ️ 自动过滤重复表（已在清单中）: ${dupes.join(", ")}。仅对 [${fresh.join(", ")}] 执行 get_table_ddl。\n` +
+          `📋 已有信息清单:\n${buildChecklist(reg)}`,
       };
     }
     return { block: false, args };
   }
 
-  if (toolName === 'request_tag_confirmation') {
+  if (toolName === "request_tag_confirmation") {
     const termsRaw = args.term;
-    const terms = Array.isArray(termsRaw) ? termsRaw : (termsRaw ? [termsRaw] : []);
-    const table = args.table || '';
-    const dupes = terms.filter(t => reg.termConfirmed.has(`${t}::${table}`));
-    const fresh = terms.filter(t => !reg.termConfirmed.has(`${t}::${table}`));
+    const terms = Array.isArray(termsRaw)
+      ? termsRaw
+      : termsRaw
+        ? [termsRaw]
+        : [];
+    const table = args.table || "";
+    const dupes = terms.filter((t) => reg.termConfirmed.has(`${t}::${table}`));
+    const fresh = terms.filter((t) => !reg.termConfirmed.has(`${t}::${table}`));
     if (terms.length === 0) return { block: false, args };
 
     if (dupes.length === terms.length) {
       return {
         block: true,
         message:
-          `⚠️ 【重复调用已被程序拦截】request_tag_confirmation 中所有术语（table=${table}）在本会话中都已请求过确认: ${terms.join(', ')}。\n` +
-          `请勿重复请求。`
+          `⚠️ 【重复调用已被程序拦截】request_tag_confirmation 中所有术语（table=${table}）在本会话中都已请求过确认: ${terms.join(", ")}。\n` +
+          `请勿重复请求。`,
       };
     }
     if (dupes.length > 0) {
       return {
         block: false,
         args: { ...args, term: fresh },
-        notice: `ℹ️ 自动过滤已确认术语（table=${table}）: ${dupes.join(', ')}。仅对新术语 [${fresh.join(', ')}] 执行。`
+        notice: `ℹ️ 自动过滤已确认术语（table=${table}）: ${dupes.join(", ")}。仅对新术语 [${fresh.join(", ")}] 执行。`,
+      };
+    }
+    return { block: false, args };
+  }
+
+  if (toolName === "request_user_choice") {
+    // Q-09 = B：拦截完全相同 (question, options, multi_select) 组合的重复调用
+    // 不同问题/不同选项都允许——只拦"完全相同"，与 request_tag_confirmation 同构
+    const sig = computeUserChoiceSignature(args);
+    let isDupe = false;
+    for (const [, v] of reg.userChoiceAsked) {
+      if (v && v.signature === sig) {
+        isDupe = true;
+        break;
+      }
+    }
+    if (isDupe) {
+      return {
+        block: true,
+        message:
+          `⚠️ 【重复调用已被程序拦截】request_user_choice 中完全相同的问题/选项/类型在本会话中已被问过: "${String(args?.question || "").slice(0, 80)}"。\n` +
+          `请基于用户上次回复继续生成 SQL；如需追问不同问题，请使用不同 question 或 options。`,
       };
     }
     return { block: false, args };
@@ -436,32 +620,102 @@ function checkAndFilterDuplicateCall(toolName, args, sessionId) {
 
 /**
  * 记录一次成功执行的工具调用。必须在工具真正执行成功后调用。
+ *
+ * @param {string} toolName - 工具名
+ * @param {object} args - LLM 传入的 args
+ * @param {string} sessionId - 会话 ID
+ * @param {string|null} [overrideId=null] - 覆盖 id（request_user_choice 用，从 tool.func 返回的 {id, marker, payload} 中提取）
+ *   用于保证 registry 内 id 与 marker 内 id 一致（reviewer #2 修复）
  */
-function recordToolCall(toolName, args, sessionId) {
+function recordToolCall(toolName, args, sessionId, overrideId = null) {
   const reg = getOrCreateRegistry(sessionId);
   if (!reg) return;
-  if (toolName === 'get_tables') {
+  if (toolName === "get_tables") {
     reg.getTablesCalled = true;
-  } else if (toolName === 'get_domain_index') {
+  } else if (toolName === "get_domain_index") {
     reg.getDomainIndexCalled = true;
-  } else if (toolName === 'get_sliced_index') {
-    normalizeTableNames(args.domain_ids).forEach(d => reg.slicedDomains.add(d));
-  } else if (toolName === 'get_table_schema') {
-    normalizeTableNames(args.table_names).forEach(n => reg.tableSchema.add(n));
-  } else if (toolName === 'get_table_ddl') {
-    // 按 (table, short) 组合记录，允许同一表同时记录 short=0 和 short=1
-    const short = (args.short === 0 || args.short === '0') ? 0 : 1;
-    const shortKey = `short=${short}`;
-    normalizeTableNames(args.table_names).forEach(n => {
-      if (!reg.tableDdl.has(n)) reg.tableDdl.set(n, new Set());
-      reg.tableDdl.get(n).add(shortKey);
-    });
-  } else if (toolName === 'request_tag_confirmation') {
+  } else if (toolName === "get_sliced_index") {
+    normalizeTableNames(args.domain_ids).forEach((d) =>
+      reg.slicedDomains.add(d),
+    );
+  } else if (toolName === "get_table_schema") {
+    normalizeTableNames(args.table_names).forEach((n) =>
+      reg.tableSchema.add(n),
+    );
+  } else if (toolName === "get_table_ddl") {
+    // v4: 改为只存表名,不再区分 short
+    normalizeTableNames(args.table_names).forEach((n) => reg.tableDdl.add(n));
+  } else if (toolName === "request_tag_confirmation") {
     const termsRaw = args.term;
-    const terms = Array.isArray(termsRaw) ? termsRaw : (termsRaw ? [termsRaw] : []);
-    const table = args.table || '';
-    terms.forEach(t => reg.termConfirmed.add(`${t}::${table}`));
+    const terms = Array.isArray(termsRaw)
+      ? termsRaw
+      : termsRaw
+        ? [termsRaw]
+        : [];
+    const table = args.table || "";
+    terms.forEach((t) => reg.termConfirmed.add(`${t}::${table}`));
+  } else if (toolName === "request_user_choice") {
+    // v3: args.questions[] 数组（新契约）
+    //   - 多个 question 合并为 composite signature 防同 args 重复
+    //   - 用 overrideId（来自 tool.func 的 {ids:[...]}）作主 id
+    // 兼容旧版 args（万一 LLM 还用旧 schema）
+    const id = overrideId || (args && args.id) || "uc_unknown_" + Date.now();
+    const questions = Array.isArray(args?.questions) ? args.questions : null;
+    let signature,
+      primaryQuestion,
+      primaryOptions,
+      primaryMultiSelect,
+      primaryHeader;
+    if (questions && questions.length > 0) {
+      signature = questions
+        .map(
+          (q) =>
+            `${String(q?.question || "").trim()}|${(Array.isArray(q?.options) ? q.options : []).join("||")}|${!!q?.multi_select}`,
+        )
+        .join(";;;");
+      primaryQuestion = questions[0]?.question || "";
+      primaryOptions = Array.isArray(questions[0]?.options)
+        ? questions[0].options
+        : [];
+      primaryMultiSelect = !!questions[0]?.multi_select;
+      primaryHeader = questions[0]?.header || "";
+    } else {
+      // 兼容旧版
+      primaryOptions = Array.isArray(args?.options) ? args.options : [];
+      primaryQuestion = args?.question || "";
+      primaryMultiSelect = !!args?.multi_select;
+      primaryHeader = args?.header || "";
+      signature = `${String(primaryQuestion).trim()}|${primaryOptions.join("||")}|${primaryMultiSelect}`;
+    }
+    reg.userChoiceAsked.set(id, {
+      question: primaryQuestion,
+      options: primaryOptions,
+      multiSelect: primaryMultiSelect,
+      header: primaryHeader,
+      questions: questions || undefined, // v3 新字段，标记新契约
+      signature,
+    });
   }
+}
+
+/**
+ * 计算 request_user_choice 的 signature（用于 checkAndFilterDuplicateCall）
+ * v3: 支持 questions[] 数组（composite signature）
+ */
+function computeUserChoiceSignature(args) {
+  const questions = Array.isArray(args?.questions) ? args.questions : null;
+  if (questions && questions.length > 0) {
+    return questions
+      .map(
+        (q) =>
+          `${String(q?.question || "").trim()}|${(Array.isArray(q?.options) ? q.options : []).join("||")}|${!!q?.multi_select}`,
+      )
+      .join(";;;");
+  }
+  // 兼容旧版
+  const question = String(args?.question || "").trim();
+  const options = Array.isArray(args?.options) ? args.options : [];
+  return `${question}|${options.join("||")}|${!!args?.multi_select}`;
 }
 
 /**
@@ -470,7 +724,7 @@ function recordToolCall(toolName, args, sessionId) {
 export function clearSessionRegistry(sessionId) {
   if (!sessionId) return;
   sessionToolRegistries.delete(sessionId);
-  logger.info('Cleared tool call registry for session', { sessionId });
+  logger.info("Cleared tool call registry for session", { sessionId });
 }
 
 /**
@@ -478,12 +732,137 @@ export function clearSessionRegistry(sessionId) {
  */
 export function getSessionChecklist(sessionId) {
   const reg = getOrCreateRegistry(sessionId);
-  if (!reg) return '（无 sessionId）';
+  if (!reg) return "（无 sessionId）";
   return buildChecklist(reg);
 }
 
-function queueLog(content, immediate = false) {
-  LOG_BUFFER.push(content);
+/**
+ * 折叠已消费的 get_sliced_index tool result，降低已消费历史区的 token 开销与注意力稀释。
+ *
+ * 折叠策略：
+ *   - "当前消费区"（最后一个含 tool_calls 的 assistant 及其之后）不折叠，LLM 需完整信息选表
+ *   - "已消费历史区"（该 assistant 之前）：用精简版卡片替换，去掉 related_tables
+ *     （schema 的 virtual_associations 可替代），保留 name/description/tags/business_constraints/business_rules
+ *     （business_rules/constraints 与 field_config 不完全一致，部分表 field_config 为空）
+ *
+ * 折叠边界：只折叠 messages 中"最后一个含 tool_calls 的 assistant 之前"的 tool 消息（已消费历史区）。
+ *   - 之后的 tool result 属于当前消费区，即将被下一轮 LLM 消费，必须完整
+ *
+ * 缓存：单请求级 cache-aside。foldedCache 由调用方传入，作用域为单次 /generate 调用。
+ *   - key = tool_call_id，value = 折叠后 content
+ *   - 缓存命中直接用，丢失则重新加载原始数据折叠并写入缓存
+ *   - 函数作用域天然隔离多用户，不可能窜
+ *
+ * DeepSeek thinking_mode 协议兼容性：
+ *   - 只改 tool 消息的 content 字段，不改 role / tool_call_id 结构
+ *   - assistant.tool_calls 和 reasoning_content 保持不变（协议要求完整回传）
+ *
+ * @param {Array} messages - 累积的 messages 数组
+ * @param {Map} foldedCache - 折叠缓存（单请求级，由调用方创建并传入）
+ * @returns {Array} 折叠后的新数组（不修改原数组）
+ */
+async function compactConsumedToolResults(messages, foldedCache) {
+  if (!Array.isArray(messages) || messages.length === 0 || !foldedCache)
+    return messages;
+
+  // 找到最后一个有 tool_calls 的 assistant 位置
+  let lastToolCallIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (
+      messages[i].role === "assistant" &&
+      messages[i].tool_calls &&
+      messages[i].tool_calls.length > 0
+    ) {
+      lastToolCallIdx = i;
+      break;
+    }
+  }
+  // 没有历史 tool_call，或只有当前轮（lastToolCallIdx=0 时前面无历史）→ 不折叠
+  if (lastToolCallIdx <= 0) return messages;
+
+  // 构建 tool_call_id → {toolName, args} 映射（只看 lastToolCallIdx 之前的 assistant）
+  const toolCallInfo = new Map();
+  for (let i = 0; i < lastToolCallIdx; i++) {
+    const m = messages[i];
+    if (m.role === "assistant" && m.tool_calls) {
+      for (const tc of m.tool_calls) {
+        if (tc.id && tc.function?.name) {
+          let args = {};
+          try {
+            args = JSON.parse(tc.function.arguments || "{}");
+          } catch {}
+          toolCallInfo.set(tc.id, { name: tc.function.name, args });
+        }
+      }
+    }
+  }
+
+  let compactedCount = 0;
+  const result = [];
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i];
+
+    // 仅折叠 lastToolCallIdx 之前的 tool 消息
+    if (i >= lastToolCallIdx || m.role !== "tool") {
+      result.push(m);
+      continue;
+    }
+
+    const info = m.tool_call_id ? toolCallInfo.get(m.tool_call_id) : null;
+    if (!info || info.name !== "get_sliced_index") {
+      result.push(m);
+      continue;
+    }
+
+    // cache-aside: 命中直接用
+    if (foldedCache.has(m.tool_call_id)) {
+      result.push({ ...m, content: foldedCache.get(m.tool_call_id) });
+      compactedCount++;
+      continue;
+    }
+
+    // 缓存丢失：从 tool_calls 参数提取 domain_ids，重新加载原始数据折叠
+    const domainIds = info.args?.domain_ids;
+    if (!Array.isArray(domainIds) || domainIds.length === 0) {
+      // 参数解析失败，不折叠（保持原 content）
+      result.push(m);
+      continue;
+    }
+
+    try {
+      const sliced = await sliceTableIndexByDomains(domainIds);
+      if (!sliced.tables || sliced.tables.length === 0) {
+        result.push(m);
+        continue;
+      }
+      const foldedContent = formatTableInfoCompact(sliced.tables);
+      foldedCache.set(m.tool_call_id, foldedContent);
+      result.push({ ...m, content: foldedContent });
+      compactedCount++;
+    } catch (e) {
+      logger.warn("compactConsumedToolResults: fold failed, keep original", {
+        tool_call_id: m.tool_call_id,
+        error: e.message,
+      });
+      result.push(m);
+    }
+  }
+
+  if (compactedCount > 0) {
+    logger.debug("Compacted consumed tool results", {
+      compactedCount,
+      lastToolCallIdx,
+      totalMessages: messages.length,
+    });
+  }
+
+  return result;
+}
+
+function queueLog(content, immediate = false, username = null) {
+  // username 由调用方（generateSQLWithLangChainStreamGen_BAK）注入，
+  // 写到 LOG_BUFFER 时一起打包，flushLogs 按用户分组聚合后再写盘
+  LOG_BUFFER.push({ username, content });
   if (immediate) {
     if (flushTimer) {
       clearTimeout(flushTimer);
@@ -497,16 +876,19 @@ function queueLog(content, immediate = false) {
 
 function getProviderConfig(provider, model) {
   const configs = {
-    openai: { baseURL: 'https://api.openai.com/v1', model: 'gpt-4o' },
-    deepseek: { baseURL: 'https://api.deepseek.com', model: 'deepseek-v4-flash' },
-    minimax: { baseURL: 'https://api.minimax.chat/v1', model: 'abab6.5s-chat' },
-    ollama: { baseURL: 'http://localhost:11434', model: 'llama3.2' }
+    openai: { baseURL: "https://api.openai.com/v1", model: "gpt-4o" },
+    deepseek: {
+      baseURL: "https://api.deepseek.com",
+      model: "deepseek-v4-flash",
+    },
+    minimax: { baseURL: "https://api.minimax.chat/v1", model: "abab6.5s-chat" },
+    ollama: { baseURL: "http://localhost:11434", model: "llama3.2" },
   };
   const cfg = configs[provider];
   if (!cfg) throw new Error(`不支持的provider: ${provider}`);
   return {
     baseURL: cfg.baseURL,
-    llmModel: model || cfg.model
+    llmModel: model || cfg.model,
   };
 }
 
@@ -514,112 +896,164 @@ function saveMessagesToDb(sessionId, messages) {
   try {
     const db = getDb();
     const messagesJson = JSON.stringify(messages);
-    
+
     // 异步计算 token 数
     const messageTokens = countMessagesTokens(messages);
-    
-    const existing = db.prepare('SELECT id FROM llm_messages WHERE session_id = ?').get(sessionId);
+
+    const existing = db
+      .prepare("SELECT id FROM llm_messages WHERE session_id = ?")
+      .get(sessionId);
     if (existing) {
-      db.prepare('UPDATE llm_messages SET messages = ?, message_tokens = ?, updated_at = CURRENT_TIMESTAMP WHERE session_id = ?')
-        .run(messagesJson, messageTokens, sessionId);
+      db.prepare(
+        "UPDATE llm_messages SET messages = ?, message_tokens = ?, updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
+      ).run(messagesJson, messageTokens, sessionId);
     } else {
-      db.prepare('INSERT INTO llm_messages (session_id, messages, message_tokens) VALUES (?, ?, ?)')
-        .run(sessionId, messagesJson, messageTokens);
+      db.prepare(
+        "INSERT INTO llm_messages (session_id, messages, message_tokens) VALUES (?, ?, ?)",
+      ).run(sessionId, messagesJson, messageTokens);
     }
-    logger.debug('Saved messages to database', { sessionId, messageCount: messages.length, messageTokens });
+    logger.debug("Saved messages to database", {
+      sessionId,
+      messageCount: messages.length,
+      messageTokens,
+    });
   } catch (e) {
-    logger.error('Failed to save messages to database', { error: e.message });
+    logger.error("Failed to save messages to database", { error: e.message });
   }
 }
 
 export function loadMessagesFromDb(sessionId) {
   try {
     const db = getDb();
-    const record = db.prepare('SELECT messages, message_tokens FROM llm_messages WHERE session_id = ?').get(sessionId);
+    const record = db
+      .prepare(
+        "SELECT messages, message_tokens FROM llm_messages WHERE session_id = ?",
+      )
+      .get(sessionId);
     if (record && record.messages) {
       return {
         messages: JSON.parse(record.messages),
-        messageTokens: record.message_tokens || 0
+        messageTokens: record.message_tokens || 0,
       };
     }
     return null;
   } catch (e) {
-    logger.error('Failed to load messages from database', { error: e.message });
+    logger.error("Failed to load messages from database", { error: e.message });
     return null;
   }
 }
 
 // 备份原有函数
-export async function* generateSQLWithLangChainStreamGen_BAK(question, history = '', signal, sessionId = null) {
-  logger.info('generateSQLWithLangChainStreamGen_BAK called (backup)', { question, historyLength: history?.length, sessionId });
-  
+// username: 触发该 LLM 调用的登录用户名（来自 req.user.username），
+//   透传到 queueLog 写到 logs/YYYY-MM-DD/{username}_llm.log。
+//   缺失/空值时统一走 _system_llm.log。
+//
+// [DEAD-CODE 2026-07-15] history 形参当前未在函数体内被消费：
+//   - query.js:325-339 的 historyText 装载逻辑已被临时禁用（`if (false && sessionId)`）
+//   - 真实 LLM context 历史来自 llm_messages.messages（loadMessagesFromDb）
+//   - 恢复方法：在本函数体内把 history 注入到 system message 或 user message 之前
+//     （注意：会影响 DeepSeek prefix cache，因为 system 变了）
+export async function* generateSQLWithLangChainStreamGen_BAK(
+  question,
+  history = "",
+  signal,
+  sessionId = null,
+  username = null,
+) {
+  logger.info("generateSQLWithLangChainStreamGen_BAK called (backup)", {
+    question,
+    historyLength: history?.length,
+    sessionId,
+    username,
+  });
+
   let config;
   try {
     config = getLlmConfig();
   } catch (e) {
-    throw new Error('LLM未配置，请先在配置面板设置LLM Provider和API Key');
+    throw new Error("LLM未配置，请先在配置面板设置LLM Provider和API Key");
   }
-  
+
   const { provider, apiKey, model } = config;
-  
+
   const providerCfg = getProviderConfig(provider, model);
   const baseURL = providerCfg.baseURL;
   const llmModel = providerCfg.llmModel;
-  
+
   const skillMd = await loadSkillMd();
 
-  const toolsDefinition = tools.map(t => ({
-    type: 'function',
+  const toolsDefinition = tools.map((t) => ({
+    type: "function",
     function: {
       name: t.name,
       description: t.description,
-      parameters: t.lc_kwargs.params || { type: 'object', properties: {}, required: [] }
-    }
+      parameters: t.lc_kwargs.params || {
+        type: "object",
+        properties: {},
+        required: [],
+      },
+    },
   }));
 
-  const toolsMap = new Map(tools.map(t => [t.name, t]));
+  const toolsMap = new Map(tools.map((t) => [t.name, t]));
   //const tableIndex = loadTableIndex();
 
   const systemMessage = `你是XTSQLQueryAgent。严格遵守以下规则，随后根据用户问题生成SQL。
-
-## SKILL.md 内容（只读）
 ${skillMd}`;
 
   let messages;
-  
+
   // 如果有 sessionId，尝试从数据库加载历史消息
   if (sessionId) {
     const savedResult = loadMessagesFromDb(sessionId);
     const savedMessages = savedResult?.messages;
     if (savedMessages && savedMessages.length > 0) {
-      logger.info('Loaded messages from database', { sessionId, messageCount: savedMessages.length });
+      logger.info("Loaded messages from database", {
+        sessionId,
+        messageCount: savedMessages.length,
+      });
       // 更新 system 消息（可能有更新）并添加新用户消息
       messages = savedMessages;
       // 替换系统消息（保持最新）
-      const systemIndex = messages.findIndex(m => m.role === 'system');
+      const systemIndex = messages.findIndex((m) => m.role === "system");
       if (systemIndex >= 0) {
-        messages[systemIndex] = { role: 'system', content: systemMessage };
+        messages[systemIndex] = { role: "system", content: systemMessage };
       }
       // 添加新的用户消息
-      messages.push({ role: 'user', content: question });
+      messages.push({ role: "user", content: question });
     } else {
       messages = [
-        { role: 'system', content: systemMessage },
-        { role: 'user', content: question }
+        { role: "system", content: systemMessage },
+        { role: "user", content: question },
       ];
     }
   } else {
     messages = [
-      { role: 'system', content: systemMessage },
-      { role: 'user', content: question }
+      { role: "system", content: systemMessage },
+      { role: "user", content: question },
     ];
   }
 
   const agentConfig = getAgentConfig();
-  let maxToolCalls = parseInt(agentConfig.agent_max_tool_calls || '30', 10);
-  let responseText = '';
-  let sql = '';
-  
+  let maxToolCalls = parseInt(agentConfig.agent_max_tool_calls || "30", 10);
+  // ★ 记录初始 maxToolCalls 用于 Round 编号：Round = 已用掉多少轮（从 0 开始递增）
+  //   历史 Bug：用 `31 - maxToolCalls` 计算，当 admin 配置 > 31 时出现负数（Round -9, -8, ...）
+  const maxToolCallsInitial = maxToolCalls;
+  let responseText = "";
+  let sql = "";
+  // ★ request_user_choice 终止信号：检测到该工具被调用后，跳出 while 循环
+  // v2 (2026-07-15): 改单值为数组，支持本轮多次调用（链式弹窗）
+  //   - LLM 可在一次推理中调 1-3 次 request_user_choice（详见 SKILL.md "多问题上限与链式语义"）
+  //   - 程序按 validToolCalls 原始顺序收集（不被并行执行乱序影响）
+  //   - 超过 MAX_USER_CHOICE_PER_TURN 的部分丢弃（SKILL.md 上限 = 3，前端弹窗链过长用户疲劳）
+  let pendingUserChoiceList = [];
+  const MAX_USER_CHOICE_PER_TURN = 3;
+
+  // 折叠缓存（单请求级）：跨 LLM 轮次复用折叠结果，请求结束自动 GC。
+  // 作用域为本次 /generate 调用，函数闭包天然隔离多用户，不可能窜。
+  // cache-aside: 缓存命中直接用，丢失则重新折叠并写入缓存。
+  const foldedCache = new Map();
+
   while (maxToolCalls > 0) {
     // 每轮 LLM 请求前，临时向 messages 追加"已调用工具清单"消息（仅用于本轮请求，不持久化）。
     // 目的：让 LLM 在生成 tool_call 决策前明确看到本会话已调用的工具 + 参数，
@@ -635,25 +1069,44 @@ ${skillMd}`;
     //   - 有 checklistMsg 时用 BEGIN/END 标记包裹，便于 grep 抓取
     if (checklistMsg) {
       queueLog(
-        `📋 [Round ${(31 - maxToolCalls)}] 本轮 LLM 请求末尾追加的『已调用工具清单』消息（仅本轮使用，不存 DB）:\n` +
-        `--- BEGIN checklist (requestMessages 末尾) ---\n` +
-        `${checklistMsg.content}\n` +
-        `--- END checklist ---`,
-        true
+        `📋 [Round ${maxToolCallsInitial - maxToolCalls}] 本轮 LLM 请求末尾追加的『已调用工具清单』消息（仅本轮使用，不存 DB）:\n` +
+          `--- BEGIN checklist (requestMessages 末尾) ---\n` +
+          `${checklistMsg.content}\n` +
+          `--- END checklist ---`,
+        true,
+        username,
       );
     } else {
-      queueLog(`📋 [Round ${(31 - maxToolCalls)}] 本轮 LLM 请求无『已调用工具清单』（首轮或无 sessionId）`, true);
+      queueLog(
+        `📋 [Round ${maxToolCallsInitial - maxToolCalls}] 本轮 LLM 请求无『已调用工具清单』（首轮或无 sessionId）`,
+        true,
+        username,
+      );
     }
 
-    // 剥离 assistant 消息中的 reasoning_content（模型 OUTPUT 字段，非 API 请求参数）
-    // 原因：DeepSeek 官方 API 不接收 reasoning_content 字段，调用时不应传入；
-    //       保留会占用大量 token 并污染 LLM 注意力（每轮回灌，Round N 累积 N-1 份旧 reasoning）
-    // 副作用：全剥后 LLM 失去"思考放哪"的隐式提示，可能把思考倒进 content 字段。
-    //       通过 system prompt 中的"思考放 reasoning_content"格式约束来缓解（见 systemMessage）。
-    // 保留：每轮 content（外部输出）+ tool_calls（行为信号）
-    // 剥除：所有 assistant 的 reasoning_content
-    const requestMessages = (checklistMsg ? [...messages, checklistMsg] : messages).map(m => {
-      if (m.role === 'assistant' && m.reasoning_content) {
+    // 剥离"无工具调用"的 assistant 消息中的 reasoning_content
+    //
+    // DeepSeek 官方规则（thinking_mode 文档）：
+    //   - 两个 user 之间如果未进行工具调用 → assistant 的 reasoning_content 无需参与上下文拼接
+    //     （传入 API 也会被忽略）
+    //   - 两个 user 之间如果进行了工具调用 → assistant 的 reasoning_content **必须**回传 API，
+    //     否则 API 返回 400 错误（"The `reasoning_content` in the thinking mode must be passed back to the API."）
+    //
+    // 历史教训：之前一刀切全剥，导致工具调用场景第二轮 LLM 请求报 400，
+    //   任务链断裂模型"断片"，后续思考/工具调用无法连贯执行。
+    //
+    // 保留：所有 tool_calls 的 assistant.reasoning_content（多轮推理链必需）
+    // 剥除：无 tool_calls 的 assistant.reasoning_content（节省 token + 减少注意力污染）
+    // 折叠已消费的 get_sliced_index tool result（去掉 related_tables，保留 rules/constraints），
+    // 降低已消费历史区的 token 开销与注意力稀释。不修改原 messages 数组。
+    const compactedMessages = await compactConsumedToolResults(
+      messages,
+      foldedCache,
+    );
+    const requestMessages = (
+      checklistMsg ? [...compactedMessages, checklistMsg] : compactedMessages
+    ).map((m) => {
+      if (m.role === "assistant" && m.reasoning_content && !m.tool_calls) {
         const { reasoning_content, ...rest } = m;
         return rest;
       }
@@ -666,19 +1119,27 @@ ${skillMd}`;
     // 注意：toolsMap（用于执行工具的查找）保持不变，仅影响 LLM 看到哪些工具可选
     const pruneReg = sessionId ? getOrCreateRegistry(sessionId) : null;
     const prunedTools = pruneReg
-      ? toolsDefinition.filter(t => {
-          if (t.function.name === 'get_domain_index' && pruneReg.getDomainIndexCalled) return false;
-          if (t.function.name === 'get_sliced_index' && pruneReg.slicedDomains.size > 0) return false;
+      ? toolsDefinition.filter((t) => {
+          if (
+            t.function.name === "get_domain_index" &&
+            pruneReg.getDomainIndexCalled
+          )
+            return false;
+          if (
+            t.function.name === "get_sliced_index" &&
+            pruneReg.slicedDomains.size > 0
+          )
+            return false;
           return true;
         })
       : toolsDefinition;
     const prunedNames = toolsDefinition
-      .filter(t => !prunedTools.includes(t))
-      .map(t => t.function.name);
+      .filter((t) => !prunedTools.includes(t))
+      .map((t) => t.function.name);
     if (prunedNames.length > 0) {
       queueLog(
-        `✂️ [Round ${(31 - maxToolCalls)}] 本轮 LLM 请求已剪枝工具（不再传入）: ${prunedNames.join(', ')}`,
-        true
+        `✂️ [Round ${maxToolCallsInitial - maxToolCalls}] 本轮 LLM 请求已剪枝工具（不再传入）: ${prunedNames.join(", ")}`,
+        true,
       );
     }
 
@@ -690,36 +1151,45 @@ ${skillMd}`;
       stream_options: { include_usage: true },
       tools: prunedTools,
       thinking: {
-        type: 'enabled'
-      }
+        type: "enabled",
+      },
     };
 
     if (signal?.aborted) {
-      yield { type: 'error', content: '请求已被用户中断' };
+      yield { type: "error", content: "请求已被用户中断" };
       return;
     }
 
-    queueLog('generateSQLWithLangChainStreamGen_BAK Round ' + (31 - maxToolCalls) + ' Request:\n' + JSON.stringify(requestParams, null, 2), true);
+    queueLog(
+      "generateSQLWithLangChainStreamGen_BAK Round " +
+        (maxToolCallsInitial - maxToolCalls) +
+        " Request:\n" +
+        JSON.stringify(requestParams, null, 2),
+      true,
+      username,
+    );
 
     try {
-      const tFetch = withTimeout(signal, LLM_TIMEOUTS.FETCH_MS, 'LLM fetch');
+      const tFetch = withTimeout(signal, LLM_TIMEOUTS.FETCH_MS, "LLM fetch");
       let fetchResponse;
       try {
         fetchResponse = await fetch(`${baseURL}/chat/completions`, {
-          method: 'POST',
+          method: "POST",
           headers: {
-            'Content-Type': 'application/json',
-            'Authorization': `Bearer ${apiKey}`
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${apiKey}`,
           },
           body: JSON.stringify(requestParams),
-          signal: tFetch.signal
+          signal: tFetch.signal,
         });
       } catch (e) {
-        if (e.name === 'AbortError' || /timeout/i.test(e.message || '')) {
+        if (e.name === "AbortError" || /timeout/i.test(e.message || "")) {
           if (tFetch.isExternalAbort()) {
-            throw e;  // 外部断开，原样抛出
+            throw e; // 外部断开，原样抛出
           }
-          throw new Error(`LLM 响应超时（>${LLM_TIMEOUTS.FETCH_MS / 1000}s），请稍后重试`);
+          throw new Error(
+            `LLM 响应超时（>${LLM_TIMEOUTS.FETCH_MS / 1000}s），请稍后重试`,
+          );
         }
         throw e;
       } finally {
@@ -734,61 +1204,89 @@ ${skillMd}`;
       // 流式处理响应
       const reader = fetchResponse.body.getReader();
       const decoder = new TextDecoder();
-      let buffer = '';
+      let buffer = "";
       const streamToolCalls = [];
-      responseText = '';
-      let reasoningContent = '';
-while (true) {
+      responseText = "";
+      let reasoningContent = "";
+      while (true) {
         let readResult;
         try {
           readResult = await withPromiseTimeout(
             () => reader.read(),
             signal,
             LLM_TIMEOUTS.READ_MS,
-            'LLM stream read',
-            () => reader.cancel().catch(() => {})  // 超时/取消时释放 stream 资源
+            "LLM stream read",
+            () => reader.cancel().catch(() => {}), // 超时/取消时释放 stream 资源
           );
         } catch (e) {
-          if (e.name === 'AbortError' || /timeout/i.test(e.message || '')) {
+          if (e.name === "AbortError" || /timeout/i.test(e.message || "")) {
             if (signal.aborted) {
-              throw e;  // 外部断开，原样抛出
+              throw e; // 外部断开，原样抛出
             }
-            throw new Error(`LLM 流式响应中断（>${LLM_TIMEOUTS.READ_MS / 1000}s 无新数据），请稍后重试`);
+            throw new Error(
+              `LLM 流式响应中断（>${LLM_TIMEOUTS.READ_MS / 1000}s 无新数据），请稍后重试`,
+            );
           }
           throw e;
         }
         const { done, value } = readResult;
 
         buffer += decoder.decode(value, { stream: !done });
-        const lines = buffer.split('\n');
+        const lines = buffer.split("\n");
         if (done) {
-          buffer = '';
+          buffer = "";
           break;
         } else {
-          buffer = lines.pop() || '';
+          buffer = lines.pop() || "";
         }
-        
+
         for (const line of lines) {
-          if (line.startsWith('data: ') && !line.includes('[DONE]')) {
+          if (line.startsWith("data: ") && !line.includes("[DONE]")) {
             try {
               const data = JSON.parse(line.slice(6));
               const usage = data.usage;
               if (usage) {
-                yield { type: 'usage', usage: { prompt_tokens: usage.prompt_tokens || 0, completion_tokens: usage.completion_tokens || 0, total_tokens: usage.total_tokens || 0 } };
+                // ★ DeepSeek prefix cache 命中率（默认开启）：
+                //   prompt_cache_hit_tokens - 命中缓存的 token 数（按缓存价计费）
+                //   prompt_cache_miss_tokens - 未命中 token 数（按原价计费）
+                // 不记录到 SSE 事件（前端不需要），仅写日志用于监控 prefix cache 实际效果。
+                const cacheHit = usage.prompt_cache_hit_tokens || 0;
+                const cacheMiss = usage.prompt_cache_miss_tokens || 0;
+                const cacheTotal = cacheHit + cacheMiss;
+                const hitRate =
+                  cacheTotal > 0
+                    ? ((cacheHit / cacheTotal) * 100).toFixed(1)
+                    : "0.0";
+                queueLog(
+                  `📊 [Round ${maxToolCallsInitial - maxToolCalls}] LLM usage: ` +
+                    `prompt=${usage.prompt_tokens || 0} completion=${usage.completion_tokens || 0} total=${usage.total_tokens || 0} | ` +
+                    `prefix_cache: hit=${cacheHit} miss=${cacheMiss} hit_rate=${hitRate}%`,
+                  true,
+                  username,
+                );
+                yield {
+                  type: "usage",
+                  usage: {
+                    prompt_tokens: usage.prompt_tokens || 0,
+                    completion_tokens: usage.completion_tokens || 0,
+                    total_tokens: usage.total_tokens || 0,
+                  },
+                };
               }
-              const content = data.choices?.[0]?.delta?.content || '';
+              const content = data.choices?.[0]?.delta?.content || "";
               if (content) {
                 responseText += content;
-                yield { type: 'chunk', content: content };
+                yield { type: "chunk", content: content };
               }
-                            // 提取 reasoning_content（DeepSeek API 要求）
-              const reasoning = data.choices?.[0]?.delta?.reasoning_content || '';
+              // 提取 reasoning_content（DeepSeek API 要求）
+              const reasoning =
+                data.choices?.[0]?.delta?.reasoning_content || "";
               if (reasoning) {
                 reasoningContent += reasoning;
                 // 实时 yield 思考过程 delta，避免长思考阶段前端长时间无输出
-                yield { type: 'reasoning_chunk', content: reasoning };
+                yield { type: "reasoning_chunk", content: reasoning };
               }
-              
+
               // 检查工具调用
               const toolCalls = data.choices?.[0]?.delta?.tool_calls;
               if (toolCalls && toolCalls.length > 0) {
@@ -799,8 +1297,8 @@ while (true) {
                     while (streamToolCalls.length <= toolIndex) {
                       streamToolCalls.push({
                         index: streamToolCalls.length,
-                        id: '',
-                        function: { name: '', arguments: '' }
+                        id: "",
+                        function: { name: "", arguments: "" },
                       });
                     }
 
@@ -819,12 +1317,16 @@ while (true) {
 
                     // 累积参数
                     if (tc.function?.arguments) {
-                      existing.function.arguments = (existing.function.arguments || '') + tc.function.arguments;
+                      existing.function.arguments =
+                        (existing.function.arguments || "") +
+                        tc.function.arguments;
                     }
                   }
                 }
               }
-            } catch (e) { logger.debug('JSON parse/split failed', { error: e.message }); }
+            } catch (e) {
+              logger.debug("JSON parse/split failed", { error: e.message });
+            }
           }
         }
       }
@@ -832,46 +1334,63 @@ while (true) {
       // 启发式后处理：从 responseText 中剥离被 LLM 误倒进 content 的 thinking
       // 背景：DeepSeek LLM 偶尔不遵守字段分离，把整段思考写进 content，导致前端"答案气泡"显示大段 thinking
       // 修复：流结束后检测并剥离（splitThinkingFromContent），把 thinking 追加到 reasoningContent
-      const { content: cleanContent, extraThinking } = splitThinkingFromContent(responseText);
+      const { content: cleanContent, extraThinking } =
+        splitThinkingFromContent(responseText);
       const finalResponseText = cleanContent;
       const finalReasoningContent = extraThinking
-        ? (reasoningContent ? reasoningContent + '\n\n' + extraThinking : extraThinking)
+        ? reasoningContent
+          ? reasoningContent + "\n\n" + extraThinking
+          : extraThinking
         : reasoningContent;
 
       // 如果发生了剥离，向前端发出 message_final 事件以更新 assistant 消息
       if (extraThinking) {
-        yield { type: 'message_final', content: finalResponseText, extraThinking };
+        yield {
+          type: "message_final",
+          content: finalResponseText,
+          extraThinking,
+        };
       }
 
       // 思考过程已在流式过程中实时 yield reasoning_chunk 给前端
       // 此处仅 yield reasoning_done 用于 DB 持久化（历史回显需要），UI 不再消费
       if (finalReasoningContent) {
-        yield { type: 'reasoning_done', content: `💭 LLM思考过程:\n${finalReasoningContent.slice(0, 10000)}` };
+        yield {
+          type: "reasoning_done",
+          content: `💭 LLM思考过程:\n${finalReasoningContent.slice(0, 10000)}`,
+        };
       }
 
       // 过滤出有实际工具名称的工具调用
-      const validToolCalls = streamToolCalls.filter(tc => tc.function?.name && tc.function.name.trim());
+      const validToolCalls = streamToolCalls.filter(
+        (tc) => tc.function?.name && tc.function.name.trim(),
+      );
 
       // 流式响应结束，输出工具调用日志
       for (const tc of validToolCalls) {
         const toolName = tc.function.name;
-        queueLog(`🔧 调用工具: ${toolName} 参数:${JSON.stringify(tc.function.arguments)}`, true);
+        queueLog(
+          `🔧 调用工具: ${toolName} 参数:${JSON.stringify(tc.function.arguments)}`,
+          true,
+        );
         let logMsg = `🔧 调用工具: ${toolName}`;
         try {
-          const parsedArgs = JSON.parse(tc.function.arguments || '{}');
+          const parsedArgs = JSON.parse(tc.function.arguments || "{}");
           if (Object.keys(parsedArgs).length > 0) {
             logMsg += `\n参数: ${JSON.stringify(parsedArgs)}`;
           }
-        } catch (e) { logger.debug('JSON parse/split failed', { error: e.message }); }
-        yield { type: 'tool', log: logMsg };
+        } catch (e) {
+          logger.debug("JSON parse/split failed", { error: e.message });
+        }
+        yield { type: "tool", log: logMsg };
       }
 
       // 保存 assistant 消息，需要包含 tool_calls
       // 使用清理后的 finalResponseText（剥离了 thinking）和 finalReasoningContent（追加了被剥离的 thinking）
       const assistantMsg = {
-        role: 'assistant',
-        content: finalResponseText || '',
-        reasoning_content: finalReasoningContent || '',
+        role: "assistant",
+        content: finalResponseText || "",
+        reasoning_content: finalReasoningContent || "",
       };
       if (validToolCalls.length > 0) {
         // 为每个 tool_call 确保有 id
@@ -880,19 +1399,19 @@ while (true) {
             tc.id = `call_${Date.now()}_${idx}`;
           }
         });
-        assistantMsg.tool_calls = validToolCalls.map(tc => ({
+        assistantMsg.tool_calls = validToolCalls.map((tc) => ({
           id: tc.id,
-          type: 'function',
+          type: "function",
           function: {
             name: tc.function.name,
-            arguments: tc.function.arguments || '{}'
-          }
+            arguments: tc.function.arguments || "{}",
+          },
         }));
       }
       messages.push(assistantMsg);
       // 同步一份到全局缓存（仅供开发期 GET /api/query/messages 调试接口使用）
       lastMessages = JSON.parse(JSON.stringify(messages));
-      
+
       // 保存到数据库（如果有 sessionId）
       if (sessionId) {
         saveMessagesToDb(sessionId, messages);
@@ -901,102 +1420,425 @@ while (true) {
       if (validToolCalls.length > 0) {
         // 阶段 1：同步预处理（参数解析 + 重复调用检查）
         // 必须在并行执行前一次性完成，避免同一会话内两个相同工具的检查互相穿透
+        // ★ 本轮可用的工具名集合（来自本轮实际发给 LLM 的 prunedTools）
+        //   一次性工具（get_domain_index / get_sliced_index）调用后被剪枝，从这里消失。
+        //   LLM 若仍"幻觉"调用被剪枝的工具 → 立即拦截，不进入执行阶段。
+        const availableToolNames = new Set(
+          prunedTools.map((t) => t.function.name),
+        );
         const prepared = validToolCalls.map((toolCall) => {
           const toolName = toolCall.function.name;
-          const toolArgs = toolCall.function.arguments || '{}';
-          const toolCallId = toolCall.id || `call_${Date.now()}_${validToolCalls.indexOf(toolCall)}`;
+          const toolArgs = toolCall.function.arguments || "{}";
+          const toolCallId =
+            toolCall.id ||
+            `call_${Date.now()}_${validToolCalls.indexOf(toolCall)}`;
           const tool = toolsMap.get(toolName);
-
+          let parseError = null;
           let parsedArgs = {};
+          let autoFixed = false;
           try {
             parsedArgs = JSON.parse(toolArgs);
           } catch (e) {
-            console.warn(`工具 ${toolName} 参数解析失败: ${e.message}, 参数: ${toolArgs}`);
+            // ★ 自动修复：仅对 request_user_choice 工具（自由文本字段易带裸 "）
+            //   其他工具按原逻辑报错，不动原始字符串
+            if (toolName === "request_user_choice") {
+              const repaired = fixBareQuotesInJsonArgs(toolArgs);
+              try {
+                parsedArgs = JSON.parse(repaired);
+                autoFixed = true;
+                console.warn(
+                  `工具 ${toolName} 参数自动修复成功（裸 " → ""），修复后: ${JSON.stringify(parsedArgs)}`,
+                );
+              } catch (e2) {
+                parseError = e.message;
+                console.warn(
+                  `工具 ${toolName} 参数解析失败且自动修复无效: ${e2.message}, 原参数: ${toolArgs}`,
+                );
+              }
+            } else {
+              parseError = e.message;
+              console.warn(
+                `工具 ${toolName} 参数解析失败: ${e.message}, 参数: ${toolArgs}`,
+              );
+            }
+          }
+
+          if (parseError) {
+            return {
+              toolCall,
+              toolName,
+              toolCallId,
+              tool: null,
+              execError: {
+                message:
+                  `🚫 【arguments 不是合法 JSON】工具 ${toolName} 的参数解析失败。\n` +
+                  `【原因】${parseError}\n` +
+                  `【常见错误】question/options 字符串内嵌入了未转义的 ASCII 双引号 \`"\`，会破坏 arguments JSON 语法。\n` +
+                  `【修正】字符串内引用用中文引号 \`""\` 或 \`「」\`，或反斜杠转义 \`\\"\`；禁止裸 ASCII 双引号。\n` +
+                  `【原 arguments】${toolArgs.slice(0, 500)}\n` +
+                  `请重新调用 ${toolName}，确保 arguments 是合法 JSON。`,
+              },
+              dupCheck: null,
+            };
           }
 
           if (!tool) {
-            return { toolCall, toolName, toolCallId, tool: null, dupCheck: null };
+            return {
+              toolCall,
+              toolName,
+              toolCallId,
+              tool: null,
+              dupCheck: null,
+              execError: {
+                message:
+                  `🚫 【工具不存在】工具 ${toolName} 不在系统注册的工具列表中。\n` +
+                  `请检查工具名称是否拼写正确。`,
+              },
+            };
           }
-          const dupCheck = checkAndFilterDuplicateCall(toolName, parsedArgs, sessionId);
-          return { toolCall, toolName, toolCallId, tool, dupCheck };
+
+          // ★ 拦截"幻觉调用"：工具在系统中存在，但本轮已被剪枝（一次性工具调用后从 LLM 请求移除）
+          if (!availableToolNames.has(toolName)) {
+            return {
+              toolCall,
+              toolName,
+              toolCallId,
+              tool: null,
+              dupCheck: null,
+              execError: {
+                message:
+                  `🚫 【工具已被本会话剪枝，禁止重复调用】工具 ${toolName} 是一次性工具（调用一次后从后续 LLM 请求中移除以节省 token）。\n` +
+                  `该工具的返回结果已经在你的上下文中，请直接复用，禁止再次调用。\n` +
+                  `【规则】只调用本轮 LLM 请求 tools 列表中实际存在的工具；列表外的工具一律不可调用，调用会被程序拦截。\n` +
+                  `请基于已有上下文继续，**不要**再次调用 ${toolName}。`,
+              },
+            };
+          }
+          const dupCheck = checkAndFilterDuplicateCall(
+            toolName,
+            parsedArgs,
+            sessionId,
+          );
+          return { toolCall, toolName, toolCallId, tool, parsedArgs, autoFixed, dupCheck };
         });
 
         // 阶段 2：并行执行工具（互不依赖的 IO 密集型操作）
         //   同步工具也会被 await 正确处理（Promise.resolve 包装）
-        const execResults = await Promise.all(prepared.map(async (p) => {
-          if (!p.tool || (p.dupCheck && p.dupCheck.block)) {
-            return { ...p, rawResult: null, execError: null };
-          }
-          try {
-            const effectiveArgs = p.dupCheck.args;
-            const notice = p.dupCheck.notice;
-            const rawResult = await Promise.resolve(p.tool.func(effectiveArgs));
-            recordToolCall(p.toolName, effectiveArgs, sessionId);
-            return { ...p, rawResult, execError: null, notice };
-          } catch (e) {
-            return { ...p, rawResult: null, execError: e };
-          }
-        }));
+        const execResults = await Promise.all(
+          prepared.map(async (p) => {
+            if (!p.tool || (p.dupCheck && p.dupCheck.block)) {
+              return {
+                ...p,
+                rawResult: null,
+                toolMessageContent: null,
+                userChoiceId: null,
+                execError: p.execError || null,  // ★ 保留 prepared 阶段设置的 execError
+              };
+            }
+            try {
+              const effectiveArgs = p.dupCheck.args;
+              const notice = p.dupCheck.notice;
+              const rawResult = await Promise.resolve(
+                p.tool.func(effectiveArgs),
+              );
+
+              // ★ request_user_choice 特殊处理（v3: questions[] 数组契约）
+              //   旧版：tool.func 返 {id, marker, payload} 单 marker
+              //   新版：tool.func 返 {markers:[], payloads:[], ids:[], content:"..."}（success）
+              //                  或 {error, content:"⚠️..."}（error，让 LLM 修正重试）
+              //   - userChoiceId：取 ids[0]（多个 question 时只记第一个为代表）
+              //   - toolMessageContent：取 content 字段（success/error 都有），其他工具 fallback 到 rawResult
+              //   - 其他工具：toolMessageContent 默认 = rawResult（兼容）
+              let userChoiceId = null;
+              let toolMessageContent = rawResult;
+              if (
+                p.toolName === "request_user_choice" &&
+                rawResult &&
+                typeof rawResult === "object"
+              ) {
+                if (Array.isArray(rawResult.ids) && rawResult.ids.length > 0) {
+                  userChoiceId = rawResult.ids[0];
+                  toolMessageContent =
+                    rawResult.content ||
+                    (Array.isArray(rawResult.markers)
+                      ? rawResult.markers.join("")
+                      : "");
+                } else if (rawResult.id && rawResult.marker) {
+                  // 兼容旧版单 marker
+                  userChoiceId = rawResult.id;
+                  toolMessageContent = rawResult.marker;
+                } else if (typeof rawResult.content === "string") {
+                  // error 情况
+                  toolMessageContent = rawResult.content;
+                }
+              }
+
+              recordToolCall(
+                p.toolName,
+                effectiveArgs,
+                sessionId,
+                userChoiceId,
+              );
+              return {
+                ...p,
+                rawResult,
+                toolMessageContent,
+                userChoiceId,
+                execError: null,
+                notice,
+              };
+            } catch (e) {
+              return {
+                ...p,
+                rawResult: null,
+                toolMessageContent: null,
+                userChoiceId: null,
+                execError: e,
+              };
+            }
+          }),
+        );
 
         // 阶段 3：按原始 tool_calls 顺序写回 messages（保证 LLM 看到的 tool 顺序与调用顺序一致）
+        //   ★ 关键：execError 分支即使 p.tool=null 也要进入（参数解析失败 / 工具被剪枝 / 工具不存在时 tool 是 null）
         for (const p of execResults) {
-          if (!p.tool) continue;
+          if (!p.tool && !p.execError) continue;
           const toolCall = p.toolCall;
           const toolName = p.toolName;
           const toolCallId = p.toolCallId;
-          const toolArgs = toolCall.function.arguments || '{}';
+          const toolArgs = toolCall.function.arguments || "{}";
 
           if (p.dupCheck && p.dupCheck.block) {
-            queueLog(`🚫 拦截重复调用: ${toolName} sessionId=${sessionId} args=${toolArgs}`, true);
-            yield { type: 'tool_return', log: `🚫 拦截重复调用: ${toolName}\n参数: ${toolArgs}\n${p.dupCheck.message}` };
+            queueLog(
+              `🚫 拦截重复调用: ${toolName} sessionId=${sessionId} args=${toolArgs}`,
+              true,
+              username,
+            );
+            yield {
+              type: "tool_return",
+              log: `🚫 拦截重复调用: ${toolName}\n参数: ${toolArgs}\n${p.dupCheck.message}`,
+            };
             messages.push({
-              role: 'tool',
+              role: "tool",
               tool_call_id: toolCallId,
-              content: p.dupCheck.message
+              content: p.dupCheck.message,
             });
             continue;
           }
 
           if (p.execError) {
+            const isParseError =
+              p.execError.message.includes("不是合法 JSON") ||
+              p.execError.message.includes("参数解析失败");
+            const errLabel = isParseError
+              ? "参数解析失败"
+              : "工具不可用";
+            yield {
+              type: "tool_return",
+              log: `🚫 ${errLabel}: ${p.toolName}\n${p.execError.message}`,
+            };
             messages.push({
-              role: 'tool',
+              role: "tool",
               tool_call_id: toolCallId,
-              content: `Error: ${p.execError.message}`
+              content: `Error: ${p.execError.message}`,
             });
             continue;
           }
 
-          const resultContent = p.notice ? `${p.notice}\n\n${p.rawResult}` : p.rawResult;
-          yield { type: 'tool_return', log: `📋 工具 ${toolName} 返回:\n${resultContent}` };
+          // ★ 优先用 p.toolMessageContent（request_user_choice 已拆为 marker 字符串）
+          //   fallback 到原 notice+rawResult 逻辑
+          const resultContent =
+            p.toolMessageContent ||
+            (p.notice ? `${p.notice}\n\n${p.rawResult}` : p.rawResult);
+          // ★ 自动修复成功：先 yield 一条"已修复"提示给 LLM
+          //   让 LLM 知道后续应直接用中文引号 / 反斜杠转义，避免再触发同样的解析失败
+          if (p.autoFixed) {
+            yield {
+              type: "tool_return",
+              log: `✅ ${toolName} 参数已自动修复（裸 ASCII 双引号 → 中文右引号）。后续请直接使用中文引号 \`""\` 或 \`「」\`，或反斜杠转义 \`\\"\`；禁止裸 ASCII 双引号。`,
+            };
+          }
+          yield {
+            type: "tool_return",
+            log: `📋 工具 ${toolName} 返回:\n${typeof resultContent === "string" ? resultContent : JSON.stringify(resultContent)}`,
+          };
           messages.push({
-            role: 'tool',
+            role: "tool",
             tool_call_id: toolCallId,
-            content: resultContent
+            content: resultContent,
           });
+
+          // ★ 检测 request_user_choice 工具 → 加入 pendingUserChoiceList（v3: 单调用多 marker）
+          //   p.rawResult 结构（v3 新版）：
+          //     success: {markers:[m1,m2,...], payloads:[p1,p2,...], ids:[...], content:"..."}
+          //     error:   {error, content:"⚠️..."}（不进入此分支，LLM 看到 content 修正重试）
+          //   旧版兼容：p.rawResult = {id, marker, payload}（万一 LLM 还用旧 schema 也能工作）
+          //   按 validToolCalls 原始顺序 push（保证与 LLM 决策顺序一致）
+          //   超过 MAX_USER_CHOICE_PER_TURN (3) 的部分丢弃（已 dupCheck + recordToolCall 记录过）
+          if (
+            p.toolName === "request_user_choice" &&
+            p.rawResult &&
+            typeof p.rawResult === "object"
+          ) {
+            // v3 新版：markers/payloads 数组
+            if (
+              Array.isArray(p.rawResult.payloads) &&
+              p.rawResult.payloads.length > 0
+            ) {
+              for (const payload of p.rawResult.payloads) {
+                if (pendingUserChoiceList.length >= MAX_USER_CHOICE_PER_TURN) {
+                  logger.warn(
+                    "user_choice dropped: over MAX_USER_CHOICE_PER_TURN",
+                    {
+                      sessionId,
+                      droppedId: payload?.id,
+                      currentCount: pendingUserChoiceList.length,
+                      max: MAX_USER_CHOICE_PER_TURN,
+                      droppedQuestion: String(payload?.question || "").slice(
+                        0,
+                        80,
+                      ),
+                    },
+                  );
+                  continue;
+                }
+                pendingUserChoiceList.push(payload);
+                logger.info("user_choice tool detected (multi)", {
+                  sessionId,
+                  id: payload.id,
+                  question: payload.question,
+                  index: pendingUserChoiceList.length,
+                  max: MAX_USER_CHOICE_PER_TURN,
+                });
+                // ★ 诊断 console.log: 用户在终端可直接看到本轮捕获的所有 user_choice
+                console.log(
+                  `[user_choice] 本轮捕获 #${pendingUserChoiceList.length}/${MAX_USER_CHOICE_PER_TURN}: id=${payload.id} q="${String(payload.question || "").slice(0, 40)}" options=${JSON.stringify(payload.options || [])}`,
+                );
+              }
+            }
+            // 兼容旧版：单 marker
+            else if (p.rawResult.marker) {
+              const marker = p.rawResult.marker || "";
+              const match = marker.match(/<!--user_choice:(\{[\s\S]*?\})-->/);
+              if (match) {
+                try {
+                  const parsed = JSON.parse(match[1]);
+                  if (pendingUserChoiceList.length < MAX_USER_CHOICE_PER_TURN) {
+                    pendingUserChoiceList.push(parsed);
+                    logger.info("user_choice tool detected (legacy single)", {
+                      sessionId,
+                      id: parsed.id,
+                      question: parsed.question,
+                      index: pendingUserChoiceList.length,
+                      max: MAX_USER_CHOICE_PER_TURN,
+                    });
+                    console.log(
+                      `[user_choice] 本轮捕获 #${pendingUserChoiceList.length}/${MAX_USER_CHOICE_PER_TURN} (legacy): id=${parsed.id} q="${String(parsed.question || "").slice(0, 40)}" options=${JSON.stringify(parsed.options || [])}`,
+                    );
+                  }
+                } catch (e) {
+                  logger.warn("user_choice marker parse failed", {
+                    sessionId,
+                    error: e.message,
+                    raw: marker.slice(0, 200),
+                  });
+                }
+              }
+            }
+            // error case: 不动 pendingUserChoiceList, 让 LLM 修正重试
+          }
         }
+
+        // ★ 跳出 while 循环：检测到至少一个 request_user_choice 后 TURN 1 终止
+        if (pendingUserChoiceList.length > 0) break;
 
         maxToolCalls--;
         continue;
       }
 
       break;
-      
     } catch (e) {
-      if (e.name === 'AbortError') {
-        yield { type: 'error', content: '请求已被用户中断' };
+      if (e.name === "AbortError") {
+        yield { type: "error", content: "请求已被用户中断" };
       } else {
-        yield { type: 'error', content: e.message };
+        yield { type: "error", content: e.message };
       }
       return;
     }
   }
 
+  // ★ request_user_choice 终止分支：TURN 1 在工具循环处硬性结束
+  // LLM 调用 request_user_choice（1-3 次）后：
+  //   1) 持久化 messages（含 N 个 tool marker，Turn 2 要 load）
+  //   2) 写日志（payload 详情 + dbSaveOk 状态）
+  //   3) yield done 携带 userChoiceRequest 数组（v2: 1-3 个元素的数组，方案 A 单次推理多问题）
+  //   4) DB 写失败时降级（不弹窗，让 LLM 继续）
+  // 详见 project_memory.md "TURN 1 终止边界" + "程序硬控原则"
+  if (pendingUserChoiceList.length > 0) {
+    let dbSaveOk = true;
+    if (sessionId) {
+      try {
+        saveMessagesToDb(sessionId, messages);
+      } catch (e) {
+        // 现有 saveMessagesToDb 内部已有 try/catch + error 日志
+        // 但仍可能因异常路径未覆盖（死锁/超时）走到这里
+        dbSaveOk = false;
+        logger.error("CRITICAL: saveMessagesToDb failed for user_choice flow", {
+          sessionId,
+          error: e.message,
+        });
+      }
+    }
+
+    queueLog(
+      `🔔 TURN 1 终止 - user_choice 请求链 (共 ${pendingUserChoiceList.length} 个): ` +
+        pendingUserChoiceList
+          .map(
+            (p, i) =>
+              `[${i + 1}] id=${p.id} question="${String(p.question || "").slice(0, 60)}" multi_select=${!!p.multi_select}`,
+          )
+          .join(" | ") +
+        ` dbSaveOk=${dbSaveOk}`,
+      true,
+      username,
+    );
+    flushLogs();
+
+    // 降级处理：DB 写失败 → 不弹窗，让 LLM 继续
+    if (!dbSaveOk) {
+      logger.warn("DB save failed, falling back to LLM continuation", {
+        sessionId,
+      });
+      yield {
+        type: "done",
+        sql: "",
+        message:
+          responseText +
+          "\n\n（系统提示：用户交互持久化失败，请基于已有信息继续）",
+        userChoiceRequest: null, // null 告诉前端不弹窗
+      };
+      return;
+    }
+
+    // 正常路径：yield done 携带 userChoiceRequest 数组（前端按链式弹窗处理）
+    console.log(
+      `[user_choice] yield done → userChoiceRequest 长度=${pendingUserChoiceList.length}`,
+    );
+    yield {
+      type: "done",
+      sql: "",
+      message: responseText,
+      userChoiceRequest: pendingUserChoiceList, // ★ v2: 数组形式（方案 A）
+    };
+    return;
+  }
+
   // 返回 markdown 格式的结果
   const message = responseText;
 
-  queueLog(`=== BAK 完成 SQL: ${sql || responseText}`, true);
+  queueLog(`=== BAK 完成 SQL: ${sql || responseText}`, true, username);
   flushLogs();
-  yield { type: 'done', sql: '', message };
+  yield { type: "done", sql: "", message };
 }
 
 // （已废弃：generateSQLWithLangChainStreamGen 从未被任何代码调用，2026-06 阶段性优化清理）
@@ -1022,41 +1864,46 @@ while (true) {
 export async function callLlmForFavorite(systemPrompt, userPrompt, signal) {
   const cfg = getLlmConfig();
   if (!cfg) {
-    throw new Error('LLM 未配置');
+    throw new Error("LLM 未配置");
   }
   const provider = cfg.provider;
   // 强制覆盖 model：deepseek 走非快速模型
-  const model = provider === 'deepseek'
-    ? (process.env.FAVORITE_LLM_MODEL || 'deepseek-chat')
-    : cfg.model;
+  const model =
+    provider === "deepseek"
+      ? process.env.FAVORITE_LLM_MODEL || "deepseek-chat"
+      : cfg.model;
   const providerCfg = getProviderConfig(provider, model);
   const baseURL = providerCfg.baseURL;
   const llmModel = providerCfg.llmModel;
   const apiKey = cfg.apiKey;
 
-  const tFetch = withTimeout(signal, LLM_TIMEOUTS.FETCH_MS, 'callLlmForFavorite fetch');
+  const tFetch = withTimeout(
+    signal,
+    LLM_TIMEOUTS.FETCH_MS,
+    "callLlmForFavorite fetch",
+  );
   let res;
   try {
     res = await fetch(`${baseURL}/chat/completions`, {
-      method: 'POST',
+      method: "POST",
       headers: {
-        'Content-Type': 'application/json',
-        'Authorization': `Bearer ${apiKey}`
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
         model: llmModel,
         messages: [
-          { role: 'system', content: systemPrompt },
-          { role: 'user', content: userPrompt }
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
         ],
         temperature: 0,
         stream: false,
-        response_format: { type: 'json_object' }
+        response_format: { type: "json_object" },
       }),
-      signal: tFetch.signal
+      signal: tFetch.signal,
     });
   } catch (e) {
-    if (e.name === 'AbortError' || /timeout/i.test(e.message || '')) {
+    if (e.name === "AbortError" || /timeout/i.test(e.message || "")) {
       if (tFetch.isExternalAbort()) throw e;
       throw new Error(`LLM 响应超时（>${LLM_TIMEOUTS.FETCH_MS / 1000}s）`);
     }
@@ -1070,13 +1917,19 @@ export async function callLlmForFavorite(systemPrompt, userPrompt, signal) {
     try {
       const errJson = await res.json();
       detail = errJson?.error?.message || detail;
-    } catch (_) { /* ignore */ }
+    } catch (_) {
+      /* ignore */
+    }
     throw new Error(`LLM 调用失败 (${res.status}): ${detail}`);
   }
 
   const json = await res.json();
-  const content = json.choices?.[0]?.message?.content || '';
-  const usage = json.usage || { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0 };
+  const content = json.choices?.[0]?.message?.content || "";
+  const usage = json.usage || {
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0,
+  };
   return { content, usage, model: llmModel };
 }
 

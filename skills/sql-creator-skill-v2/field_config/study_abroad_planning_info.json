@@ -1,13 +1,19 @@
 {
   "table_name": "study_abroad_planning_info",
-
   "field_aliases": {
-    "clue_number": ["线索编号"],
-    "send": ["是否发送"],
-    "plan_status": ["当前进度"],
-    "study_abroad_major_id": ["专业方向ID"]
+    "clue_number": [
+      "线索编号"
+    ],
+    "send": [
+      "是否发送"
+    ],
+    "plan_status": [
+      "当前进度"
+    ],
+    "study_abroad_major_id": [
+      "专业方向ID"
+    ]
   },
-
   "field_enums": {
     "status": {
       "0": "未填写",
@@ -34,72 +40,51 @@
       "1": "已发送"
     }
   },
-
   "virtual_associations": [
     {
       "name": "关联课程顾问",
       "target_table": "admin_user",
       "join_condition": "admin_user.id = study_abroad_planning_info.course_consultant_id",
       "type": "many_to_one",
-      "description": "多条规划信息可由同一课程顾问负责",
-      "fields_mapping": {
-        "id": "course_consultant_id"
-      }
+      "description": "多条规划信息可由同一课程顾问负责"
     },
     {
       "name": "关联规划师",
       "target_table": "admin_user",
       "join_condition": "admin_user.id = study_abroad_planning_info.planner_id",
       "type": "many_to_one",
-      "description": "多条规划信息可分配给同一规划师",
-      "fields_mapping": {
-        "id": "planner_id"
-      }
+      "description": "多条规划信息可分配给同一规划师"
     },
     {
       "name": "关联转案老师",
       "target_table": "admin_user",
       "join_condition": "admin_user.id = study_abroad_planning_info.transfer_teacher_id",
       "type": "many_to_one",
-      "description": "多条规划信息可由同一转案老师操作",
-      "fields_mapping": {
-        "id": "transfer_teacher_id"
-      }
+      "description": "多条规划信息可由同一转案老师操作"
     },
     {
       "name": "关联专业方向",
       "target_table": "study_abroad_major",
       "join_condition": "study_abroad_major.id = study_abroad_planning_info.study_abroad_major_id",
       "type": "many_to_one",
-      "description": "多条规划信息可属于同一专业方向",
-      "fields_mapping": {
-        "id": "study_abroad_major_id"
-      }
+      "description": "多条规划信息可属于同一专业方向"
     },
     {
       "name": "关联订单",
       "target_table": "order_list",
       "join_condition": "order_list.id = study_abroad_planning_info.order_id",
       "type": "many_to_one",
-      "description": "",
-      "fields_mapping": {
-        "id": "order_id"
-      }
+      "description": ""
     },
     {
       "name": "关联线索",
       "target_table": "customer_clue_info",
       "join_condition": "customer_clue_info.customer_code = study_abroad_planning_info.clue_number",
       "type": "many_to_one",
-      "description": "",
-      "fields_mapping": {
-        "id": "clue_number"
-      }
+      "description": ""
     }
   ],
-
   "calculated_fields": {},
-
   "business_constraints": {
     "study_abroad_country": "留学国家字段支持多个国家，存储StudyAbroadCountryEnum对应code的逗号分隔字符串",
     "status_flow": "规划状态流转：0(未填写) -> 1(已填写) -> 2(已提交) -> 4(已分配)；可变为3(已驳回)",
@@ -107,6 +92,5 @@
     "plan_service_status": "planServiceStatus保存planStatus的正常状态值（1规划中、2申请中），结案时用于恢复",
     "core_table": "此表为留学系统核心主表，其他所有留学相关表均通过student_id（实际为planning_info的id）关联"
   },
-
   "business_rules": []
 }

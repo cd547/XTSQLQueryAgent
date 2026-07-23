@@ -1,0 +1,107 @@
+/* ==================== 主内容区 ==================== */
+.xtsql-content {
+  display: flex;
+  flex-direction: column;
+  background: var(--xtsql-app-bg);
+  background-attachment: fixed;
+  position: relative;
+}
+.xtsql-content-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px 0;
+  border-bottom: 1px solid var(--xtsql-border);
+  background: var(--xtsql-bg-header);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+.xtsql-menu-btn {
+  border: none !important;
+  background: transparent !important;
+  width: 32px;
+  height: 32px;
+  border-radius: var(--xtsql-radius-sm);
+  color: var(--xtsql-text-secondary);
+  flex-shrink: 0;
+}
+.xtsql-menu-btn:hover {
+  background: var(--xtsql-hover) !important;
+  color: var(--xtsql-text) !important;
+}
+
+.xtsql-chat-area {
+  flex: 1;
+  overflow: auto;
+  padding: 28px 24px 24px;
+  background: transparent;
+  scroll-behavior: smooth;
+}
+.xtsql-chat-inner {
+  max-width: 880px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+.xtsql-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 80px 20px;
+  text-align: center;
+  color: var(--xtsql-text-tertiary);
+}
+.xtsql-empty-icon {
+  width: 112px;
+  height: 112px;
+  border-radius: 26px;
+  background: linear-gradient(135deg, rgba(22, 119, 255, 0.15) 0%, rgba(79, 70, 229, 0.15) 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 56px;
+  color: var(--xtsql-accent);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.xtsql-empty-title {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--xtsql-text);
+  margin-bottom: 6px;
+}
+.xtsql-empty-desc {
+  font-size: 13px;
+  color: var(--xtsql-text-tertiary);
+  margin-bottom: 20px;
+}
+.xtsql-suggestion-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  justify-content: center;
+  max-width: 600px;
+}
+.xtsql-suggestion {
+  padding: 8px 14px;
+  border-radius: var(--xtsql-radius-pill);
+  background: var(--xtsql-bg-elevated);
+  border: 1px solid var(--xtsql-border);
+  color: var(--xtsql-text-secondary);
+  cursor: pointer;
+  font-size: 12px;
+  transition: all 0.18s ease;
+}
+.xtsql-suggestion:hover {
+  background: var(--xtsql-accent-soft);
+  color: var(--xtsql-accent);
+  border-color: var(--xtsql-accent-soft);
+  transform: translateY(-1px);
+}
+
+/* 响应式 */
+@media (max-width: 768px) {
+  .xtsql-chat-area { padding: 16px 12px; }
+}

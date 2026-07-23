@@ -9,9 +9,6 @@
       "join_condition": "admin_division.id = order_contract_template.admin_division",
       "type": "many_to_one",
       "description": "合同模版所属事业部",
-      "fields_mapping": {
-        "id": "admin_division"
-      },
       "business_rule": ""
     }
   ],

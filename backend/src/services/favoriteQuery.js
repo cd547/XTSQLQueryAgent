@@ -19,35 +19,78 @@ import { logger } from '../logger.js';
 import { callLlmForFavorite } from './llm.js';
 import { getDomainsForTables } from './skillDomains.js';
 import { config } from '../config.js';
+import { ensureDir } from '../utils/fs.js';
 import fs from 'fs';
 import path from 'path';
 
 const SKILL_V2_PATH = `${config.skillPath}/sql-creator-skill-v2`;
 const LOGS_PATH = config.logPath;
 
+/**
+ * 文件名安全化（与 llm.js 同款，确保两侧清洗规则一致）
+ */
+function sanitizeUsername(name) {
+  if (!name || typeof name !== 'string') return 'unknown';
+  const cleaned = name.replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 50);
+  return cleaned || 'unknown';
+}
+
+function todayKey() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${day}`;
+}
+
+/**
+ * 收藏 LLM 日志按"日期 / 用户"分文件：logs/YYYY-MM-DD/{username}_favorite_llm.log
+ */
+function favoriteLogFileFor(username) {
+  const safe = sanitizeUsername(username);
+  const dateDir = path.join(LOGS_PATH, todayKey());
+  ensureDir(dateDir, 'favorite log date dir');
+  const prefix = safe === 'unknown' ? '_system' : safe;
+  return path.join(dateDir, `${prefix}_favorite_llm.log`);
+}
+
 /* ============================ 收藏 LLM 调用日志 ============================ */
 
-function writeFavoriteLlmLog(content) {
+function writeFavoriteLlmLog(content, username) {
   const now = new Date();
-  const dateStr = now.toISOString().slice(0, 10);
-  const logFile = path.join(LOGS_PATH, `favorite_llm_${dateStr}.log`);
   const timestamp = now.toISOString();
+  let logFile;
+  try {
+    logFile = favoriteLogFileFor(username);
+  } catch (e) {
+    const dateDir = path.join(LOGS_PATH, todayKey());
+    try { ensureDir(dateDir, 'favorite log date dir fallback'); } catch (_) {}
+    logFile = path.join(dateDir, '_system_favorite_llm.log');
+  }
   const logLine = `${timestamp}: ${content}\n`;
   fs.appendFileSync(logFile, logLine, 'utf-8');
 }
 
+// 收藏 LLM 日志缓冲：{ username, content }，flush 时按用户分组聚合
 const FAV_LOG_BUFFER = [];
 let favFlushTimer = null;
 
 function flushFavLogs() {
   if (FAV_LOG_BUFFER.length === 0) return;
   const flushing = FAV_LOG_BUFFER.splice(0);
-  const content = flushing.join('\n');
-  writeFavoriteLlmLog(content);
+  const byUser = new Map();
+  for (const item of flushing) {
+    const u = item.username || null;
+    if (!byUser.has(u)) byUser.set(u, []);
+    byUser.get(u).push(item.content);
+  }
+  for (const [u, lines] of byUser) {
+    writeFavoriteLlmLog(lines.join('\n'), u);
+  }
 }
 
-function queueFavLog(content, immediate = false) {
-  FAV_LOG_BUFFER.push(content);
+function queueFavLog(content, immediate = false, username = null) {
+  FAV_LOG_BUFFER.push({ username, content });
   if (immediate) {
     if (favFlushTimer) {
       clearTimeout(favFlushTimer);
@@ -95,6 +138,7 @@ export function extractJsonObject(text) {
  *
  * @param {object} params
  * @param {number} params.userId
+ * @param {string} [params.username]    登录用户名（用于按用户分文件落盘，缺省走 _system）
  * @param {string} params.userQuestion  用户原始提问
  * @param {string} params.sqlOutput     agent 最终 SQL
  * @param {AbortSignal} [params.signal]
@@ -104,7 +148,7 @@ export function extractJsonObject(text) {
  *        可选：自定义 DB 访问器（仅测试用，生产不传）
  * @returns {Promise<{id: number, optimizedQuestion: string, businessDomains: string[]}>}
  */
-export async function saveFavoriteQuery({ userId, userQuestion, sqlOutput, signal, llmCaller, getDbFn }) {
+export async function saveFavoriteQuery({ userId, username, userQuestion, sqlOutput, signal, llmCaller, getDbFn }) {
   if (!userId) throw new Error('userId 必填');
   if (!userQuestion || !userQuestion.trim()) throw new Error('userQuestion 必填');
   if (!sqlOutput || !sqlOutput.trim()) throw new Error('sqlOutput 必填');
@@ -133,7 +177,8 @@ ${sqlOutput}
     `--- System Prompt ---\n${systemPrompt}\n` +
     `--- User Prompt ---\n${userPrompt}\n` +
     '==========================================',
-    true
+    true,
+    username
   );
 
   const llmResult = await caller(systemPrompt, userPrompt, signal);
@@ -147,7 +192,8 @@ ${sqlOutput}
     `--- Raw Content ---\n${llmResult.content}\n` +
     `--- Parsed JSON ---\n${JSON.stringify(parsed, null, 2)}\n` +
     '==========================================',
-    true
+    true,
+    username
   );
 
   const optimizedQuestion = typeof parsed.optimized_question === 'string'

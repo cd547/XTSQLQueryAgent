@@ -1,15 +1,21 @@
 {
   "table_name": "tk_knowledge_new",
-  
   "field_aliases": {
-    "id": ["ID", "编号", "知识点ID"],
-    "parent_id": ["父级id", "上级ID"],
-    "title": ["知识点标题", "知识点"]
+    "id": [
+      "ID",
+      "编号",
+      "知识点ID"
+    ],
+    "parent_id": [
+      "父级id",
+      "上级ID"
+    ],
+    "title": [
+      "知识点标题",
+      "知识点"
+    ]
   },
-  
-  "field_enums": {
-  },
-  
+  "field_enums": {},
   "virtual_associations": [
     {
       "name": "自关联-父子关系",
@@ -17,17 +23,11 @@
       "alias": "parent_knowledge",
       "join_condition": "tk_knowledge_new.parent_id = parent_knowledge.id",
       "type": "self_join",
-      "description": "知识点父子关系自关联",
-      "fields_mapping": {
-        "id": "parent_id"
-      }
+      "description": "知识点父子关系自关联"
     }
   ],
-  
   "calculated_fields": {},
-  
   "business_constraints": {},
-  
   "business_rules": [
     {
       "rule": "知识点体系",

@@ -1,15 +1,20 @@
 import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
-import { Layout, Input, Button, Table, message, Select, Spin, Empty, Drawer, List, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, InputNumber, Modal, Steps, Space, Dropdown, Avatar, Tooltip, Form, theme } from 'antd';
+import { Layout, Input, Button, Table, message, Spin, Drawer, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, Modal, Dropdown, Tooltip, theme } from 'antd';
 import 'react-resizable/css/styles.css';
 import './App.css';
 const { Panel } = Collapse;
 
 import ConfirmDialog from './components/ConfirmDialog';
+import UserChoiceDialog from './components/UserChoiceDialog';
 import ResizableTitle from './components/ResizableTitle';
 import ChatMessage from './components/ChatMessage';
 import ConfigPanel from './components/ConfigPanel';
 import LoginPage from './components/LoginPage';
 import AppIcon from './components/AppIcon.jsx';
+import SessionMessagesModal from './components/modals/SessionMessagesModal.jsx';
+import ChangePasswordModal from './components/modals/ChangePasswordModal.jsx';
+import AddTableModal from './components/modals/AddTableModal.jsx';
+import ExplainAnalyzeModal from './components/modals/ExplainAnalyzeModal.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { useTheme } from './context/ThemeContext.jsx';
 import * as api from './api/index.js';
@@ -19,7 +24,7 @@ import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
 import './utils/monacoEnv';
 import { createMarkdownRenderers } from './components/markdownRenderers.jsx';
-import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, checkTableExists, fetchTableDDL, createTableFiles, getDomains, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages, saveFavoriteQuery, checkFavorites, unfavoriteQuery, getFavoriteSuggestions } from './api';
+import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages, saveFavoriteQuery, checkFavorites, unfavoriteQuery, getFavoriteSuggestions } from './api';
 
 const { TextArea } = Input;
 const { Sider, Content } = Layout;
@@ -31,8 +36,9 @@ function App() {
   // 未登录：渲染登录页（带启动校验 loading 态）
   if (bootstrapping) {
     return (
-      <div style={{ position: 'fixed', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-        <Spin size="large" tip="正在校验登录状态..." />
+      <div style={{ position: 'fixed', inset: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 16 }}>
+        <Spin size="large" />
+        <div style={{ color: 'var(--xtsql-text-secondary, #666)' }}>正在校验登录状态...</div>
       </div>
     );
   }
@@ -92,17 +98,6 @@ function AuthenticatedApp({ user, logout }) {
   const [skillTreeActionsVisible, setSkillTreeActionsVisible] = useState(false);
   const [currentModel, setCurrentModel] = useState('');
   const [addTableModalOpen, setAddTableModalOpen] = useState(false);
-  const [addTableStep, setAddTableStep] = useState(1);
-  const [addTableName, setAddTableName] = useState('');
-  const [addTableChecking, setAddTableChecking] = useState(false);
-  const [addTableExists, setAddTableExists] = useState(false);
-  const [addTableDDL, setAddTableDDL] = useState('');
-  const [addTableDescription, setAddTableDescription] = useState('');
-  const [addTableDomains, setAddTableDomains] = useState([]);
-  const [addTableSelectedDomains, setAddTableSelectedDomains] = useState([]);
-  const [addTableDomainsLoading, setAddTableDomainsLoading] = useState(false);
-  const [addTableRelatedTables, setAddTableRelatedTables] = useState([]);
-  const [addTableCreating, setAddTableCreating] = useState(false);
   const [explainAnalyzeModalOpen, setExplainAnalyzeModalOpen] = useState(false);
   const [explainAnalysisContent, setExplainAnalysisContent] = useState('');
   const [explainAnalysisLoading, setExplainAnalysisLoading] = useState(false);
@@ -111,6 +106,18 @@ function AuthenticatedApp({ user, logout }) {
     term: [],
     table: '',
     description: ''
+  });
+  // ★ request_user_choice 弹窗状态：由 SSE done 事件的 user_choice_request 字段驱动
+  // v2 (2026-07-15) 链式弹窗：单次 LLM 推理可问 1-3 个问题，前端按 currentIndex 顺序展示
+  //   - requests: 问题数组（来自后端 yield 的 userChoiceRequest 数组；1-3 个元素）
+  //   - currentIndex: 当前展示的问题索引
+  //   - answers: 与 requests 等长的答案数组，每个 {selected:[], text:''}，按 currentIndex 顺序填充
+  // 提交/取消后合成 1 个综合 user message（"label=answer" 用 ; 连接），调 /generate 触发新一轮
+  const [userChoiceRequest, setUserChoiceRequest] = useState({
+    visible: false,
+    requests: [],
+    currentIndex: 0,
+    answers: []
   });
   const [isExplainResult, setIsExplainResult] = useState(false);
   const [explainResults, setExplainResults] = useState([]);
@@ -289,17 +296,41 @@ function AuthenticatedApp({ user, logout }) {
     try {
       const data = await getSessionMessages(sessionId);
       if (data.messages) {
-        const loaded = data.messages
-          .filter(m => m.role !== 'usage')
-          .map(m => ({
+        const filtered = data.messages.filter(m => m.role !== 'usage');
+        // 老数据兜底：没有 elapsed_ms 时按 user/assistant 成对消息的 created_at 差值补算
+        // 一次性扫描，按"相邻 user/assistant 配对"得到回显耗时
+        const loaded = filtered.map(m => {
+          let elapsedMs = m.elapsed_ms || null;
+          return {
             id: `db-${m.id}`,
             role: m.role,
             content: m.content || m.sql || '',
             sql: m.sql || '',
             timestamp: m.created_at,
             logType: m.role === 'LLM' ? 'llm' : m.role === 'tool_return' ? 'return' : 'call',
-            collapsed: m.role === 'LLM' ? true : false,
-          }));
+            // 历史回看：所有日志类型（LLM思考 / 工具调用 / 工具返回）默认折叠，
+            // 与流式实时态（collapsed: true）保持一致，避免历史消息全展开
+            collapsed: ['LLM', 'tool', 'tool_return'].includes(m.role),
+            elapsedMs
+          };
+        });
+        // 老数据回填：相邻 user → assistant 配对，差值作为 elapsedMs
+        for (let i = 0; i < loaded.length; i++) {
+          if (loaded[i].role === 'assistant' && (loaded[i].elapsedMs == null || loaded[i].elapsedMs === 0)) {
+            // 向前找最近的 user 消息
+            for (let j = i - 1; j >= 0; j--) {
+              if (loaded[j].role === 'user') {
+                const u = new Date(loaded[j].timestamp).getTime();
+                const a = new Date(loaded[i].timestamp).getTime();
+                if (Number.isFinite(u) && Number.isFinite(a) && a > u) {
+                  loaded[i].elapsedMs = a - u;
+                }
+                break;
+              }
+              if (loaded[j].role === 'assistant') break; // 遇到上一轮 assistant 终止
+            }
+          }
+        }
         setMessages(loaded);
         // 切换会话时清空旧 favorites 状态再回显本会话的
         setFavoriteStates({});
@@ -620,11 +651,15 @@ function AuthenticatedApp({ user, logout }) {
     fetchChatSuggestions();
   }, [fetchChatSuggestions]);
   
-  const handleSend = async () => {
-    if (!input.trim() || loading) return;
+  const handleSend = async (overrideText = null) => {
+    // 兼容 onClick={handleSend} 情况：React 会注入 SyntheticEvent 作为第一个参数
+    // 这里把非 string 参数当 null 处理，强制走 input 分支
+    const textArg = typeof overrideText === 'string' ? overrideText : null;
+    const userMessage = (textArg !== null ? textArg : String(input || '')).trim();
+    if (!userMessage || loading) return;
 
-    const userMessage = input.trim();
-    setInput('');
+    // 清空 input 框（仅当是从 input 触发的）
+    if (textArg === null) setInput('');
 
     const now = new Date().toISOString();
     const startTime = Date.now();
@@ -747,10 +782,11 @@ function AuthenticatedApp({ user, logout }) {
                   const isCurrentRound = lastLlmLogIdx !== -1 && lastLlmLogIdx === lastLogIdx;
 
                   if (isCurrentRound) {
+                    // ★ 累加内容时保留用户已选的 collapsed 状态（不再强制 true）
+                    //   背景：之前每 chunk 都重置 collapsed=true，导致用户无法在流式期间展开查看
                     newMsgs[lastLlmLogIdx] = {
                       ...newMsgs[lastLlmLogIdx],
                       content: (newMsgs[lastLlmLogIdx].content || '') + data.content,
-                      collapsed: false,
                     };
                   } else {
                     const logMsg = {
@@ -758,7 +794,7 @@ function AuthenticatedApp({ user, logout }) {
                       role: 'log',
                       content: '💭 LLM思考过程:\n' + data.content,
                       timestamp: new Date().toISOString(),
-                      collapsed: false,
+                      collapsed: true,  // ★ 仅新建时设默认折叠
                       logType: 'llm',
                     };
                     newMsgs.splice(lastAssistantIdx, 0, logMsg);
@@ -773,15 +809,9 @@ function AuthenticatedApp({ user, logout }) {
                   });
                 }
               } else if (data.type === 'reasoning_done') {
-                // 思考过程结束：折叠最近一个 llm log 消息，与历史默认行为保持一致
-                setMessages(prev => {
-                  const newMsgs = [...prev];
-                  const lastLlmLogIdx = newMsgs.findLastIndex(m => m.role === 'log' && m.logType === 'llm');
-                  if (lastLlmLogIdx !== -1) {
-                    newMsgs[lastLlmLogIdx] = { ...newMsgs[lastLlmLogIdx], collapsed: true };
-                  }
-                  return newMsgs;
-                });
+                // ★ 思考过程结束：保留用户已选的 collapsed 状态（之前强制 true 会把用户展开的内容又折叠回去）
+                setMessages(prev => prev);
+                return;
               } else if (data.type === 'message_final') {
                 // 后处理：剥离 LLM 误倒进 content 的 thinking 后，用清理后的 content 替换 assistant 消息
                 setMessages(prev => {
@@ -812,7 +842,10 @@ function AuthenticatedApp({ user, logout }) {
                   const lastIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
                   if (lastIdx !== -1) {
                     const startTime = newMsgs[lastIdx].startTime || Date.now();
-                    const elapsedMs = Date.now() - startTime;
+                    // 优先用后端权威耗时（含网络/工具调用），fallback 到前端本地计时
+                    const elapsedMs = (typeof data.elapsedMs === 'number' && data.elapsedMs >= 0)
+                      ? data.elapsedMs
+                      : Date.now() - startTime;
                     newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: data.message || '', sql: data.sql || '', isStreaming: false, elapsedMs };
                   }
                   return newMsgs;
@@ -820,6 +853,48 @@ function AuthenticatedApp({ user, logout }) {
                 // 更新 token 显示
                 if (data.totalTokens) {
                   setCurrentTokens(prev => prev + data.totalTokens);
+                }
+                // ★ 关键修复：后端 SSE done 事件返回的 sessionId 是权威值。
+                //   场景：用户清空日志后第一次问时前端 currentSessionId=null，
+                //   后端会 auto-create 一个 session；若前端不捕获并回写，
+                //   下次（user_choice 答案/重发）handleSend 还会以 null 调 /generate，
+                //   后端又会 auto-create 一个新 session → 上下文丢失、registry 重置、
+                //   LLM 重新调 get_domain_index/get_sliced_index。
+                if (data.sessionId && data.sessionId !== currentSessionId) {
+                  const newId = data.sessionId;
+                  setCurrentSessionId(newId);
+                  // 把新 session 插到左侧列表（避免下次刷新才看到）
+                  setSessions(prev => {
+                    if (prev.some(s => s.id === newId)) return prev;
+                    return [{
+                      id: newId,
+                      name: '新对话',
+                      created_at: new Date().toISOString(),
+                      total_tokens: data.totalTokens || 0
+                    }, ...prev];
+                  });
+                  setSessionsTotal(prev => prev + 1);
+                }
+                // ★ 检测 user_choice_request 弹窗（来自 llm.js 终止分支）
+                // v2 链式弹窗：后端 yield 的是数组（1-3 个问题）；兼容旧版单值 fallback
+                if (data.user_choice_request) {
+                  const rawReqs = Array.isArray(data.user_choice_request)
+                    ? data.user_choice_request
+                    : [data.user_choice_request];
+                  // 归一化每个元素为 {id, question, options, multiSelect, header}
+                  const reqs = rawReqs.map(r => ({
+                    id: r.id || '',
+                    question: r.question || '',
+                    options: Array.isArray(r.options) ? r.options : [],
+                    multiSelect: !!r.multi_select,
+                    header: r.header || ''
+                  }));
+                  setUserChoiceRequest({
+                    visible: true,
+                    requests: reqs,
+                    currentIndex: 0,
+                    answers: reqs.map(() => ({ selected: [], text: '' }))
+                  });
                 }
               }
             } catch (e) {
@@ -869,6 +944,54 @@ function AuthenticatedApp({ user, logout }) {
 
   const handleCancelTagAdd = () => {
     setConfirmTagAdd(prev => ({ ...prev, visible: false }));
+  };
+
+  // ★ request_user_choice 链式提交处理 (v2: 1-3 个问题串联)
+  //   - 非最后一个问题：保存当前答案 + currentIndex++ (弹窗不关，只换问题)
+  //   - 最后一个问题：保存答案 + 合成 1 个综合 user message + 关闭弹窗 + 调 /generate
+  // 综合消息格式: "label=answer; label=answer; ..."（label 优先用 header，缺失时退化为"问题N"）
+  // 方案 A: messages 数组只追加 1 个 user 消息（不像旧版 N 轮展开），节省 token
+  const handleSubmitUserChoice = (selected, text) => {
+    setUserChoiceRequest(prev => {
+      if (!prev.visible || prev.requests.length === 0) return prev;
+      const newAnswers = [...prev.answers];
+      newAnswers[prev.currentIndex] = { selected: selected || [], text: text || '' };
+      const isLast = prev.currentIndex >= prev.requests.length - 1;
+      if (!isLast) {
+        // 链式：保存当前答案 + 进入下一个问题
+        return { ...prev, currentIndex: prev.currentIndex + 1, answers: newAnswers };
+      }
+      // 最后一个：合成综合 user 消息
+      const combined = newAnswers.map((a, i) => {
+        const req = prev.requests[i] || {};
+        const label = (req.header && String(req.header).trim()) || `问题${i + 1}`;
+        const sel = Array.isArray(a.selected) && a.selected.length > 0 ? a.selected.join(', ') : '';
+        const txt = (a.text || '').trim();
+        const ans = [sel, txt].filter(Boolean).join(' + ');
+        return `${label}=${ans || '（无）'}`;
+      }).join('; ');
+      // 关闭弹窗 + 触发新一轮（setTimeout 0 避免在 reducer 中嵌套 setState）
+      setTimeout(() => {
+        handleSend(combined || '用户未回答');
+      }, 0);
+      return { visible: false, requests: [], currentIndex: 0, answers: [] };
+    });
+  };
+
+  // ★ v3 (2026-07-16) "上一步"：让用户回到上题修改答案
+  //   - 答案已存在 answers[] 中，dialog 的 useEffect 会从 previousAnswer 初始化本地 state
+  //   - 边界：currentIndex === 0 时按钮不显示
+  const handlePrevUserChoice = () => {
+    setUserChoiceRequest(prev => {
+      if (prev.currentIndex <= 0) return prev;
+      return { ...prev, currentIndex: prev.currentIndex - 1 };
+    });
+  };
+
+  // ★ 取消处理：合成 "用户取消了选择" 消息，提交新一轮
+  const handleCancelUserChoice = () => {
+    setUserChoiceRequest(prev => ({ ...prev, visible: false }));
+    handleSend('用户取消了选择，请基于已有信息继续');
   };
   
   const getSelectedSql = () => {
@@ -997,28 +1120,86 @@ const handleExplain = async (sql) => {
     }
   };
   
+// 中文字符按 2 个宽度计算，英文/数字按 1 个
+const getCharWidth = (str) => {
+  if (str == null) return 0;
+  const s = String(str);
+  let w = 0;
+  for (const ch of s) {
+    w += /[一-鿿　-〿＀-￯]/.test(ch) ? 2 : 1;
+  }
+  return w;
+};
+
 const exportToExcel = async (data, cols) => {
-    try {
-      const XLSX = await import('xlsx');
-      const worksheet = XLSX.utils.json_to_sheet(data);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, '查询结果');
-      XLSX.writeFile(workbook, `查询结果_${Date.now()}.xlsx`);
-      message.success('导出成功');
-    } catch (e) {
-      // Fallback to CSV
-      const headers = cols.map(c => c.title).join(',');
-      const rows = data.map(row => cols.map(c => row[c.dataIndex] ?? '').join(','));
-      const csv = [headers, ...rows].join('\n');
-      const blob = new Blob(['\ufeff' + csv], { type: 'text/csv;charset=utf-8' });
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = `查询结果_${Date.now()}.csv`;
-      a.click();
-      message.success('导出CSV成功');
+  try {
+    // 使用 xlsx-js-style（xlsx 的社区分支），支持写入单元格样式；原 xlsx 社区版会静默丢弃 .s
+    const XLSX = await import('xlsx-js-style');
+    const worksheet = XLSX.utils.json_to_sheet(data);
+    const workbook = XLSX.utils.book_new();
+
+    // 1) 自适应列宽：根据每列表头和数据的最大字符宽度计算（中文按 2 算）
+    const keys = data.length > 0 ? Object.keys(data[0]) : cols.map(c => c.dataIndex);
+    const colMeta = keys.map(key => {
+      const col = cols.find(c => c.dataIndex === key);
+      const headerText = col ? (typeof col.title === 'string' ? col.title : String(col.dataIndex || key)) : key;
+      let maxWidth = getCharWidth(headerText);
+      const sampleSize = Math.min(data.length, 500);
+      for (let i = 0; i < sampleSize; i++) {
+        const w = getCharWidth(data[i]?.[key]);
+        if (w > maxWidth) maxWidth = w;
+      }
+      return { wch: Math.min(60, Math.max(10, maxWidth + 4)) };
+    });
+    worksheet['!cols'] = colMeta;
+
+    // 2) 表头样式：加粗 + 白字 + 蓝色背景 + 居中 + 边框
+    const headerStyle = {
+      font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 12, name: '微软雅黑' },
+      fill: { patternType: 'solid', fgColor: { rgb: '4472C4' } },
+      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
+      border: {
+        top: { style: 'thin', color: { rgb: '8EA9DB' } },
+        bottom: { style: 'thin', color: { rgb: '8EA9DB' } },
+        left: { style: 'thin', color: { rgb: '8EA9DB' } },
+        right: { style: 'thin', color: { rgb: '8EA9DB' } },
+      },
+    };
+    // 数据样式：浅色边框 + 垂直居中 + 自动换行
+    const dataStyle = {
+      font: { sz: 11, name: '微软雅黑' },
+      alignment: { vertical: 'center', wrapText: true },
+      border: {
+        top: { style: 'thin', color: { rgb: 'D9D9D9' } },
+        bottom: { style: 'thin', color: { rgb: 'D9D9D9' } },
+        left: { style: 'thin', color: { rgb: 'D9D9D9' } },
+        right: { style: 'thin', color: { rgb: 'D9D9D9' } },
+      },
+    };
+
+    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
+    for (let R = range.s.r; R <= range.e.r; R++) {
+      for (let C = range.s.c; C <= range.e.c; C++) {
+        const ref = XLSX.utils.encode_cell({ r: R, c: C });
+        if (worksheet[ref]) {
+          worksheet[ref].s = R === 0 ? headerStyle : dataStyle;
+        }
+      }
     }
-  };
+
+    // 3) 冻结首行（xlsx-js-style 通过 !views 写入）
+    worksheet['!views'] = [{ state: 'frozen', ySplit: 1, xSplit: 0, topLeftCell: 'A2', activePane: 'bottomLeft' }];
+    // 表头行高
+    worksheet['!rows'] = [{ hpt: 24 }];
+
+    XLSX.utils.book_append_sheet(workbook, worksheet, '查询结果');
+    XLSX.writeFile(workbook, `查询结果_${Date.now()}.xlsx`);
+    message.success('导出成功');
+  } catch (e) {
+    console.error('导出Excel失败:', e);
+    message.error('导出失败：' + (e?.message || '未知错误'));
+  }
+};
 
   const loadSkillsList = async () => {
     try {
@@ -1065,78 +1246,6 @@ const exportToExcel = async (data, cols) => {
     }
   };
 
-  const handleAddTableStep1 = async () => {
-    if (!addTableName.trim()) return;
-    setAddTableChecking(true);
-    try {
-      const data = await checkTableExists(addTableName.trim());
-      setAddTableExists(data.exists);
-      if (data.exists) {
-        setAddTableStep(1.5);
-      } else {
-        setAddTableStep(2);
-        setAddTableDescription(data.tableComment || '');
-      }
-    } catch (e) {
-      message.error('检查失败: ' + e.message);
-    } finally {
-      setAddTableChecking(false);
-    }
-  };
-
-  const handleAddTableStep2 = async () => {
-    setAddTableChecking(true);
-    try {
-      const data = await fetchTableDDL(addTableName.trim());
-      if (data.success) {
-        setAddTableDDL(data.ddl);
-        setAddTableDescription(data.tableComment || addTableDescription);
-        setAddTableRelatedTables(data.relatedTables || []);
-        setAddTableStep(3);
-      } else {
-        message.error(data.message || '获取DDL失败');
-      }
-    } catch (e) {
-      message.error('获取DDL失败: ' + e.message);
-    } finally {
-      setAddTableChecking(false);
-    }
-  };
-
-  const handleAddTableStep3 = async () => {
-    setAddTableCreating(true);
-    try {
-      const data = await createTableFiles(addTableName.trim(), addTableDDL, addTableDescription, addTableSelectedDomains);
-      if (data.success) {
-        message.success(data.existed ? 'DDL文件已覆盖' : '表格文件创建成功');
-        setAddTableModalOpen(false);
-        loadSkillsList();
-        resetAddTableForm();
-      } else {
-        message.error(data.message || '创建失败');
-      }
-    } catch (e) {
-      message.error('创建失败: ' + e.message);
-    } finally {
-      setAddTableCreating(false);
-    }
-  };
-
-  const resetAddTableForm = () => {
-    setAddTableStep(1);
-    setAddTableName('');
-    setAddTableDDL('');
-    setAddTableDescription('');
-    setAddTableRelatedTables([]);
-    setAddTableExists(false);
-    setAddTableSelectedDomains([]);
-  };
-
-  const handleAddTableModalClose = () => {
-    setAddTableModalOpen(false);
-    resetAddTableForm();
-  };
-
 // 获取当前tab的结果
 const currentResults = activeTabKey !== 'chat' && tabs[activeTabKey]?.results ? tabs[activeTabKey].results : results;
 const currentRowCount = activeTabKey !== 'chat' && tabs[activeTabKey]?.rowCount ? tabs[activeTabKey].rowCount : rowCount;
@@ -1148,29 +1257,29 @@ const handleResize = (columnKey) => (e, { size }) => {
 
 const columns = useMemo(() => currentResults.length > 0
 ? Object.keys(currentResults[0]).map((key, idx) => ({
-    title: (props) => (
-      <ResizableTitle width={columnWidths[key] || 150} onResize={handleResize(key)}>
-        <span style={{ fontSize: 12 }}>{key}</span>
-      </ResizableTitle>
-    ),
+    title: <span style={{ fontSize: 12 }}>{key}</span>,
     dataIndex: key,
     key: `col-${idx}`,
     ellipsis: true,
-    width: Math.min(300, Math.max(80, columnWidths[key] || 150))
+    width: Math.min(300, Math.max(80, columnWidths[key] || 150)),
+    onHeaderCell: () => ({
+      width: columnWidths[key] || 150,
+      onResize: handleResize(key),
+    }),
   }))
 : [], [currentResults, columnWidths]);
 
 const explainColumns = useMemo(() => explainResults.length > 0
 ? Object.keys(explainResults[0]).map((key, idx) => ({
-    title: (props) => (
-      <ResizableTitle width={columnWidths[key] || 150} onResize={handleResize(key)}>
-        <span style={{ fontSize: 12 }}>{key}</span>
-      </ResizableTitle>
-    ),
+    title: <span style={{ fontSize: 12 }}>{key}</span>,
     dataIndex: key,
     key: `col-${idx}`,
     ellipsis: true,
-    width: Math.min(300, Math.max(80, columnWidths[key] || 150))
+    width: Math.min(300, Math.max(80, columnWidths[key] || 150)),
+    onHeaderCell: () => ({
+      width: columnWidths[key] || 150,
+      onResize: handleResize(key),
+    }),
   }))
 : [], [explainResults, columnWidths]);
   
@@ -1179,20 +1288,6 @@ const explainColumns = useMemo(() => explainResults.length > 0
       loadMessages(currentSessionId);
     }
   }, [currentSessionId]);
-
-  // 业务域：进入 step 3 时拉取一次
-  useEffect(() => {
-    if (addTableStep === 3 && addTableDomains.length === 0 && !addTableDomainsLoading) {
-      setAddTableDomainsLoading(true);
-      getDomains()
-        .then(d => {
-          if (d.success) setAddTableDomains(d.domains || []);
-          else message.error(d.message || '加载业务域失败');
-        })
-        .catch(e => message.error('加载业务域失败: ' + (e.message || e)))
-        .finally(() => setAddTableDomainsLoading(false));
-    }
-  }, [addTableStep]);
 
   // 组件卸载时清理 Monaco hover 隐藏定时器，覆盖 editor.onDidDispose 未触发的边界场景
   // （如 React 卸载先于 Monaco 异步销毁、Strict Mode 二次挂载等）
@@ -1424,6 +1519,7 @@ const explainColumns = useMemo(() => explainResults.length > 0
                           userQuestion={userQuestion}
                           favoriteState={favoriteStates[msg.id]}
                           onFavorite={userQuestion ? ({ userQuestion: uq, sqlOutput }) => handleFavorite({ msgId: msg.id, userQuestion: uq, sqlOutput }) : undefined}
+                          userAvatar={(user?.display_name || user?.username || 'U').slice(0, 1).toUpperCase()}
                         />
                       );
                     })}
@@ -1611,6 +1707,7 @@ children: currentResults.length > 0 ? (
                               <Table
                                 dataSource={currentResults}
                                 columns={columns}
+                                rowKey={(record, index) => record.id ?? `row-${index}`}
                                 components={{ header: { cell: ResizableTitle } }}
                                 pagination={{
                                   pageSize: pageSize,
@@ -1641,6 +1738,7 @@ children: currentResults.length > 0 ? (
                             <Table
                               dataSource={explainResults}
                               columns={explainColumns}
+                              rowKey={(record, index) => record.id ?? `row-${index}`}
                               pagination={{
                                 pageSize: pageSize,
                                 showSizeChanger: true,
@@ -1672,39 +1770,31 @@ children: currentResults.length > 0 ? (
                   onCancel={handleCancelTagAdd}
                 />
               )}
+
+              {/* ★ request_user_choice 弹窗（v2 链式：单卡片按问题数切换"下一个/完成"） */}
+              {activeTabKey === 'chat' && userChoiceRequest.visible && userChoiceRequest.requests.length > 0 && (
+                <UserChoiceDialog
+                  visible={true}
+                  request={userChoiceRequest.requests[userChoiceRequest.currentIndex] || {}}
+                  currentIndex={userChoiceRequest.currentIndex}
+                  totalCount={userChoiceRequest.requests.length}
+                  // v3: 传当前题已保存的答案（让"上一步"切回时能回显用户原答案）
+                  previousAnswer={userChoiceRequest.answers[userChoiceRequest.currentIndex] || { selected: [], text: '' }}
+                  // v3: 多问题且非首题时显示"上一步"按钮
+                  canGoPrev={userChoiceRequest.requests.length > 1 && userChoiceRequest.currentIndex > 0}
+                  inputHeight={inputHeight}
+                  onSubmit={handleSubmitUserChoice}
+                  onPrev={handlePrevUserChoice}
+                  onCancel={handleCancelUserChoice}
+                />
+              )}
               
-              <Modal
-                title="会话消息详情"
+              <SessionMessagesModal
                 open={showMessagesModal}
-                onCancel={() => setShowMessagesModal(false)}
-                footer={null}
-                width={800}
-                styles={{ body: { padding: 0 } }}
-              >
-                <div style={{ padding: '12px 16px', background: 'var(--xtsql-hover)', borderBottom: '1px solid var(--xtsql-border)', fontSize: 12 }}>
-                  <span style={{ color: '#666' }}>消息上下文长度：</span>
-                  <span style={{ color: '#1890ff', fontWeight: 500, marginLeft: 4 }}>{sessionMessagesTokens}</span>
-                  <span style={{ color: '#666', marginLeft: 2 }}>tokens</span>
-                </div>
-                <div style={{ height: 480, borderTop: '1px solid var(--xtsql-border)' }}>
-                  <Editor
-                    height={480}
-                    defaultLanguage="json"
-                    value={sessionMessagesContent}
-                    theme="vs-dark"
-                    options={{
-                      minimap: { enabled: false },
-                      fontSize: 11,
-                      lineNumbers: 'on',
-                      scrollBeyondLastLine: false,
-                      automaticLayout: true,
-                      wordWrap: 'on',
-                      folding: true,
-                      readOnly: true
-                    }}
-                  />
-                </div>
-              </Modal>
+                onClose={() => setShowMessagesModal(false)}
+                content={sessionMessagesContent}
+                tokens={sessionMessagesTokens}
+              />
             </div>
             
             {activeTabKey === 'chat' && (
@@ -1740,9 +1830,11 @@ children: currentResults.length > 0 ? (
                     value={input}
                     onChange={e => setInput(e.target.value)}
                     onPressEnter={e => { if (!e.shiftKey) { e.preventDefault(); handleSend(); } }}
-                    placeholder="输入自然语言查询，按Enter发送，Shift+Enter换行"
-                    autoSize={{ minRows: 1, maxRows: 10 }}
-                    style={{ height: inputHeight - 44 }}
+                    placeholder={userChoiceRequest.visible ? "请先完成弹窗中的选择" : "输入自然语言查询，按Enter发送，Shift+Enter换行"}
+                    disabled={userChoiceRequest.visible}
+                    // ★ 由 .xtsql-input-inner 的 flex 布局控制高度（flex: 1 填中间空间）
+                    //   不再写死 style.height，避免拉高容器时把 footer 顶下去
+                    //   autoSize 也移除（flex 高度优先；内容超出走内部滚动）
                   />
                   <div className="xtsql-input-footer">
                     <div className="xtsql-input-meta">
@@ -1989,247 +2081,22 @@ children: currentResults.length > 0 ? (
           </div>
         </Drawer>
         
-        <Modal
-          title="添加表格"
+        <AddTableModal
           open={addTableModalOpen}
-          onCancel={handleAddTableModalClose}
-          footer={null}
-          width={600}
-        >
-          <Steps current={addTableStep === 1.5 ? 1 : addTableStep - 1} style={{ marginBottom: 24 }}>
-            <Steps.Step title="输入表名" />
-            <Steps.Step title="获取DDL" />
-            <Steps.Step title="生成文件" />
-          </Steps>
-          
-          {addTableStep === 1 && (
-            <div>
-              <div style={{ marginBottom: 16 }}>
-                <Input 
-                  placeholder="请输入要添加的表名" 
-                  value={addTableName}
-                  onChange={e => setAddTableName(e.target.value)}
-                  onPressEnter={handleAddTableStep1}
-                />
-              </div>
-              <div style={{ textAlign: 'right' }}>
-                <Button type="primary" onClick={handleAddTableStep1} loading={addTableChecking} disabled={!addTableName.trim()}>
-                  下一步
-                </Button>
-              </div>
-            </div>
-          )}
-          
-          {addTableStep === 1.5 && (
-            <div>
-              <div style={{ marginBottom: 16, padding: 16, background: 'var(--xtsql-warning-bg)', border: '1px solid var(--xtsql-warning-border)', borderRadius: 4 }}>
-                表 <strong>{addTableName}</strong> 已存在，继续则仅覆盖 DDL 文件，table_index 和 field_config 不会修改
-              </div>
-              <div style={{ textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <Button onClick={handleAddTableModalClose}>取消</Button>
-                <Button onClick={() => { setAddTableStep(2); }}>继续</Button>
-              </div>
-            </div>
-          )}
-          
-          {addTableStep === 2 && (
-            <div>
-              {addTableChecking ? (
-                <div style={{ textAlign: 'center', padding: 32 }}>
-                  <Spin tip="正在查询数据库获取DDL..." />
-                </div>
-              ) : (
-                <div>
-                  <div style={{ marginBottom: 16, padding: 16, background: 'var(--xtsql-code-bg)', borderRadius: 4 }}>
-                    正在获取表 <strong>{addTableName}</strong> 的DDL...
-                  </div>
-                  <div style={{ textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                    <Button onClick={() => setAddTableStep(1)}>上一步</Button>
-                    <Button type="primary" onClick={handleAddTableStep2}>获取DDL</Button>
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-          
-          {addTableStep === 3 && (
-            <div>
-              <div style={{ marginBottom: 16 }}>
-                <div style={{ marginBottom: 8, fontWeight: 500 }}>表名: {addTableName}</div>
-                {!addTableExists && (
-                  <>
-                    <div style={{ marginBottom: 8 }}>描述: <Input value={addTableDescription} onChange={e => setAddTableDescription(e.target.value)} placeholder="请输入表描述（可选）" /></div>
-                    {addTableRelatedTables.length > 0 && (
-                      <div style={{ marginBottom: 8 }}>关联表: {addTableRelatedTables.join(', ')}</div>
-                    )}
-                  </>
-                )}
-                <div style={{ marginBottom: 8 }}>
-                  <div style={{ marginBottom: 4, fontSize: 12 }}>
-                    业务域 <span style={{ color: '#ff4d4f' }}>*</span>
-                    <span style={{ color: '#999', marginLeft: 8, fontSize: 11 }}>
-                      悬停查看说明，至少选 1 个
-                    </span>
-                  </div>
-                  <Select
-                    mode="multiple"
-                    placeholder="请选择业务域"
-                    value={addTableSelectedDomains}
-                    onChange={setAddTableSelectedDomains}
-                    loading={addTableDomainsLoading}
-                    style={{ width: '100%' }}
-                    optionLabelProp="label"
-                    size="small"
-                  >
-                    {addTableDomains.map(d => (
-                      <Select.Option key={d.id} value={d.id} label={d.name}>
-                        <Tooltip title={d.description} placement="right">
-                          <span style={{ cursor: 'help' }}>{d.name}</span>
-                        </Tooltip>
-                      </Select.Option>
-                    ))}
-                  </Select>
-                </div>
-              </div>
-              <div style={{ marginBottom: 16, maxHeight: 200, overflow: 'auto', background: 'var(--xtsql-code-bg)', padding: 8, borderRadius: 4, fontSize: 11 }}>
-                <pre style={{ margin: 0, whiteSpace: 'pre-wrap', wordBreak: 'break-all' }}>{addTableDDL}</pre>
-              </div>
-              <div style={{ textAlign: 'right', display: 'flex', gap: 8, justifyContent: 'flex-end' }}>
-                <Button onClick={() => setAddTableStep(2)} disabled={addTableCreating}>上一步</Button>
-                <Button
-                  type="primary"
-                  onClick={handleAddTableStep3}
-                  loading={addTableCreating}
-                  disabled={addTableSelectedDomains.length === 0}
-                >
-                  {addTableExists ? '覆盖DDL' : '生成文件'}
-                </Button>
-              </div>
-            </div>
-          )}
-        </Modal>
+          onClose={() => setAddTableModalOpen(false)}
+          onCreated={loadSkillsList}
+        />
 
         <ChangePasswordModal open={changePwdOpen} onClose={() => setChangePwdOpen(false)} onChanged={() => { setChangePwdOpen(false); logout(); }} />
         
-        <Modal
-          title="AI 分析 EXPLAIN 结果"
+        <ExplainAnalyzeModal
           open={explainAnalyzeModalOpen}
-          onCancel={() => setExplainAnalyzeModalOpen(false)}
-          footer={null}
-          width={700}
-          style={{ top: 20 }}
-        >
-          <div style={{
-            maxHeight: '70vh',
-            overflow: 'auto',
-            padding: '8px 12px',
-            background: 'var(--xtsql-code-bg)',
-            borderRadius: 4
-          }}>
-            {explainAnalysisLoading && !explainAnalysisContent ? (
-              <><Spin /> 正在分析...</>
-            ) : (
-              <ReactMarkdown
-                remarkPlugins={[remarkGfm]}
-                components={{
-                  p: ({node, ...props}) => <p style={{fontSize: 12, marginTop: 0, marginBottom: 8}} {...props} />,
-                  h1: ({node, ...props}) => <h1 style={{fontSize: 16, marginTop: 12, marginBottom: 8}} {...props} />,
-                  h2: ({node, ...props}) => <h2 style={{fontSize: 14, marginTop: 10, marginBottom: 6}} {...props} />,
-                  h3: ({node, ...props}) => <h3 style={{fontSize: 13, marginTop: 8, marginBottom: 6}} {...props} />,
-                  ul: ({node, ...props}) => <ul style={{fontSize: 12, paddingLeft: 20, marginTop: 4, marginBottom: 8}} {...props} />,
-                  li: ({node, ...props}) => <li style={{fontSize: 12, marginBottom: 4}} {...props} />,
-                  ...createMarkdownRenderers(theme === 'dark', { fontSize: 11 }),
-                }}
-              >{explainAnalysisContent || (explainAnalysisLoading ? '正在分析...' : '')}</ReactMarkdown>
-            )}
-          </div>
-        </Modal>
+          onClose={() => setExplainAnalyzeModalOpen(false)}
+          content={explainAnalysisContent}
+          loading={explainAnalysisLoading}
+          isDarkTheme={theme === 'dark'}
+        />
     </ConfigProvider>
-  );
-}
-
-// 修改密码弹窗
-function ChangePasswordModal({ open, onClose, onChanged }) {
-  const [form] = Form.useForm();
-  const [submitting, setSubmitting] = useState(false);
-
-  // 关闭时清空表单
-  useEffect(() => {
-    if (!open) form.resetFields();
-  }, [open, form]);
-
-  const handleOk = async () => {
-    try {
-      const values = await form.validateFields();
-      setSubmitting(true);
-      await api.changePasswordApi({
-        oldPassword: values.oldPassword,
-        newPassword: values.newPassword
-      });
-      message.success('密码已修改，请重新登录');
-      // 改密会吊销 token_version，前端必须退出登录态
-      onChanged && onChanged();
-    } catch (e) {
-      if (e?.errorFields) {
-        // antd 表单校验失败，不报错
-        return;
-      }
-      const msg = e?.response?.data?.error || e?.message || '修改失败';
-      message.error(msg);
-    } finally {
-      setSubmitting(false);
-    }
-  };
-
-  return (
-    <Modal
-      title="修改密码"
-      open={open}
-      onOk={handleOk}
-      onCancel={onClose}
-      confirmLoading={submitting}
-      okText="确认修改"
-      cancelText="取消"
-      destroyOnClose
-    >
-      <Form form={form} layout="vertical" autoComplete="off">
-        <Form.Item
-          name="oldPassword"
-          label="当前密码"
-          rules={[{ required: true, message: '请输入当前密码' }]}
-        >
-          <Input.Password prefix={<LockOutlined />} placeholder="请输入当前密码" autoComplete="current-password" />
-        </Form.Item>
-        <Form.Item
-          name="newPassword"
-          label="新密码"
-          rules={[
-            { required: true, message: '请输入新密码' },
-            { min: 6, message: '新密码长度不能少于 6 位' }
-          ]}
-          hasFeedback
-        >
-          <Input.Password prefix={<LockOutlined />} placeholder="新密码（至少 6 位）" autoComplete="new-password" />
-        </Form.Item>
-        <Form.Item
-          name="confirmPassword"
-          label="确认新密码"
-          dependencies={['newPassword']}
-          hasFeedback
-          rules={[
-            { required: true, message: '请再次输入新密码' },
-            ({ getFieldValue }) => ({
-              validator(_, value) {
-                if (!value || getFieldValue('newPassword') === value) return Promise.resolve();
-                return Promise.reject(new Error('两次输入的密码不一致'));
-              }
-            })
-          ]}
-        >
-          <Input.Password prefix={<LockOutlined />} placeholder="再次输入新密码" autoComplete="new-password" />
-        </Form.Item>
-      </Form>
-    </Modal>
   );
 }
 

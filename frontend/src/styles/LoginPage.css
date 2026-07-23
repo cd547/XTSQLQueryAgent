@@ -1,0 +1,113 @@
+/* ==================== 登录页现代化 ==================== */
+.xtsql-login-page {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: var(--xtsql-app-bg);
+  background-attachment: fixed;
+  position: relative;
+  overflow: hidden;
+}
+.xtsql-login-page::before,
+.xtsql-login-page::after {
+  content: '';
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  z-index: 0;
+}
+.xtsql-login-page::before {
+  width: 380px;
+  height: 380px;
+  background: rgba(22, 119, 255, 0.18);
+  top: -100px;
+  left: -100px;
+}
+.xtsql-login-page::after {
+  width: 320px;
+  height: 320px;
+  background: rgba(124, 58, 237, 0.16);
+  bottom: -80px;
+  right: -80px;
+}
+.xtsql-login-card {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  max-width: 400px;
+  background: var(--xtsql-bg-elevated);
+  border-radius: var(--xtsql-radius-xl);
+  padding: 36px 32px;
+  box-shadow: var(--xtsql-shadow-lg);
+  border: 1px solid var(--xtsql-border);
+}
+.xtsql-login-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.xtsql-login-logo {
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, #1677ff 0%, #4f46e5 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: #fff;
+  font-size: 26px;
+  box-shadow: var(--xtsql-accent-glow);
+  margin-bottom: 8px;
+}
+.xtsql-login-title {
+  font-size: 22px;
+  font-weight: 700;
+  color: var(--xtsql-text);
+  letter-spacing: 0.4px;
+}
+.xtsql-login-sub {
+  font-size: 12px;
+  color: var(--xtsql-text-tertiary);
+}
+.xtsql-login-form .ant-form-item-label > label {
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--xtsql-text-secondary);
+}
+.xtsql-login-input.ant-input,
+.xtsql-login-input.ant-input-affix-wrapper {
+  height: 40px;
+  border-radius: var(--xtsql-radius-md) !important;
+  background: var(--xtsql-bg) !important;
+  border: 1px solid var(--xtsql-border) !important;
+  transition: all 0.2s ease;
+}
+.xtsql-login-input.ant-input-affix-wrapper:focus,
+.xtsql-login-input.ant-input-affix-wrapper:focus-within,
+.xtsql-login-input.ant-input:focus {
+  border-color: var(--xtsql-accent) !important;
+  box-shadow: 0 0 0 3px var(--xtsql-accent-soft) !important;
+}
+.xtsql-login-submit.ant-btn {
+  height: 42px !important;
+  width: 100%;
+  border-radius: var(--xtsql-radius-md) !important;
+  background: linear-gradient(135deg, #1677ff 0%, #4f46e5 100%) !important;
+  border: none !important;
+  color: #fff !important;
+  font-weight: 500 !important;
+  font-size: 14px !important;
+  box-shadow: var(--xtsql-accent-glow);
+  margin-top: 4px;
+}
+.xtsql-login-submit.ant-btn:hover {
+  filter: brightness(1.08);
+  transform: translateY(-1px);
+}
+.xtsql-login-tabs .ant-tabs-tab {
+  font-size: 13px;
+}

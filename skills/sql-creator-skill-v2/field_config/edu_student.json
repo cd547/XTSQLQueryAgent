@@ -1,17 +1,35 @@
 {
   "table_name": "edu_student",
   "field_aliases": {},
-  "field_enums": {},
+  "field_enums": {
+    "type":{
+      "1":"学通学生",
+      "2":"学通客户",
+      "3":"科桥、克勒学生"
+    },
+    "org":{
+      "1":"学通",
+      "2":"科桥",
+      "3":"克勒"
+    },
+    "edu_student_type_id":{
+      "1":"全日制",
+      "2":"培优",
+      "3":"高中备考",
+      "4":"双轨制",
+      "5":"培优大客户(已删)",
+      "6":"低龄备考",
+      "7":"留学(已删)",
+      "8":"未知(已删)"
+    }
+  },
   "virtual_associations": [
     {
       "name": "关联线索",
       "target_table": "customer_clue_info",
       "join_condition": "customer_clue_info.customer_code = edu_student.student_code",
       "type": "one_to_one",
-      "description": "一个学生一条线索",
-      "fields_mapping": {
-        "customer_code": "student_code"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
@@ -19,10 +37,7 @@
       "target_table": "my_user",
       "join_condition": "my_user.id = edu_student.my_user_id",
       "type": "many_to_one",
-      "description": "多个学生可对应同一个注册用户",
-      "fields_mapping": {
-        "my_user_id": "id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
@@ -30,10 +45,7 @@
       "target_table": "my_user",
       "join_condition": "my_user.id = edu_student.update_my_user_id",
       "type": "many_to_one",
-      "description": "多个学生可被同一个微信用户更新资料",
-      "fields_mapping": {
-        "update_my_user_id": "id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
@@ -41,21 +53,15 @@
       "target_table": "edu_campus_school",
       "join_condition": "edu_campus_school.id = edu_student.campus_school_id",
       "type": "many_to_one",
-      "description": "多个学生可属于同一个分校",
-      "fields_mapping": {
-        "campus_school_id": "id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
-      "name": "关联学生类型",
+      "name": "关联学生类型（数据可直接参考field_enums中的edu_student_type_id字段）",
       "target_table": "edu_student_type",
       "join_condition": "edu_student_type.id = edu_student.edu_student_type_id",
       "type": "many_to_one",
-      "description": "多个学生可属于同一种学生类型",
-      "fields_mapping": {
-        "edu_student_type_id": "id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
@@ -63,10 +69,7 @@
       "target_table": "edu_student_status",
       "join_condition": "edu_student_status.id = edu_student.edu_student_status_id",
       "type": "many_to_one",
-      "description": "多个学生可处于同一种状态",
-      "fields_mapping": {
-        "edu_student_status_id": "id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
@@ -74,10 +77,7 @@
       "target_table": "edu_student_type_project",
       "join_condition": "edu_student_type_project.id = edu_student.edu_student_type_project_id",
       "type": "many_to_one",
-      "description": "多个学生可报读同一个项目",
-      "fields_mapping": {
-        "edu_student_type_project_id": "id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
@@ -85,10 +85,7 @@
       "target_table": "edu_student_certificates_type",
       "join_condition": "edu_student_certificates_type.id = edu_student.certificates_type",
       "type": "many_to_one",
-      "description": "多个学生可使用同一种证件类型",
-      "fields_mapping": {
-        "certificates_type": "id"
-      },
+      "description": "",
       "business_rule": ""
     }
   ],

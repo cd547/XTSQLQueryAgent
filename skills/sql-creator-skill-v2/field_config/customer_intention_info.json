@@ -1,11 +1,13 @@
 {
   "table_name": "customer_intention_info",
-
   "field_aliases": {
-    "customer_code": ["客户编码"],
-    "lesson_intention": ["课程意向编码"]
+    "customer_code": [
+      "客户编码"
+    ],
+    "lesson_intention": [
+      "课程意向编码"
+    ]
   },
-
   "field_enums": {
     "consult_intention": {
       "1": "学通培训",
@@ -57,24 +59,16 @@
       "7": "其他"
     }
   },
-
   "virtual_associations": [
     {
       "name": "关联客户主表",
       "target_table": "customer_info",
       "join_condition": "customer_info.code = customer_intention_info.customer_code",
       "type": "many_to_one",
-      "description": "多条意向记录属于不同客户（实际业务中1个客户只有1条意向信息）",
-      "fields_mapping": {
-        "code": "customer_code"
-      }
+      "description": "多条意向记录属于不同客户（实际业务中1个客户只有1条意向信息）"
     }
   ],
-
   "calculated_fields": {},
-
-  "business_constraints": {
-  },
-
+  "business_constraints": {},
   "business_rules": []
 }

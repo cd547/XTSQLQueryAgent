@@ -1,9 +1,0 @@
-{
-  "table_name": "order_student_received_approvalsettlement",
-  "field_aliases": {},
-  "field_enums": {},
-  "virtual_associations": [],
-  "calculated_fields": {},
-  "business_constraints": {},
-  "business_rules": ["当发起了审批流后会在当前表中创建3条记录对应三个审批节点（level:1,2,3），默认审批状态都是1，直到审批人去改变"]
-}

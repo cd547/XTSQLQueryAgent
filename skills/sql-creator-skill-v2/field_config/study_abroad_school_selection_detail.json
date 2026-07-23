@@ -1,52 +1,42 @@
 {
   "table_name": "study_abroad_school_selection_detail",
-
   "field_aliases": {
-    "book_id": ["定校书ID"],
-    "custom_options": ["自定义标题选项", "定校书自定义title选项ID"]
+    "book_id": [
+      "定校书ID"
+    ],
+    "custom_options": [
+      "自定义标题选项",
+      "定校书自定义title选项ID"
+    ]
   },
-
   "field_enums": {},
-
   "virtual_associations": [
     {
       "name": "关联定校书PDF主表",
       "target_table": "study_abroad_school_selection",
       "join_condition": "study_abroad_school_selection.id = study_abroad_school_selection_detail.school_selection_id",
       "type": "many_to_one",
-      "description": "多条明细记录属于同一份定校书PDF",
-      "fields_mapping": {
-        "id": "school_selection_id"
-      }
+      "description": "多条明细记录属于同一份定校书PDF"
     },
     {
       "name": "关联定校书",
       "target_table": "study_abroad_proofread_book",
       "join_condition": "study_abroad_proofread_book.id = study_abroad_school_selection_detail.book_id",
       "type": "many_to_one",
-      "description": "每条明细关联一条定校书",
-      "fields_mapping": {
-        "id": "book_id"
-      }
+      "description": "每条明细关联一条定校书"
     },
     {
       "name": "留学生成定校书pdf明细表",
       "target_table": "study_abroad_school_selection",
       "join_condition": "study_abroad_school_selection.id = study_abroad_school_selection_detail.school_selection_id",
       "type": "many_to_one",
-      "description": "",
-      "fields_mapping": {
-        "id": "school_selection_id"
-      }
+      "description": ""
     }
   ],
-
   "calculated_fields": {},
-
   "business_constraints": {
     "custom_options": "customOptions存储StudyAbroadSchoolTitleEnum中sort值的逗号分隔字符串，用于控制定校书PDF中显示的列",
     "bridge_table": "此表为study_abroad_school_selection和study_abroad_proofread_book之间的桥接表，一对多关系"
   },
-
   "business_rules": []
 }

@@ -8,21 +8,15 @@
       "target_table": "admin_pay_order",
       "join_condition": "admin_pay_order.id = admin_pay_order_student.admin_pay_order_id",
       "type": "many_to_one",
-      "description": "支付单-学生订单关联的支付单",
-      "fields_mapping": {
-        "id": "admin_pay_order_id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
-      "name": "关联学生订单",
+      "name": "关联订单",
       "target_table": "order_student",
       "join_condition": "order_student.id = admin_pay_order_student.order_student_id",
       "type": "many_to_one",
-      "description": "支付单-学生订单关联的学生订单",
-      "fields_mapping": {
-        "id": "order_student_id"
-      },
+      "description": "",
       "business_rule": ""
     }
   ],

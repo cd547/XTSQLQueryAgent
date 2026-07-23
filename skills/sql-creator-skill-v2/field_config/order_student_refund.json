@@ -1,17 +1,24 @@
 {
   "table_name": "order_student_refund",
   "field_aliases": {},
-  "field_enums": {},
+  "field_enums": {
+    "type": {
+      "1":"转课/升级",
+      "2":"退款"
+    },
+    "status": {
+      "1":"审核中",
+      "2":"已通过",
+      "3":"驳回"
+    }
+  },
   "virtual_associations": [
     {
-      "name": "关联学生订单",
+      "name": "关联订单",
       "target_table": "order_student",
       "join_condition": "order_student.id = order_student_refund.order_student_id",
       "type": "many_to_one",
-      "description": "退款记录关联的学生订单",
-      "fields_mapping": {
-        "id": "order_student_id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
@@ -19,10 +26,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = order_student_refund.launch_admin_user_id",
       "type": "many_to_one",
-      "description": "退款记录的发起人",
-      "fields_mapping": {
-        "id": "launch_admin_user_id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
@@ -30,10 +34,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = order_student_refund.confirm_admin_user_id",
       "type": "many_to_one",
-      "description": "退款记录的审批人",
-      "fields_mapping": {
-        "id": "confirm_admin_user_id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
@@ -41,14 +42,16 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = order_student_refund.payment_admin_user_id",
       "type": "many_to_one",
-      "description": "退款记录的操作支付的操作人",
-      "fields_mapping": {
-        "id": "payment_admin_user_id"
-      },
+      "description": "",
       "business_rule": ""
     }
   ],
   "calculated_fields": {},
   "business_constraints": {},
-  "business_rules": []
+  "business_rules": [ 
+    {
+      "name": "退款金额",
+      "description": "必须带上 order_student.status = 4 的订单的条件，否则会把非最终退款记录计入。"
+    }
+  ]
 }

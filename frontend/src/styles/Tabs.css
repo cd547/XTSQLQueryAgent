@@ -1,0 +1,17 @@
+/* ==================== Tabs 美化 ==================== */
+.ant-tabs.xtsql-tabs .ant-tabs-tab {
+  padding: 8px 14px !important;
+  font-size: 12px !important;
+  border-radius: var(--xtsql-radius-sm) var(--xtsql-radius-sm) 0 0 !important;
+  transition: all 0.15s ease;
+}
+.ant-tabs.xtsql-tabs .ant-tabs-tab:hover {
+  background: var(--xtsql-hover);
+}
+.ant-tabs.xtsql-tabs .ant-tabs-tab-active {
+  background: var(--xtsql-bg) !important;
+}
+.ant-tabs.xtsql-tabs > .ant-tabs-nav .ant-tabs-ink-bar {
+  height: 2px;
+  background: var(--xtsql-accent) !important;
+}

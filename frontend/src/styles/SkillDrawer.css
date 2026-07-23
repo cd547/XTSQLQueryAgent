@@ -1,0 +1,33 @@
+/* ==================== Skill 树区域 ==================== */
+.xtsql-skill-section {
+  margin-bottom: 12px;
+  background: var(--xtsql-bg-elevated);
+  border: 1px solid var(--xtsql-border);
+  border-radius: var(--xtsql-radius-md);
+  padding: 12px;
+}
+.xtsql-skill-section-title {
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--xtsql-text);
+}
+.xtsql-skill-tree {
+  height: 200px;
+  overflow: auto;
+  border: 1px solid var(--xtsql-border);
+  border-radius: var(--xtsql-radius-md);
+  padding: 8px;
+  background: var(--xtsql-bg);
+}
+
+/* 通用动画 — SkillDrawer 内的 fade-in 也用此 keyframes */
+@keyframes xtsql-fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}

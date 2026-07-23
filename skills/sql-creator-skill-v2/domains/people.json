@@ -13,6 +13,7 @@
     "edu_student_info",
     "edu_student_certificates_type",
     "edu_teacher",
-    "my_user_openid"
+    "my_user_openid",
+    "edu_teacher_work"
   ]
 }

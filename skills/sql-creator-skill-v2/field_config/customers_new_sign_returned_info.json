@@ -9,9 +9,6 @@
       "join_condition": "effective_customers.customer_code = customers_new_sign_returned_info.customer_code",
       "type": "many_to_one",
       "description": "多条新签回款记录可关联同一个有效客户",
-      "fields_mapping": {
-        "customer_code": "customer_code"
-      },
       "business_rule": ""
     }
   ],

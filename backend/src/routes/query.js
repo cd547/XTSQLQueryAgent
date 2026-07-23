@@ -304,6 +304,10 @@ router.post('/generate', async (req, res) => {
   }
 
   try {
+    // 记录请求开始时间：用于计算 assistant 消息耗时（前端回显显示"耗时 Xs"）
+    // 这是后端权威耗时，包含网络传输/历史读取/LLM 调用/工具调用全过程
+    const requestStartTime = Date.now();
+
     // 保存用户消息到数据库
     if (sessionId && question) {
       try {
@@ -318,10 +322,12 @@ router.post('/generate', async (req, res) => {
     const skillMd = await loadSkillMd();
     logger.info('Skill.md loaded at generate request', { length: skillMd.length });
 
+    // [DEAD-CODE 2026-07-15] historyText 当前未被 llm.js 消费（llm.js 用 llm_messages.messages JSON blob）
+    // 保留这段代码以备未来"双上下文"设计（如：用 messages 表做更精细的 token 控制 / 摘要压缩 / 工具调用审计）
+    // 恢复方法：在 llm.js:677 generateSQLWithLangChainStreamGen_BAK 函数体内使用 history 形参
     let schema = '';
     let historyText = '';
-
-    if (sessionId) {
+    if (false && sessionId) {  // ← 临时禁用入口，避免无谓 SQL 查询
       const db = getDb();
       // 取最近 20 条消息（长对话保留近期上下文），再翻转成时间正序拼入 prompt
       const messages = db.prepare(`
@@ -362,7 +368,7 @@ router.post('/generate', async (req, res) => {
       res.flushHeaders();
 
       try {
-        const generator = generateSQLWithLangChainStreamGen_BAK(question, historyText, abortController.signal, sessionId);
+        const generator = generateSQLWithLangChainStreamGen_BAK(question, historyText, abortController.signal, sessionId, req.user.username);
         let fullContent = '';
         let sql = '';
         let message = '';
@@ -370,6 +376,9 @@ router.post('/generate', async (req, res) => {
         let totalPromptTokens = 0;
         let totalCompletionTokens = 0;
         let totalTokens = 0;
+        // ★ request_user_choice 弹窗请求：捕获 llm.js yield done 中的事件字段
+        // 用于穿透到 SSE doneData，驱动前端 UserChoiceDialog
+        let userChoiceRequestFromStream = null;
 
         for await (const chunk of generator) {
           if (abortController.signal.aborted) break;
@@ -428,6 +437,11 @@ router.post('/generate', async (req, res) => {
           } else if (chunk.type === 'done') {
             sql = chunk.sql || '';
             message = chunk.message || '';
+            // ★ 捕获 userChoiceRequest 事件字段（来自 llm.js 终止分支 yield）
+            // 与 confirm_tag_add 不同：userChoiceRequest 通过事件字段直接传，不靠 regex
+            if (chunk.userChoiceRequest && !userChoiceRequestFromStream) {
+              userChoiceRequestFromStream = chunk.userChoiceRequest;
+            }
           }
         }
 
@@ -452,14 +466,17 @@ router.post('/generate', async (req, res) => {
         }
 
 logger.info('Stream done, sending final result', { sql: sql?.substring(0, 50), message: message?.substring(0, 50), totalTokens });
-        
-        // 保存最终消息到数据库（包含token统计）
+
+        // 计算本次请求耗时：后端权威时间，含网络/历史读取/LLM/工具调用
+        const elapsedMs = Date.now() - requestStartTime;
+
+        // 保存最终消息到数据库（包含token统计与耗时）
         const contentForDb = fullContent || message;
         if (sessionId && contentForDb) {
           try {
             const db = getDb();
-            db.prepare('INSERT INTO messages (session_id, role, content, sql, results, prompt_tokens, completion_tokens, total_tokens) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
-              .run(sessionId, 'assistant', contentForDb, sql || '', '', totalPromptTokens, totalCompletionTokens, totalTokens);
+            db.prepare('INSERT INTO messages (session_id, role, content, sql, results, prompt_tokens, completion_tokens, total_tokens, elapsed_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
+              .run(sessionId, 'assistant', contentForDb, sql || '', '', totalPromptTokens, totalCompletionTokens, totalTokens, elapsedMs);
           } catch (e) {
             logger.error('保存最终消息失败', { error: e.message });
           }
@@ -483,8 +500,16 @@ logger.info('Stream done, sending final result', { sql: sql?.substring(0, 50), m
           sql,
           message,
           sessionId,
-          totalTokens
+          totalTokens,
+          // 后端权威耗时（毫秒）：前端优先用此值显示，回显历史消息时也用 DB 中的此字段
+          elapsedMs
         };
+
+        // ★ request_user_choice 弹窗请求：来自 llm.js 终止分支 yield 的 userChoiceRequest 事件字段
+        // null 表示 DB 写失败降级（不弹窗）/ 正常路径（无 user_choice 调用）
+        if (userChoiceRequestFromStream) {
+          doneData.user_choice_request = userChoiceRequestFromStream;
+        }
 
         const confirmMatch = message.match(/<!--confirm_tag_add:(\{[^}]+\})-->/);
         if (confirmMatch) {
@@ -772,6 +797,15 @@ ${JSON.stringify(explainResults, null, 2)}
       }
     });
 
+    // 整体 SSE 超时（5min）—— 防御 LLM 流异常长时间挂起（与 /generate 路由一致）
+    const OVERALL_TIMEOUT_MS = 5 * 60_000;
+    const overallTimer = setTimeout(() => {
+      if (!streamCompleted) {
+        logger.warn('EXPLAIN analyze overall timeout, aborting LLM request', { OVERALL_TIMEOUT_MS });
+        abortController.abort(new Error(`Overall timeout after ${OVERALL_TIMEOUT_MS}ms`));
+      }
+    }, OVERALL_TIMEOUT_MS);
+
     res.flushHeaders();
 
     let apiUrl;
@@ -854,11 +888,13 @@ ${JSON.stringify(explainResults, null, 2)}
       res.end();
     }
   } catch (error) {
+    clearTimeout(overallTimer);
     if (error.name === 'AbortError') {
       logger.info('EXPLAIN analyze: aborted by client');
     } else {
       logger.error('EXPLAIN analyze failed', { error: error.message });
-      if (!abortController.signal.aborted && !res.writableEnded) {
+      // abortController / overallTimer 可能在 abortController 声明前抛错，用 typeof 守卫
+      if (typeof abortController !== 'undefined' && !abortController.signal.aborted && !res.writableEnded) {
         try {
           res.write(`data: ${JSON.stringify({ type: 'error', content: error.message })}\n\n`);
           res.end();

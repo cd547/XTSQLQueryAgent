@@ -9,9 +9,6 @@
       "join_condition": "admin_user.id = edu_teacher.admin_user_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "admin_user_id"
-      },
       "business_rule": ""
     },
     {
@@ -20,9 +17,6 @@
       "join_condition": "admin_teacher_scheme.id = edu_teacher.admin_teacher_scheme_id",
       "type": "many_to_one",
       "description": "",
-      "fields_mapping": {
-        "id": "admin_teacher_scheme_id"
-      },
       "business_rule": ""
     }
   ],

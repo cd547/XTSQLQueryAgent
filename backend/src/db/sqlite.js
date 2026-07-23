@@ -150,6 +150,9 @@ export async function initDatabase() {
   addColumnIfMissing(db, 'messages', 'prompt_tokens', 'INTEGER DEFAULT 0');
   addColumnIfMissing(db, 'messages', 'completion_tokens', 'INTEGER DEFAULT 0');
   addColumnIfMissing(db, 'messages', 'total_tokens', 'INTEGER DEFAULT 0');
+  // 添加 assistant 消息耗时（毫秒）字段：流式 done 时由后端写入，
+  // 历史回显用此字段显示"耗时 Xs"；老数据无值，loadMessages 用 created_at 差值兜底
+  addColumnIfMissing(db, 'messages', 'elapsed_ms', 'INTEGER DEFAULT 0');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS configs (

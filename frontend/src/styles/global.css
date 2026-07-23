@@ -1,0 +1,27 @@
+/* ==================== 全局滚动条 ==================== */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: var(--xtsql-scrollbar-thumb) var(--xtsql-scrollbar-track);
+}
+*::-webkit-scrollbar { width: 8px; height: 8px; }
+*::-webkit-scrollbar-track { background: var(--xtsql-scrollbar-track); }
+*::-webkit-scrollbar-thumb {
+  background: var(--xtsql-scrollbar-thumb);
+  border-radius: var(--xtsql-radius-pill);
+}
+*::-webkit-scrollbar-thumb:hover { background: rgba(0, 0, 0, 0.28); }
+html.xtsql-dark *::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 255, 0.28); }
+
+/* 隐藏某些区域的滚动条 */
+.skill-drawer-scroll::-webkit-scrollbar { display: none; }
+.skill-drawer-scroll {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* ==================== 通用动画工具类 ==================== */
+@keyframes xtsql-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.55; }
+}
+.xtsql-pulse { animation: xtsql-pulse 1.4s ease-in-out infinite; }

@@ -1,13 +1,20 @@
 {
   "table_name": "customer_info",
-
   "field_aliases": {
-    "code": ["客户编码"],
-    "name": ["学生姓名", "客户姓名"],
-    "en_name": ["英文名"],
-    "create_by": ["录入人ID"]
+    "code": [
+      "客户编码"
+    ],
+    "name": [
+      "学生姓名",
+      "客户姓名"
+    ],
+    "en_name": [
+      "英文名"
+    ],
+    "create_by": [
+      "录入人ID"
+    ]
   },
-
   "field_enums": {
     "gender": {
       "0": "未知",
@@ -20,94 +27,65 @@
       "2": "无效重复"
     }
   },
-
   "virtual_associations": [
     {
       "name": "关联线索扩展信息",
       "target_table": "customer_clue_info",
       "join_condition": "customer_clue_info.customer_code = customer_info.code",
       "type": "one_to_one",
-      "description": "1个客户对应1条线索扩展信息（STRAIGHT_JOIN强制关联）",
-      "fields_mapping": {
-        "customer_code": "code"
-      }
+      "description": "1个客户对应1条线索扩展信息（STRAIGHT_JOIN强制关联）"
     },
     {
       "name": "关联教育信息",
       "target_table": "customer_education_info",
       "join_condition": "customer_education_info.customer_code = customer_info.code AND customer_education_info.deleted = 0",
       "type": "one_to_one",
-      "description": "1个客户对应1条教育信息",
-      "fields_mapping": {
-        "customer_code": "code"
-      }
+      "description": "1个客户对应1条教育信息"
     },
     {
       "name": "关联意向信息",
       "target_table": "customer_intention_info",
       "join_condition": "customer_intention_info.customer_code = customer_info.code AND customer_intention_info.deleted = 0",
       "type": "one_to_one",
-      "description": "1个客户对应1条意向信息",
-      "fields_mapping": {
-        "customer_code": "code"
-      }
+      "description": "1个客户对应1条意向信息"
     },
     {
       "name": "关联线索池",
       "target_table": "customer_clue_pool",
       "join_condition": "customer_clue_pool.customer_code = customer_info.code AND customer_clue_pool.deleted = 0 AND customer_clue_pool.user_type = 1 AND customer_clue_pool.enabled = 1",
       "type": "one_to_one",
-      "description": "1个客户在线索池中有1条记录（顾问类型、启用状态）",
-      "fields_mapping": {
-        "customer_code": "code"
-      }
+      "description": "1个客户在线索池中有1条记录（顾问类型、启用状态）"
     },
     {
       "name": "关联创建人",
       "target_table": "admin_user",
       "join_condition": "admin_user.id = customer_info.create_by",
       "type": "many_to_one",
-      "description": "多个客户可由同一个后台用户创建",
-      "fields_mapping": {
-        "id": "create_by"
-      }
+      "description": "多个客户可由同一个后台用户创建"
     },
     {
       "name": "关联线索标签",
       "target_table": "customer_label_rel",
       "join_condition": "customer_label_rel.customer_code = customer_info.code AND customer_label_rel.deleted = 0",
       "type": "one_to_many",
-      "description": "1个客户可有多个标签（通过EXISTS子查询关联）",
-      "fields_mapping": {
-        "customer_code": "code"
-      }
+      "description": "1个客户可有多个标签（通过EXISTS子查询关联）"
     },
     {
       "name": "关联联系方式",
       "target_table": "customer_contact",
       "join_condition": "customer_contact.customer_code = customer_info.code AND customer_contact.deleted = 0",
       "type": "one_to_many",
-      "description": "1个客户可有多个联系方式（手机号、微信号、邮箱）",
-      "fields_mapping": {
-        "customer_code": "code"
-      }
+      "description": "1个客户可有多个联系方式（手机号、微信号、邮箱）"
     },
     {
       "name": "关联自动分配结果",
       "target_table": "customer_auto_assign_result",
       "join_condition": "customer_auto_assign_result.customer_code = customer_info.code AND customer_auto_assign_result.deleted = 0",
       "type": "one_to_many",
-      "description": "1个客户可有多条自动分配结果记录",
-      "fields_mapping": {
-        "customer_code": "code"
-      }
+      "description": "1个客户可有多条自动分配结果记录"
     }
   ],
-
   "calculated_fields": {},
-
-  "business_constraints": {
-  },
-
+  "business_constraints": {},
   "business_rules": []
 }

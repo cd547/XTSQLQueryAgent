@@ -9,9 +9,6 @@
       "join_condition": "my_user.id = cms_apply.my_user_id",
       "type": "many_to_one",
       "description": "多个报名记录可对应同一个C端用户",
-      "fields_mapping": {
-        "my_user_id": "id"
-      },
       "business_rule": ""
     },
     {
@@ -20,9 +17,6 @@
       "join_condition": "cms_article.id = cms_apply.cms_article_id",
       "type": "many_to_one",
       "description": "多个报名记录可对应同一个活动",
-      "fields_mapping": {
-        "cms_article_id": "id"
-      },
       "business_rule": ""
     }
   ],

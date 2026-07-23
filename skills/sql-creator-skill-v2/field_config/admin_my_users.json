@@ -8,10 +8,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = admin_my_users.admin_user_id",
       "type": "many_to_one",
-      "description": "多个关联记录可对应同一个后台用户",
-      "fields_mapping": {
-        "admin_user_id": "id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
@@ -19,10 +16,7 @@
       "target_table": "my_user",
       "join_condition": "my_user.id = admin_my_users.my_user_id",
       "type": "many_to_one",
-      "description": "多个关联记录可对应同一个C端用户",
-      "fields_mapping": {
-        "my_user_id": "id"
-      },
+      "description": "",
       "business_rule": ""
     }
   ],

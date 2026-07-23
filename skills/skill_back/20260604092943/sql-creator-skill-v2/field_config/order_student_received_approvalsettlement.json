@@ -1,9 +1,0 @@
-{
-  "table_name": "order_student_received_approvalsettlement",
-  "field_aliases": {},
-  "field_enums": {},
-  "virtual_associations": [],
-  "calculated_fields": {},
-  "business_constraints": {},
-  "business_rules": []
-}

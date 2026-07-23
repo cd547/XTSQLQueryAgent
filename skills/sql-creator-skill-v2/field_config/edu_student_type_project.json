@@ -8,10 +8,7 @@
       "target_table": "edu_student_type",
       "join_condition": "edu_student_type.id = edu_student_type_project.edu_student_type_id",
       "type": "one_to_one",
-      "description": "",
-      "fields_mapping": {
-        "id": "edu_student_type_id"
-      }
+      "description": ""
     }
   ],
   "calculated_fields": {},

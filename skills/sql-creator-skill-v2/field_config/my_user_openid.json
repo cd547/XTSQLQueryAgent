@@ -1,17 +1,19 @@
 {
   "table_name": "my_user_openid",
   "field_aliases": {},
-  "field_enums": {},
+  "field_enums": {
+    "identity_type": {
+      "1": "公众号",
+      "2": "wecom_external(企业微信外部联系人)"
+    }
+  },
   "virtual_associations": [
     {
       "name": "关联用户",
       "target_table": "my_user",
       "join_condition": "my_user.id = my_user_openid.my_user_id",
       "type": "many_to_one",
-      "description": "OpenID关联的用户",
-      "fields_mapping": {
-        "id": "my_user_id"
-      },
+      "description": "",
       "business_rule": ""
     }
   ],
@@ -21,6 +23,10 @@
     {
       "name": "表的定义",
       "description": "用户关联的OpenID信息，用于记录微信生态（小程序、公众号、企业微信）的OpenID信息，同一个用户可以有多个open_id(特殊：企业微信的外部用户id对应open_id)。"
+    },
+    {
+      "name": "identity_type对应的open_id",
+      "description": "identity_type=1时，open_id为公众号的OpenID，identity_type=2时，open_id为企业微信外部联系人的OpenID"
     }
   ]
 }

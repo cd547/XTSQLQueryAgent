@@ -9,9 +9,6 @@
       "join_condition": "customers_new_sign_returned_info.customer_code = effective_customers.customer_code",
       "type": "one_to_many",
       "description": "1个有效客户可对应多条新签回款明细记录",
-      "fields_mapping": {
-        "customer_code": "customer_code"
-      },
       "business_rule": ""
     }
   ],

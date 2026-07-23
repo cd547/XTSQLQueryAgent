@@ -8,10 +8,7 @@
       "target_table": "keqiao_surface",
       "join_condition": "keqiao_surface.id = keqiao_study.keqiao_surface_id",
       "type": "many_to_one",
-      "description": "多条排课记录可属于同一课表",
-      "fields_mapping": {
-        "id": "keqiao_surface_id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
@@ -19,10 +16,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = keqiao_study.admin_user_id",
       "type": "many_to_one",
-      "description": "多条排课记录可由同一操作人创建",
-      "fields_mapping": {
-        "id": "admin_user_id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
@@ -30,10 +24,7 @@
       "target_table": "edu_course_exam_subject_name",
       "join_condition": "edu_course_exam_subject_name.id = keqiao_study.edu_course_exam_subject_name_id",
       "type": "many_to_one",
-      "description": "多条排课记录可属于同一科目名称",
-      "fields_mapping": {
-        "id": "edu_course_exam_subject_name_id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
@@ -41,10 +32,7 @@
       "target_table": "edu_campus_school",
       "join_condition": "edu_campus_school.id = keqiao_study.edu_campus_school_id",
       "type": "many_to_one",
-      "description": "多条排课记录可属于同一分校区",
-      "fields_mapping": {
-        "id": "edu_campus_school_id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
@@ -52,10 +40,7 @@
       "target_table": "edu_campus_school_class",
       "join_condition": "edu_campus_school_class.id = keqiao_study.edu_campus_school_class_id",
       "type": "many_to_one",
-      "description": "多条排课记录可使用同一教室",
-      "fields_mapping": {
-        "id": "edu_campus_school_class_id"
-      },
+      "description": "",
       "business_rule": ""
     },
     {
@@ -63,14 +48,19 @@
       "target_table": "keqiao_time_table",
       "join_condition": "keqiao_time_table.id = keqiao_study.keqiao_time_table_id",
       "type": "many_to_one",
-      "description": "多条排课记录可使用同一作息时间表",
-      "fields_mapping": {
-        "id": "keqiao_time_table_id"
-      },
+      "description": "",
       "business_rule": ""
     }
   ],
   "calculated_fields": {},
   "business_constraints": {},
-  "business_rules": []
+  "business_rules": [
+      {
+      "name": "课程展示",
+      "description": "根据edu_course_exam_subject_name_id，通过关联 edu_course_exam_subject（三级）、edu_course_exam（二级）、edu_course（一级），按 '一级-二级-三级-四级' 的顺序拼接展示，例如使用 CONCAT(c1.name, '-', c2.name, '-', c3.name, '-', c4.name) AS full_subject_name"
+    },{
+      "name": "上课时间展示",
+      "description": "根据class_time_start、class_time_end，展示格式类似‘2026-06-30 08:50 ~ 09:35’，如果需要获取日期，以class_time_start为准"
+    }
+  ]
 }

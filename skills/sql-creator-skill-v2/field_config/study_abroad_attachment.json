@@ -1,9 +1,6 @@
 {
   "table_name": "study_abroad_attachment",
-
-  "field_aliases": {
-  },
-
+  "field_aliases": {},
   "field_enums": {
     "type": {
       "0": "网申个人信息附件",
@@ -13,45 +10,32 @@
       "4": "文书附件"
     }
   },
-
   "virtual_associations": [
     {
       "name": "关联网申申请信息(businessId)",
       "target_table": "study_abroad_apply_online_info",
       "join_condition": "study_abroad_apply_online_info.id = study_abroad_attachment.business_id AND study_abroad_attachment.type = 1",
       "type": "conditional_many_to_one",
-      "description": "当type=1时关联网申申请信息",
-      "fields_mapping": {
-        "id": "business_id"
-      }
+      "description": "当type=1时关联网申申请信息"
     },
     {
       "name": "关联Offer信息(businessId)",
       "target_table": "study_abroad_offer_info",
       "join_condition": "study_abroad_offer_info.id = study_abroad_attachment.business_id AND study_abroad_attachment.type = 2",
       "type": "conditional_many_to_one",
-      "description": "当type=2时关联Offer信息",
-      "fields_mapping": {
-        "id": "business_id"
-      }
+      "description": "当type=2时关联Offer信息"
     },
     {
       "name": "关联签证信息(businessId)",
       "target_table": "study_abroad_visa_info",
       "join_condition": "study_abroad_visa_info.id = study_abroad_attachment.business_id AND study_abroad_attachment.type = 3",
       "type": "conditional_many_to_one",
-      "description": "当type=3时关联签证信息",
-      "fields_mapping": {
-        "id": "business_id"
-      }
+      "description": "当type=3时关联签证信息"
     }
   ],
-
   "calculated_fields": {},
-
   "business_constraints": {
     "type_polymorphism": "business_id通过type字段区分关联目标表，是多态外键。type=0关联网申个人信息，type=1关联网申申请信息，type=2关联offer，type=3关联签证，type=4关联文书"
   },
-
   "business_rules": []
 }

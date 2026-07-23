@@ -251,6 +251,95 @@ export function requestTagConfirmation(term, table, description) {
   return `<!--confirm_tag_add:${JSON.stringify({ term, table, description })}-->`;
 }
 
+// request_user_choice: 生成稳定 id + marker 字符串
+// 关键：返回结构化对象 {id, marker, payload} —— 让 caller 拿到 id 写入 registry
+// 不返回单纯 marker 字符串（否则 registry 与 marker 的 id 无法关联，reviewer #2 已确认是严重 bug）
+export function makeUserChoiceId() {
+  return 'uc_' + Math.random().toString(36).slice(2, 8);
+}
+
+export function buildUserChoiceMarker(question, options, multiSelect, header) {
+  const id = makeUserChoiceId();
+  const payload = {
+    id,
+    question: String(question || '').slice(0, 200),
+    options: (Array.isArray(options) ? options : []).slice(0, 4).map(o => String(o).slice(0, 100)),
+    multi_select: !!multiSelect,
+    header: String(header || '').slice(0, 12)
+  };
+  return {
+    id,
+    marker: `<!--user_choice:${JSON.stringify(payload)}-->`,
+    payload
+  };
+}
+
+// ★ 校验 questions[] 数组：每条 question 必须 1-4 options + question ≤200 字
+// 返回 {ok, msg} —— ok=false 时 caller 应把 msg 当 error 返回 LLM 让其重试
+function validateQuestions(questions) {
+  if (!Array.isArray(questions) || questions.length === 0) {
+    return { ok: false, msg: "questions 必须是非空数组" };
+  }
+  if (questions.length > 3) {
+    return { ok: false, msg: `questions 最多 3 条（再多弹窗链过长），当前 ${questions.length}` };
+  }
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i] || {};
+    const idx = i + 1;
+    if (!q.question || typeof q.question !== 'string') {
+      return { ok: false, msg: `第 ${idx} 题 question 必填且为字符串` };
+    }
+    if (q.question.length > 200) {
+      return { ok: false, msg: `第 ${idx} 题 question ≤200 字（当前 ${q.question.length}）` };
+    }
+    if (!Array.isArray(q.options) || q.options.length < 1) {
+      return { ok: false, msg: `第 ${idx} 题 options 至少 1 个` };
+    }
+    if (q.options.length > 4) {
+      return { ok: false, msg: `第 ${idx} 题 options 最多 4 个（当前 ${q.options.length}）` };
+    }
+    for (let j = 0; j < q.options.length; j++) {
+      const opt = q.options[j];
+      if (!opt || typeof opt !== 'string') {
+        return { ok: false, msg: `第 ${idx} 题 第 ${j+1} 个 option 必填且为字符串` };
+      }
+      if (opt.length > 100) {
+        return { ok: false, msg: `第 ${idx} 题 第 ${j+1} 个 option ≤100 字（当前 ${opt.length}）` };
+      }
+    }
+  }
+  return { ok: true };
+}
+
+// ★ v3: request_user_choice(questions: [{...}]) 单调用多问题契约
+//  返回结构：
+//    success: {markers:[...], payloads:[...], ids:[...], content:"..."}
+//      - markers 给后端 phase 3 解析后 yield 给前端
+//      - payloads 是已 parse 的对象数组（直接给前端用）
+//      - ids 给 recordToolCall 写 registry
+//      - content 给 LLM 看的 tool 消息（多个 marker 拼接）
+//    error:   {error, content:"⚠️..."}
+//      - 后端不会终止 TURN 1，LLM 看到 content 修正后重试
+export function requestUserChoice(questions) {
+  const v = validateQuestions(questions);
+  if (!v.ok) {
+    return {
+      error: v.msg,
+      content: `⚠️ ${v.msg}。请修正后重新调用 request_user_choice(questions: [...])。`
+    };
+  }
+  const items = questions.map(q => {
+    const r = buildUserChoiceMarker(q.question, q.options, q.multi_select, q.header);
+    return { marker: r.marker, payload: r.payload, id: r.id };
+  });
+  return {
+    markers: items.map(it => it.marker),
+    payloads: items.map(it => it.payload),
+    ids: items.map(it => it.id),
+    content: items.map(it => it.marker).join(''),
+  };
+}
+
 // 表格卡片格式化：与 get_tables 输出保持一致，供 get_sliced_index 共用
 function formatTableInfo(tables) {
   return tables.map(t => {
@@ -282,48 +371,91 @@ function formatTableInfo(tables) {
   }).join('\n\n');
 }
 
-export const tools = [
-  new DynamicTool({
-    name: "get_tables",
-    description: "【兜底工具，谨慎使用】返回全部表信息。仅在 get_domain_index/get_sliced_index 都不够用时调用。",
-    params: {
-      type: 'object',
-      properties: {},
-      required: []
-    },
-    func: async () => {
-      const tableIndex = await loadTableIndex();
-      if (!tableIndex || !tableIndex.tables) return '暂无表数据';
-
-      return tableIndex.tables.map(t => {
-        let info = `- ${t.name}: ${t.description || ''}`;
-        if (t.tags?.length) info += `\n  标签: ${t.tags.join(', ')}`;
-        if (t.related_tables?.length) info += `\n  关联表: ${t.related_tables.join(', ')}`;
-        if (t.business_constraints?.length) {
-          info += `\n  业务约束:`;
-          t.business_constraints.forEach(c => {
-            if (typeof c === 'string') {
-              info += `\n    - ${c}`;
-            } else {
-              info += `\n    - ${c.name}: ${c.description}`;
-            }
-          });
+// 折叠版表格卡片：去掉 related_tables（schema 的 virtual_associations 可替代），
+// 保留 name/description/tags/business_constraints/business_rules。
+// 供 compactConsumedToolResults 使用，与 formatTableInfo 区别仅在于不输出 related_tables。
+// 注意：business_constraints / business_rules 两处并行修复了 formatTableInfo 的
+//   "label/desc 任一缺失时显示 undefined" 缺陷（原模式 `${label}: ${desc}` 在任一为空时产生 "undefined: D" 或 "X: undefined"）。
+export function formatTableInfoCompact(tables) {
+  return tables.map(t => {
+    let info = `- ${t.name}: ${t.description || ''}`;
+    if (t.tags?.length) info += `\n  标签: ${t.tags.join(', ')}`;
+    // 注意：不输出 related_tables，由 schema 的 virtual_associations 替代
+    if (t.business_constraints?.length) {
+      info += `\n  业务约束:`;
+      t.business_constraints.forEach(c => {
+        if (typeof c === 'string') {
+          info += `\n    - ${c}`;
+        } else if (c.name) {
+          info += `\n    - ${c.name}: ${c.description || ''}`;
+        } else if (c.description) {
+          info += `\n    - ${c.description}`;
+        } else {
+          info += `\n    - (空约束)`;
         }
-        if (t.business_rules?.length) {
-          info += `\n  业务规则:`;
-          t.business_rules.forEach(r => {
-            if (typeof r === 'string') {
-              info += `\n    - ${r}`;
-            } else {
-              info += `\n    - ${r.rule || r.description}: ${r.description}`;
-              if (r.query) info += `\n      示例: ${r.query}`;
-            }
-          });
-        }
-        return info;
-      }).join('\n\n');
+      });
     }
-  }),
+    if (t.business_rules?.length) {
+      info += `\n  业务规则:`;
+      t.business_rules.forEach(r => {
+        if (typeof r === 'string') {
+          info += `\n    - ${r}`;
+        } else if (r.rule) {
+          info += `\n    - ${r.rule}: ${r.description || ''}`;
+        } else if (r.description) {
+          info += `\n    - ${r.description}`;
+        } else {
+          info += `\n    - (空规则)`;
+        }
+        if (r.query) info += `\n      示例: ${r.query}`;
+      });
+    }
+    return info;
+  }).join('\n\n');
+}
+
+export const tools = [
+  // new DynamicTool({
+  //   name: "get_tables",
+  //   description: "【兜底工具，谨慎使用】返回全部表信息。仅在 get_domain_index/get_sliced_index 都不够用时调用。",
+  //   params: {
+  //     type: 'object',
+  //     properties: {},
+  //     required: []
+  //   },
+  //   func: async () => {
+  //     const tableIndex = await loadTableIndex();
+  //     if (!tableIndex || !tableIndex.tables) return '暂无表数据';
+
+  //     return tableIndex.tables.map(t => {
+  //       let info = `- ${t.name}: ${t.description || ''}`;
+  //       if (t.tags?.length) info += `\n  标签: ${t.tags.join(', ')}`;
+  //       if (t.related_tables?.length) info += `\n  关联表: ${t.related_tables.join(', ')}`;
+  //       if (t.business_constraints?.length) {
+  //         info += `\n  业务约束:`;
+  //         t.business_constraints.forEach(c => {
+  //           if (typeof c === 'string') {
+  //             info += `\n    - ${c}`;
+  //           } else {
+  //             info += `\n    - ${c.name}: ${c.description}`;
+  //           }
+  //         });
+  //       }
+  //       if (t.business_rules?.length) {
+  //         info += `\n  业务规则:`;
+  //         t.business_rules.forEach(r => {
+  //           if (typeof r === 'string') {
+  //             info += `\n    - ${r}`;
+  //           } else {
+  //             info += `\n    - ${r.rule || r.description}: ${r.description}`;
+  //             if (r.query) info += `\n      示例: ${r.query}`;
+  //           }
+  //         });
+  //       }
+  //       return info;
+  //     }).join('\n\n');
+  //   }
+  // }),
   new DynamicTool({
     name: "get_table_schema",
     description: "获取指定表的字段详情（别名、枚举、约束、业务、关联），支持多表。",
@@ -345,7 +477,9 @@ export const tools = [
         }
       } catch (e) { logger.debug('Parse tableNames failed', { error: e.message }); }
       if (!Array.isArray(tableNames) || tableNames.length === 0) return '请提供 table_names 参数（表名数组）';
-      return JSON.stringify(await getTableSchema(tableNames), null, 2);
+      // 紧凑 JSON：无缩进。deepseek-v3 对 JSON 结构化数据解析无差别，
+      // 但能省 25-40% token（多表场景节省更显著），且对多轮上下文累积友好。
+      return JSON.stringify(await getTableSchema(tableNames));
     }
   }),
   new DynamicTool({
@@ -408,6 +542,59 @@ export const tools = [
       }
 
       return requestTagConfirmation(term, table, description || '');
+    }
+  }),
+  // ★ request_user_choice 工具（v3: questions[] 数组契约）
+  //   位置：稳定工具组末尾，**严禁放首位**——会破坏 prefix cache
+  new DynamicTool({
+    name: "request_user_choice",
+    description: "【需要用户输入】当任务需要用户确认/选择/补充才能继续时调用。\n" +
+      "参数 questions: 1-3 个问题的数组，每个问题独立可答。\n" +
+      "  - question: 必填，问题文本，≤200 字\n" +
+      "  - options: 必填，1-4 个选项，每项 ≤100 字\n" +
+      "  - multi_select: 可选，true=多选(checkbox)，false=单选(radio)，默认 false\n" +
+      "  - header: 可选，问题分类标签，≤12 字\n" +
+      "调用后程序自动结束当前轮次并弹出对话框（链式展示 N 张卡片，按钮『下一个』→『完成』）。",
+    params: {
+      type: 'object',
+      properties: {
+        questions: {
+          type: 'array',
+          description: '1-3 个问题的数组',
+          minItems: 1, maxItems: 3,
+          items: {
+            type: 'object',
+            properties: {
+              question: { type: 'string', description: '问题文本，≤200 字' },
+              options: { type: 'array', items: { type: 'string' }, description: '1-4 个选项，每项 ≤100 字', minItems: 1, maxItems: 4 },
+              multi_select: { type: 'boolean', description: 'true=多选/checkbox，false=单选/radio，默认 false' },
+              header: { type: 'string', description: '问题分类标签，≤12 字' }
+            },
+            required: ['question', 'options']
+          }
+        }
+      },
+      required: ['questions']
+    },
+    func: (params) => {
+      // 解析（string/object 双兼容）
+      let questions;
+      try {
+        if (typeof params === 'object' && params !== null) {
+          questions = params.questions;
+        } else if (typeof params === 'string') {
+          const parsed = JSON.parse(params);
+          questions = parsed.questions;
+        }
+      } catch (e) {
+        logger.debug('Parse request_user_choice params failed', { error: e.message });
+        return { error: '参数解析失败', content: '⚠️ request_user_choice 参数解析失败，请传入合法 JSON。' };
+      }
+
+      // ★ 校验 + 单调用拆 N marker
+      //   success: {markers, payloads, ids, content} 给后端 phase 3 解析
+      //   error:   {error, content} LLM 看到 content 修正后重试
+      return requestUserChoice(questions);
     }
   }),
   // ===== 可变工具：调用一次后会被剪枝（见 llm.js 中的剪枝逻辑）=====

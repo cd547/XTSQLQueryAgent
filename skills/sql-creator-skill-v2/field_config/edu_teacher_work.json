@@ -1,0 +1,18 @@
+{
+  "table_name": "edu_teacher_work",
+  "field_aliases": {},
+  "field_enums": {},
+  "virtual_associations": [
+        {
+      "name": "关联更新人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_teacher_work.admin_user_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}
