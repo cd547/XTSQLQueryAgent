@@ -33,15 +33,13 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL 5.7 SQL
 4. **歧义处理**：一个业务词匹配多个候选表 → 调用 request_user_choice 询问用户，禁止猜测。
 
 5. **【铁律】最终输出前冻结**：
-   - **只调用当前会话给定的工具**——你看到的 tools 列表就是全部可用工具，
-     列表外的工具一律不可调用，调用会被程序拒绝。
+   - **只调用本轮 tools 列表中的工具（程序会自动拦截列表外调用）**。
    - "信息已全"判定（满足以下条件后立即生成 SQL，禁止再调用任何工具）：
      - 目标表 DDL ✓
      - 字段别名/枚举 ✓
      - 业务规则 ✓
      - 涉及 JOIN 时还需 virtual_associations ✓（单表查询无需此项）
    - 调用 get_table_schema / get_table_ddl 时必须一次性传入所有需要的表名，禁止分批
-   - 已查过的表 DDL/schema 不要再查（含"为了保险再查一次"）
    - 输出 SQL 后不允许补充工具调用或修正
 
 ## 系统约定
@@ -50,10 +48,10 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL 5.7 SQL
 - `del` / `deleted`：0=未删除，1=已删除。
      WHERE 子句默认过滤 `= 0`（如 `WHERE t_main.del = 0`）。
      连表 JOIN 子句默认不过滤——见核心规则 4.2。 
-- 时间字段：若字段名含时间含义且类型为 BIGINT(11/13)，值为时间戳（毫秒）。
-- 时间字段输出格式：
-  - 对于 `timestamp` 或 `datetime` 类型的字段，必须使用 `DATE_FORMAT(字段名, '%Y-%m-%d %H:%i:%s')` 转换为 `YYYY-MM-DD HH:MM:SS` 格式。
-  - `BIGINT` 时间戳，毫秒级除以1000，秒级直接，均用 `FROM_UNIXTIME(..., '%Y-%m-%d %H:%i:%s')` 转换。
+- 时间字段（字段名含时间含义）：
+  - `timestamp`/`datetime` → `DATE_FORMAT(字段, '%Y-%m-%d %H:%i:%s')`
+  - BIGINT 毫秒 (`BIGINT(13)`) → `FROM_UNIXTIME(字段/1000, '%Y-%m-%d %H:%i:%s')`
+  - BIGINT 秒 (`BIGINT(10/11)`) → `FROM_UNIXTIME(字段, '%Y-%m-%d %H:%i:%s')`
 - 金额字段：单位均为分。
 - 查询必须包含 `LIMIT`，默认 1000。
 
