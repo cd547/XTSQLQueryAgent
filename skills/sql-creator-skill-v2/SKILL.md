@@ -24,20 +24,21 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL 5.7 SQL
      `WHERE t_b.id IS NULL OR t_b.del = 0`，不要塞进 ON 末尾。
    - 无法判定（既无特殊说明，业务意图也不清晰）→ 必须调用 `request_user_choice` 询问用户，**禁止自行决定**。
 
-1. **字段**：字段名必须来自 DDL，输出时严格按 DDL 字段名，禁止自造或修改字段名。通过 `get_table_schema` 获取字段别名（`field_aliases`）、枚举映射（`field_enums`）、业务约束。禁止猜测。若字段有枚举映射，默认使用 CASE WHEN 或关联枚举表转为业务显示值输出。多表查询时所有字段必须带表别名（如 t1.id）。business_rules 中的每一条规则，在生成 SQL 时都必须以 WHERE、JOIN 或 CASE WHEN 的形式显式体现，不能只当作注释或背景说明。
+5. **字段**：字段名必须来自 DDL，输出时严格按 DDL 字段名，禁止自造或修改字段名。通过 `get_table_schema` 获取字段别名（`field_aliases`）、枚举映射（`field_enums`）、业务约束。禁止猜测。若字段有枚举映射，默认使用 CASE WHEN 或关联枚举表转为业务显示值输出。多表查询时所有字段必须带表别名（如 t1.id）。business_rules 中的每一条规则，在生成 SQL 时都必须以 WHERE、JOIN 或 CASE WHEN 的形式显式体现，不能只当作注释或背景说明。
 
-2. **字段别名**：别名含特殊字符（括号、空格、中文括号等）时必须用反引号：`amount AS \`金额(元)\``。
+6. **字段别名**：别名含特殊字符（括号、空格、中文括号等）时必须用反引号：`amount AS \`金额(元)\``。
 
-3. **MySQL 5.7 限制**：禁止窗口函数、CTE(WITH)、JSON_TABLE。替代方案：子查询、临时表、JSON_EXTRACT。
+7. **MySQL 5.7 限制**：禁止窗口函数、CTE(WITH)、JSON_TABLE。替代方案：子查询、临时表、JSON_EXTRACT。
 
-4. **歧义处理**：一个业务词匹配多个候选表 → 调用 request_user_choice 询问用户，禁止猜测。
+8. **歧义处理**：一个业务词匹配多个候选表 → 调用 request_user_choice 询问用户，禁止猜测。
 
-5. **【铁律】最终输出前冻结**：
+9. **【铁律】最终输出前冻结**：
    - **只调用本轮 tools 列表中的工具（程序会自动拦截列表外调用）**。
    - "信息已全"判定（满足以下条件后立即生成 SQL，禁止再调用任何工具）：
      - 目标表 DDL ✓
      - 字段别名/枚举 ✓
      - 业务规则 ✓
+     - **字段-表归属校验 ✓**（每个 SELECT 字段已在对应表 DDL 中确认存在）
      - 涉及 JOIN 时还需 virtual_associations ✓（单表查询无需此项）
    - 调用 get_table_schema / get_table_ddl 时必须一次性传入所有需要的表名，禁止分批
    - 输出 SQL 后不允许补充工具调用或修正
@@ -87,12 +88,6 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL 5.7 SQL
 任务缺信息时调 `request_user_choice(questions: [...])`，传入 1-3 个完整问题。
 - 调用前在 content 中自然语言描述问题
 - 调用后程序自动结束本轮并弹出对话框
-
-【关键约束】question / options 字符串内部**禁止**使用 ASCII 双引号 `"`——
-  arguments 是 JSON 字符串，内部裸 `"` 会破坏语法导致 JSON.parse 失败。
-  - 引用用户原文时改用：中文引号 `""`「」或反引号 ``
-  - 反例：question: "您说的"内部用的..." " ← 触发 JSON 解析失败
-  - 正例：question: "您说的『内部用的...』是指？" ← 安全
 
 **multi_select 决策**：
 - 互斥（必选其一）→ false，例：`"时间范围：近7天 / 近30天"`

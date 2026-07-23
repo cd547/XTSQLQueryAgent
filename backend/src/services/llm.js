@@ -31,6 +31,64 @@ function sanitizeUsername(name) {
 }
 
 /**
+ * 修复 LLM tool_call arguments 字符串中"字符串值"内的裸 ASCII 双引号。
+ *
+ * LLM 经常在 question/options 等自由文本字段里直接引用用户原话：
+ *   {"q": "您说的"内部"是指？"}          ← 非法 JSON（结构分隔符被破坏）
+ *
+ * 状态机策略：
+ *   - 跟踪是否在字符串值内（inString）
+ *   - 遇到 " 时如果不在字符串内 → 进入字符串（保留）
+ *   - 在字符串内遇到 "：peek 下一个非空白字符
+ *       - 是 , ] } :  或 EOF → 字符串结束（保留）
+ *       - 否则 → 字符串内的裸引号 → 替换为右中文引号 "
+ *   - 跳过转义序列 \" \\ \/ \n \t 等，避免误判
+ *
+ * 不会破坏：
+ *   - 合法 JSON（结构边界是 , ] } : 或 EOF）
+ *   - 已转义的引号 \"（跳过整段转义序列）
+ *
+ * 仅在 JSON.parse 失败的 catch 块内调用，正常情况不动原始字符串。
+ */
+function fixBareQuotesInJsonArgs(s) {
+  let result = '';
+  let inString = false;
+  let i = 0;
+  while (i < s.length) {
+    const c = s[i];
+    // 跳过转义序列
+    if (inString && c === '\\' && i + 1 < s.length) {
+      result += c + s[i + 1];
+      i += 2;
+      continue;
+    }
+    if (c === '"') {
+      if (!inString) {
+        inString = true;
+        result += c;
+      } else {
+        // peek 下一个非空白字符
+        let j = i + 1;
+        while (j < s.length && /\s/.test(s[j])) j++;
+        const next = j < s.length ? s[j] : '';
+        // 字符串结束标志
+        if (next === ',' || next === ']' || next === '}' || next === ':' || next === '') {
+          inString = false;
+          result += c;
+        } else {
+          // 字符串内裸引号 → 替换为右中文引号
+          result += '\u201D';
+        }
+      }
+    } else {
+      result += c;
+    }
+    i++;
+  }
+  return result;
+}
+
+/**
  * 计算当前日期键（YYYY-MM-DD），用于按天分子目录。
  */
 function todayKey() {
@@ -1377,14 +1435,32 @@ ${skillMd}`;
           const tool = toolsMap.get(toolName);
           let parseError = null;
           let parsedArgs = {};
+          let autoFixed = false;
           try {
             parsedArgs = JSON.parse(toolArgs);
           } catch (e) {
-            parseError = e.message;
-            console.warn(
-              `工具 ${toolName} 参数解析失败: ${e.message}, 参数: ${toolArgs}`,
-            );
-            parseError = e.message;
+            // ★ 自动修复：仅对 request_user_choice 工具（自由文本字段易带裸 "）
+            //   其他工具按原逻辑报错，不动原始字符串
+            if (toolName === "request_user_choice") {
+              const repaired = fixBareQuotesInJsonArgs(toolArgs);
+              try {
+                parsedArgs = JSON.parse(repaired);
+                autoFixed = true;
+                console.warn(
+                  `工具 ${toolName} 参数自动修复成功（裸 " → ""），修复后: ${JSON.stringify(parsedArgs)}`,
+                );
+              } catch (e2) {
+                parseError = e.message;
+                console.warn(
+                  `工具 ${toolName} 参数解析失败且自动修复无效: ${e2.message}, 原参数: ${toolArgs}`,
+                );
+              }
+            } else {
+              parseError = e.message;
+              console.warn(
+                `工具 ${toolName} 参数解析失败: ${e.message}, 参数: ${toolArgs}`,
+              );
+            }
           }
 
           if (parseError) {
@@ -1443,7 +1519,7 @@ ${skillMd}`;
             parsedArgs,
             sessionId,
           );
-          return { toolCall, toolName, toolCallId, tool, dupCheck };
+          return { toolCall, toolName, toolCallId, tool, parsedArgs, autoFixed, dupCheck };
         });
 
         // 阶段 2：并行执行工具（互不依赖的 IO 密集型操作）
@@ -1574,6 +1650,14 @@ ${skillMd}`;
           const resultContent =
             p.toolMessageContent ||
             (p.notice ? `${p.notice}\n\n${p.rawResult}` : p.rawResult);
+          // ★ 自动修复成功：先 yield 一条"已修复"提示给 LLM
+          //   让 LLM 知道后续应直接用中文引号 / 反斜杠转义，避免再触发同样的解析失败
+          if (p.autoFixed) {
+            yield {
+              type: "tool_return",
+              log: `✅ ${toolName} 参数已自动修复（裸 ASCII 双引号 → 中文右引号）。后续请直接使用中文引号 \`""\` 或 \`「」\`，或反斜杠转义 \`\\"\`；禁止裸 ASCII 双引号。`,
+            };
+          }
           yield {
             type: "tool_return",
             log: `📋 工具 ${toolName} 返回:\n${typeof resultContent === "string" ? resultContent : JSON.stringify(resultContent)}`,
