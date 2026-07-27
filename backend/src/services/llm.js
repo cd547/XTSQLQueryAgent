@@ -361,6 +361,12 @@ function getOrCreateRegistry(sessionId) {
       // request_user_choice 注册表：key = id (uc_xxx) —— 记录已问过哪些问题
       // 用于 checklist 显示 + 拦截完全相同 (question, options) 组合的重复调用（Q-09 = B）
       userChoiceAsked: new Map(), // id -> {question, options, multiSelect, header, signature}
+      // validate_sql_fields 注册表：追踪 LLM 是否调用 + 通过状态
+      // 状态显示器（buildToolCallChecklistMessage）展示给 LLM 让其"看到"自己已调/未调/通过/失败
+      // 注意：仅用于 LLM 上下文提示，**不强制拦截**——LLM 可自由跳过（参见 plan D-12 仅 LLM 自检）
+      validateSqlFieldsCalled: false,
+      validateSqlFieldsPassed: false,
+      validateSqlFieldsErrorCount: 0,
     });
   }
   return sessionToolRegistries.get(sessionId);
@@ -425,6 +431,17 @@ function buildToolCallChecklistMessage(reg) {
       return `${id}:"${q}"`;
     });
     parts.push(`request_user_choice:[${items.join("|")}]`);
+  }
+  // validate_sql_fields：显示 LLM 自检状态（可重复调用，不受"禁止重复调用"约束）
+  //   passed=true: LLM 至少一次校验通过 → 可输出 SQL
+  //   passed=false: 上次校验有 N 个 errors → LLM 应重写 SQL 后再次调用直到通过
+  //   called=false: LLM 还没调用 → 应在输出 SQL 前调用
+  //   注：本工具**不被剪枝**也不被"重复调用"拦截，是稳定工具（不剪枝，可反复调用）
+  if (reg.validateSqlFieldsCalled) {
+    const status = reg.validateSqlFieldsPassed
+      ? "✓passed"
+      : `✗failed(${reg.validateSqlFieldsErrorCount} errors)`;
+    parts.push(`validate_sql_fields:${status}`);
   }
   if (parts.length === 0) return null;
   return {
@@ -1116,7 +1133,12 @@ ${skillMd}`;
     // 工具剪枝：一次性工具调用过后，从 LLM 请求的 tools 数组中移除以节省 token
     // - get_domain_index：调用后业务域列表已在 history 中，后续不需要
     // - get_sliced_index：调用后已加载的域在 history 中，后续不需要
+    // - validate_sql_fields：首轮（Round 0）不携带，Round 1+ 才携带
+    //   原因：首轮 LLM 刚拿到问题，不会输出 SQL（信息不全），携带工具是浪费 token
+    //   Round 1+（工具调用后 / 用户回答后）LLM 才可能输出 SQL，需自检
+    //   多轮对话 / user_choice 后自动切换的"第二轮"语义对应 Round 1+ 同样适用
     // 注意：toolsMap（用于执行工具的查找）保持不变，仅影响 LLM 看到哪些工具可选
+    const currentRound = maxToolCallsInitial - maxToolCalls;
     const pruneReg = sessionId ? getOrCreateRegistry(sessionId) : null;
     const prunedTools = pruneReg
       ? toolsDefinition.filter((t) => {
@@ -1128,6 +1150,12 @@ ${skillMd}`;
           if (
             t.function.name === "get_sliced_index" &&
             pruneReg.slicedDomains.size > 0
+          )
+            return false;
+          // ★ validate_sql_fields：首轮不携带
+          if (
+            currentRound === 0 &&
+            t.function.name === "validate_sql_fields"
           )
             return false;
           return true;
@@ -1572,6 +1600,22 @@ ${skillMd}`;
                   toolMessageContent = rawResult.content;
                 }
               }
+              // ★ validate_sql_fields 特殊处理：tool.func 返 {content, valid, errors, summary}
+              //   - content：JSON 序列化的字符串，给 LLM 看的（messages.content 必须是 string/list）
+              //   - valid / errors：结构化数据，给下面的 registry 写入用
+              //   若 func 错误返回 {error, content:"⚠️..."}：toolMessageContent = content
+              if (
+                p.toolName === "validate_sql_fields" &&
+                rawResult &&
+                typeof rawResult === "object"
+              ) {
+                if (typeof rawResult.content === "string") {
+                  toolMessageContent = rawResult.content;
+                } else {
+                  // 防御：万一 content 字段缺失或类型错
+                  toolMessageContent = JSON.stringify(rawResult);
+                }
+              }
 
               recordToolCall(
                 p.toolName,
@@ -1579,6 +1623,25 @@ ${skillMd}`;
                 sessionId,
                 userChoiceId,
               );
+              // ★ validate_sql_fields: 记录 LLM 是否调用 + 通过状态
+              //   用于 buildToolCallChecklistMessage 展示给 LLM，让其"看到"自己已调/未调/通过/失败
+              //   注意：仅用于提示，不强制拦截（plan D-12：工具仅 LLM 自检，路由层不兑底）
+              if (
+                p.toolName === "validate_sql_fields" &&
+                rawResult &&
+                typeof rawResult === "object"
+              ) {
+                const reg = getOrCreateRegistry(sessionId);
+                if (reg) {
+                  reg.validateSqlFieldsCalled = true;
+                  reg.validateSqlFieldsPassed = rawResult.valid === true;
+                  reg.validateSqlFieldsErrorCount = Array.isArray(
+                    rawResult.errors,
+                  )
+                    ? rawResult.errors.length
+                    : 0;
+                }
+              }
               return {
                 ...p,
                 rawResult,

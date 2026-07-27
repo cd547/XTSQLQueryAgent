@@ -962,14 +962,29 @@ function AuthenticatedApp({ user, logout }) {
         return { ...prev, currentIndex: prev.currentIndex + 1, answers: newAnswers };
       }
       // 最后一个：合成综合 user 消息
-      const combined = newAnswers.map((a, i) => {
+      // ★ v2 改进（2026-07-27）：跳过的问题不再用 `（无）` 占位（LLM 易把"无"理解为 SQL 关键字）
+      //   改为：分两部分 —— 已答的进 "label=answer; ..."；跳过的额外追加一行明确标记
+      //   优点：LLM 一眼区分"已答"vs"跳过"，不会被"无"误判为 NULL / 不加 WHERE
+      const answeredParts = [];
+      const skippedLabels = [];
+      newAnswers.forEach((a, i) => {
         const req = prev.requests[i] || {};
         const label = (req.header && String(req.header).trim()) || `问题${i + 1}`;
         const sel = Array.isArray(a.selected) && a.selected.length > 0 ? a.selected.join(', ') : '';
         const txt = (a.text || '').trim();
-        const ans = [sel, txt].filter(Boolean).join(' + ');
-        return `${label}=${ans || '（无）'}`;
-      }).join('; ');
+        const isAnswered = sel !== '' || txt !== '';
+        if (isAnswered) {
+          const ans = [sel, txt].filter(Boolean).join(' + ');
+          answeredParts.push(`${label}=${ans}`);
+        } else {
+          skippedLabels.push(label);
+        }
+      });
+      let combined = answeredParts.join('; ');
+      if (skippedLabels.length > 0) {
+        const skipNote = `（用户跳过了 ${skippedLabels.length} 个问题：${skippedLabels.join('、')}）`;
+        combined = combined ? `${combined}\n${skipNote}` : skipNote;
+      }
       // 关闭弹窗 + 触发新一轮（setTimeout 0 避免在 reducer 中嵌套 setState）
       setTimeout(() => {
         handleSend(combined || '用户未回答');

@@ -1607,6 +1607,14 @@
       "related_tables": [],
       "business_constraints": [],
       "business_rules": []
+    },
+    {
+      "name": "edu_goods_section",
+      "description": "产品分类表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
     }
   ]
 }

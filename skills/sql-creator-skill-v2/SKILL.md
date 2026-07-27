@@ -26,9 +26,9 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL 5.7 SQL
 
 5. **字段**：字段名必须来自 DDL，输出时严格按 DDL 字段名，禁止自造或修改字段名。通过 `get_table_schema` 获取字段别名（`field_aliases`）、枚举映射（`field_enums`）、业务约束。禁止猜测。若字段有枚举映射，默认使用 CASE WHEN 或关联枚举表转为业务显示值输出。多表查询时所有字段必须带表别名（如 t1.id）。business_rules 中的每一条规则，在生成 SQL 时都必须以 WHERE、JOIN 或 CASE WHEN 的形式显式体现，不能只当作注释或背景说明。
 
-6. **字段别名**：别名含特殊字符（括号、空格、中文括号等）时必须用反引号：`amount AS \`金额(元)\``。
+6. **字段别名**：含特殊字符（括号/空格/中文等）时必须用反引号包裹。
 
-7. **MySQL 5.7 限制**：禁止窗口函数、CTE(WITH)、JSON_TABLE。替代方案：子查询、临时表、JSON_EXTRACT。
+7. **MySQL 5.7 限制**：禁止窗口函数、CTE(WITH)、JSON_TABLE（`validate_sql_fields` 工具强制检测）。
 
 8. **歧义处理**：一个业务词匹配多个候选表 → 调用 request_user_choice 询问用户，禁止猜测。
 
@@ -38,7 +38,7 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL 5.7 SQL
      - 目标表 DDL ✓
      - 字段别名/枚举 ✓
      - 业务规则 ✓
-     - **字段-表归属校验 ✓**（每个 SELECT 字段已在对应表 DDL 中确认存在）
+     - **【必调 `validate_sql_fields`】** 输出 SQL 前必须调用一次，拿到 errors 必须重写 SQL 后再次校验，valid 才可输出（工具不做任何自动修改，只报错；LLM 自己根据 errors 改）
      - 涉及 JOIN 时还需 virtual_associations ✓（单表查询无需此项）
    - 调用 get_table_schema / get_table_ddl 时必须一次性传入所有需要的表名，禁止分批
    - 输出 SQL 后不允许补充工具调用或修正
@@ -54,7 +54,7 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL 5.7 SQL
   - BIGINT 毫秒 (`BIGINT(11/13)`) → `FROM_UNIXTIME(字段/1000, '%Y-%m-%d %H:%i:%s')`
   - BIGINT 秒 (`BIGINT(10)`) → `FROM_UNIXTIME(字段, '%Y-%m-%d %H:%i:%s')`
 - 金额字段：单位均为分。
-- 查询必须包含 `LIMIT`，默认 1000。
+- 查询必须包含 `LIMIT`，默认 1000（`validate_sql_fields` 工具 R5 强制检测，缺失会报错）。
 
 ## 输出格式（固定）
 ```markdown

@@ -8,7 +8,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = edu_goods.admin_user_id",
       "type": "many_to_one",
-      "description": "1个产品关联1个产品添加人",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -16,7 +16,7 @@
       "target_table": "edu_course_exam_subject_name_price",
       "join_condition": "edu_course_exam_subject_name_price.id = edu_goods.price_id",
       "type": "many_to_one",
-      "description": "1个产品关联1个标准单价",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -24,7 +24,7 @@
       "target_table": "order_pattern",
       "join_condition": "order_pattern.id = edu_goods.order_pattern_id",
       "type": "many_to_one",
-      "description": "1个产品关联1个订单模式",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -32,7 +32,7 @@
       "target_table": "edu_goods_section",
       "join_condition": "edu_goods_section.id = edu_goods.edu_goods_section_id",
       "type": "many_to_one",
-      "description": "1个产品关联1个产品分类",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -40,7 +40,7 @@
       "target_table": "order_contract_template",
       "join_condition": "order_contract_template.id = edu_goods.order_contract_template_id",
       "type": "many_to_one",
-      "description": "1个产品关联1个合同模板",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -48,7 +48,7 @@
       "target_table": "edu_student_type",
       "join_condition": "edu_student_type.id = edu_goods.edu_student_type_id",
       "type": "many_to_one",
-      "description": "1个产品关联1个学生类型",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -56,7 +56,7 @@
       "target_table": "admin_division",
       "join_condition": "admin_division.id = edu_goods.admin_division",
       "type": "many_to_one",
-      "description": "1个产品关联1个部门分区",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -64,7 +64,7 @@
       "target_table": "edu_goods_year",
       "join_condition": "edu_goods_year.id = edu_goods.edu_goods_year_id",
       "type": "many_to_one",
-      "description": "1个产品关联1个年份",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -72,7 +72,7 @@
       "target_table": "edu_campus",
       "join_condition": "edu_campus.id = edu_goods.edu_campus_id",
       "type": "many_to_one",
-      "description": "1个产品关联1个校区",
+      "description": "",
       "business_rule": ""
     }
   ],
