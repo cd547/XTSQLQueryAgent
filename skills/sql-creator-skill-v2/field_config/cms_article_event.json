@@ -2,7 +2,16 @@
   "table_name": "cms_article_event",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+     {
+      "name": "关联媒体列表(活动)",
+      "target_table": "cms_article",
+      "join_condition": "cms_article.id = cms_article_event.article_id",
+      "type": "one_to_many",
+      "description": "",
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": []

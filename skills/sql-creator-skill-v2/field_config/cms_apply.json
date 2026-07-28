@@ -8,15 +8,15 @@
       "target_table": "my_user",
       "join_condition": "my_user.id = cms_apply.my_user_id",
       "type": "many_to_one",
-      "description": "多个报名记录可对应同一个C端用户",
+      "description": "",
       "business_rule": ""
     },
     {
-      "name": "关联活动",
+      "name": "关联媒体列表(活动)",
       "target_table": "cms_article",
       "join_condition": "cms_article.id = cms_apply.cms_article_id",
       "type": "many_to_one",
-      "description": "多个报名记录可对应同一个活动",
+      "description": "",
       "business_rule": ""
     }
   ],

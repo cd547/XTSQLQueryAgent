@@ -287,7 +287,10 @@
     },
     {
       "name": "cms_article_event",
-      "description": "活动专场表"
+      "description": "活动专场表",
+       "related_tables": [
+        "cms_article"
+      ]
     },
     {
       "name": "cms_section",
@@ -295,11 +298,20 @@
     },
     {
       "name": "cms_session_records",
-      "description": "活动场次报名记录表"
+      "description": "活动场次报名记录表",
+       "related_tables": [
+        "cms_article",
+        "cms_article_sessions",
+        "cms_apply",
+        "my_user"
+      ]
     },
     {
       "name": "cms_article_sessions",
-      "description": "活动场次表"
+      "description": "活动场次表",
+       "related_tables": [
+        "cms_article"
+      ]
     },
     {
       "name": "order_student",

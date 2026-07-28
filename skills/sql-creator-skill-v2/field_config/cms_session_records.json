@@ -2,7 +2,40 @@
   "table_name": "cms_session_records",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+        {
+      "name": "关联媒体列表(活动)",
+      "target_table": "cms_article",
+      "join_condition": "cms_article.id = cms_session_records.cms_article_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联活动场次",
+      "target_table": "cms_article_sessions",
+      "join_condition": "cms_article_sessions.id = cms_session_records.session_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联报名用户",
+      "target_table": "my_user",
+      "join_condition": "my_user.id = cms_session_records.my_user_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联报名记录",
+      "target_table": "cms_apply",
+      "join_condition": "cms_apply.id = cms_session_records.cms_apply_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": []
