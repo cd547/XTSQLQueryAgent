@@ -524,7 +524,7 @@
     {
       "name": "order_student_received_settlement",
       "description": "回款计划-佣金结算表",
-      "tags": [],
+      "tags": ["渠道佣金结算"],
       "related_tables": [
         "order_student_received",
         "admin_user",

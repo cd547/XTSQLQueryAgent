@@ -652,7 +652,7 @@ export const tools = [
   // 详见 docs/superpowers/plans/2026-07-23-validate-sql-fields-tool-final.md
   new DynamicTool({
     name: "validate_sql_fields",
-    description: "【SQL 质量自检】最终输出 SQL 前必调，校验 4 类规则：\n" +
+    description: "【SQL 质量自检】最终输出 SQL 前必调，校验规则：\n" +
       "  R1 字段-表归属\n" +
       "  R2 字段别名反引号\n" +
       "  R3 MySQL 5.7 限制\n" +
