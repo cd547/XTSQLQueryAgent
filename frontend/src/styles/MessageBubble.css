@@ -244,6 +244,68 @@ html.xtsql-dark .xtsql-log-tag.return { color: #fbbf24; }
   color: var(--xtsql-text-secondary);
 }
 
+/* ===== Round 轴（数轴式轮次展示）=====
+ * 背景：单次 user 问题可能触发多轮 LLM 工具调用循环
+ * 目的：左侧 44px 宽"数轴"，圆点显示 round 编号，圆点下竖线连到下一 round
+ * 父容器 .xtsql-round-group 用 flex 布局，左侧 axis + 右侧 logs
+ */
+.xtsql-round-group {
+  display: flex;
+  align-items: stretch;
+  position: relative;
+  margin-left: 0;        /* 容器紧贴父 chat-inner 左边缘 */
+  margin-bottom: 6px;
+}
+.xtsql-round-axis {
+  position: relative;
+  width: 44px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding-top: 4px;
+}
+.xtsql-round-dot {
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: var(--xtsql-accent);
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 11px;
+  font-weight: 600;
+  font-family: 'SF Mono', 'Monaco', monospace;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
+  z-index: 2;
+  position: relative;
+}
+.xtsql-round-line {
+  position: absolute;
+  top: 28px;             /* 从圆点底部开始 */
+  bottom: -6px;          /* 延伸到下一 round（负 margin 抵消 group 间距） */
+  left: 50%;
+  width: 2px;
+  background: var(--xtsql-border-strong);
+  transform: translateX(-50%);
+  z-index: 1;
+}
+.xtsql-round-logs {
+  flex: 1;
+  min-width: 0;
+}
+/* round 容器内的 log 卡片不再需要 44px 左边距（容器已经把 axis 占位） */
+.xtsql-round-logs .xtsql-log {
+  margin-left: 0;
+  max-width: none;
+  /* 同轮内多张 log 卡片之间留点空隙（之前靠在一起太紧凑，看起来像一张大卡） */
+  margin-bottom: 6px;
+}
+.xtsql-round-logs .xtsql-log:last-child {
+  margin-bottom: 0;
+}
+
 /* 消息操作按钮 */
 .xtsql-msg-actions {
   display: flex;

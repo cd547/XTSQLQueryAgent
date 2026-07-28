@@ -8,6 +8,7 @@ import ConfirmDialog from './components/ConfirmDialog';
 import UserChoiceDialog from './components/UserChoiceDialog';
 import ResizableTitle from './components/ResizableTitle';
 import ChatMessage from './components/ChatMessage';
+import RoundGroup from './components/RoundGroup';
 import ConfigPanel from './components/ConfigPanel';
 import LoginPage from './components/LoginPage';
 import AppIcon from './components/AppIcon.jsx';
@@ -289,7 +290,81 @@ function AuthenticatedApp({ user, logout }) {
       loadMoreSessions();
     }
   }, [hasMoreSessions, sessions.length]);
-  
+
+  /**
+   * 把扁平 messages 列表按 round 分组，输出渲染层直接消费的"组"列表。
+   * 输出元素有两种类型：
+   *   - { type: 'single', msg, userQuestion? }  单条消息（user / assistant / 单条 log）
+   *   - { type: 'roundGroup', id, round, logs, userQuestion? }  同一 round 内的多条 log
+   * 同时预算好 userQuestion（供"收藏为常用SQL"按钮 / 收藏态显示用）：
+   *   - 顺序向前找最近一条 user 消息即为本组的 userQuestion
+   *   - 遇到 assistant 时停止（同会话内上一个 assistant 之前属于不同问题）
+   *
+   * 用 useMemo 包裹避免每次 render 都重算（流式期间 setMessages 频繁触发 render）
+   */
+  const groupedMessages = useMemo(() => {
+    const groups = [];
+    let currentRound = null;
+    let currentLogs = null;
+    let currentRoundId = null;
+    let lastUserQ = null;  // 当前 assistant 周期内最近一条 user 提问
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      if (m.role === 'log') {
+        const round = typeof m.round === 'number' ? m.round : 0;
+        if (round !== currentRound || currentLogs === null) {
+          // 收尾上一轮
+          if (currentLogs !== null) {
+            groups.push({
+              type: 'roundGroup',
+              id: currentRoundId,
+              round: currentRound,
+              logs: currentLogs,
+              userQuestion: lastUserQ,
+            });
+          }
+          currentRound = round;
+          currentLogs = [m];
+          currentRoundId = `rg-${m.id}`;
+        } else {
+          currentLogs.push(m);
+        }
+      } else {
+        // 收尾上一轮
+        if (currentLogs !== null) {
+          groups.push({
+            type: 'roundGroup',
+            id: currentRoundId,
+            round: currentRound,
+            logs: currentLogs,
+            userQuestion: lastUserQ,
+          });
+          currentLogs = null;
+          currentRound = null;
+          currentRoundId = null;
+        }
+        if (m.role === 'user') {
+          lastUserQ = m.content;
+        } else if (m.role === 'assistant') {
+          // 切到下一轮前，lastUserQ 保留（同一 user 问题可能触发多 assistant
+          // 但实际架构里 assistant 之后就是新 user 或 done）
+        }
+        groups.push({ type: 'single', msg: m, userQuestion: lastUserQ });
+      }
+    }
+    // 收尾最后一轮
+    if (currentLogs !== null) {
+      groups.push({
+        type: 'roundGroup',
+        id: currentRoundId,
+        round: currentRound,
+        logs: currentLogs,
+        userQuestion: lastUserQ,
+      });
+    }
+    return groups;
+  }, [messages]);
+
   const loadMessages = async (sessionId) => {
     if (loadingRef.current.messagesId === sessionId) return;
     loadingRef.current.messagesId = sessionId;
@@ -301,9 +376,13 @@ function AuthenticatedApp({ user, logout }) {
         // 一次性扫描，按"相邻 user/assistant 配对"得到回显耗时
         const loaded = filtered.map(m => {
           let elapsedMs = m.elapsed_ms || null;
+          // 历史 DB 行的 role 是 LLM/tool/tool_return，与流式 SSE 实时态的 'log' role 不同
+          // 这里统一归一化为 'log'，否则 groupMessagesByRound 不会把它们当 log 分组
+          // → 历史会话回看时无法渲染轮次轴
+          const normalizedRole = ['LLM', 'tool', 'tool_return'].includes(m.role) ? 'log' : m.role;
           return {
             id: `db-${m.id}`,
-            role: m.role,
+            role: normalizedRole,
             content: m.content || m.sql || '',
             sql: m.sql || '',
             timestamp: m.created_at,
@@ -311,7 +390,12 @@ function AuthenticatedApp({ user, logout }) {
             // 历史回看：所有日志类型（LLM思考 / 工具调用 / 工具返回）默认折叠，
             // 与流式实时态（collapsed: true）保持一致，避免历史消息全展开
             collapsed: ['LLM', 'tool', 'tool_return'].includes(m.role),
-            elapsedMs
+            elapsedMs,
+            // ★ LLM 工具调用轮次编号（用于历史回显的"轮次轴"展示）
+            //   后端 messages 表新增的 round 列，老数据默认 0
+            //   老数据（无 round 信息）会全归到 round 0 组里，仍然会显示 round 轴（数字 0）
+            //   如果想老数据不显示 round 轴，可加判断：只有 round > 0 时才走 roundGroup
+            round: typeof m.round === 'number' ? m.round : 0,
           };
         });
         // 老数据回填：相邻 user → assistant 配对，差值作为 elapsedMs
@@ -751,7 +835,11 @@ function AuthenticatedApp({ user, logout }) {
                       content: logContent,
                       timestamp: new Date().toISOString(),
                       collapsed: true,
-                      logType: logType
+                      logType: logType,
+                      // ★ LLM 工具调用轮次编号（用于前端"数轴式"轮次展示）
+                      //   后端 llm.js 在每个 yield 时附带 round 字段
+                      //   同 assistant 消息内多条 log 可能共享同一 round（思考→调用→返回属于同一轮）
+                      round: typeof data.round === 'number' ? data.round : 0,
                     };
                     newMsgs.splice(lastAssistantIdx, 0, logMsg);
                   }
@@ -787,6 +875,8 @@ function AuthenticatedApp({ user, logout }) {
                     newMsgs[lastLlmLogIdx] = {
                       ...newMsgs[lastLlmLogIdx],
                       content: (newMsgs[lastLlmLogIdx].content || '') + data.content,
+                      // ★ 同步 round（防止 round 边界判断异常时遗漏）
+                      round: typeof data.round === 'number' ? data.round : (newMsgs[lastLlmLogIdx].round ?? 0),
                     };
                   } else {
                     const logMsg = {
@@ -796,6 +886,8 @@ function AuthenticatedApp({ user, logout }) {
                       timestamp: new Date().toISOString(),
                       collapsed: true,  // ★ 仅新建时设默认折叠
                       logType: 'llm',
+                      // ★ LLM 工具调用轮次编号（用于前端"数轴式"轮次展示）
+                      round: typeof data.round === 'number' ? data.round : 0,
                     };
                     newMsgs.splice(lastAssistantIdx, 0, logMsg);
                   }
@@ -1505,16 +1597,24 @@ const explainColumns = useMemo(() => explainResults.length > 0
                   </div>
                 ) : (
                   <div className="xtsql-chat-inner">
-                    {messages.map((msg, idx) => {
-                      // 找到本条 assistant 消息前最近一条 user 提问（中间可有 log）
-                      let userQuestion = null;
-                      if (msg.role === 'assistant') {
-                        for (let i = idx - 1; i >= 0; i--) {
-                          const m = messages[i];
-                          if (m.role === 'user') { userQuestion = m.content; break; }
-                          if (m.role === 'assistant') break; // 遇到上一轮 assistant 终止
-                        }
+                    {groupedMessages.map((group, idx) => {
+                      const userQuestion = group.userQuestion;
+                      if (group.type === 'roundGroup') {
+                        return (
+                          <RoundGroup
+                            key={group.id}
+                            round={group.round}
+                            logs={group.logs}
+                            onToggleCollapse={handleToggleCollapse}
+                            onFavorite={handleFavorite}
+                            userQuestion={userQuestion}
+                            userAvatar={(user?.display_name || user?.username || 'U').slice(0, 1).toUpperCase()}
+                            favoriteStates={favoriteStates}
+                          />
+                        );
                       }
+                      // single message (user / assistant / 单条 log)
+                      const msg = group.msg;
                       return (
                         <ChatMessage
                           key={msg.id}

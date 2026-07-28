@@ -1106,6 +1106,10 @@ ${skillMd}`;
   const foldedCache = new Map();
 
   while (maxToolCalls > 0) {
+    // ★ 本轮 round 编号（前端用于"数轴式"轮次展示）
+    //   从 0 开始递增；maxToolCallsInitial 是入口处记录的初始值
+    //   每轮 LLM 入口处计算一次，整轮内复用
+    const currentRound = maxToolCallsInitial - maxToolCalls;
     // 每轮 LLM 请求前，临时向 messages 追加"已调用工具清单"消息（仅用于本轮请求，不持久化）。
     // 目的：让 LLM 在生成 tool_call 决策前明确看到本会话已调用的工具 + 参数，
     //       避免因长上下文注意力衰减造成的重复调用（详见 project_memory.md）。
@@ -1215,7 +1219,7 @@ ${skillMd}`;
     };
 
     if (signal?.aborted) {
-      yield { type: "error", content: "请求已被用户中断" };
+      yield { type: "error", content: "请求已被用户中断", round: currentRound };
       return;
     }
 
@@ -1330,12 +1334,13 @@ ${skillMd}`;
                     completion_tokens: usage.completion_tokens || 0,
                     total_tokens: usage.total_tokens || 0,
                   },
+                  round: currentRound,
                 };
               }
               const content = data.choices?.[0]?.delta?.content || "";
               if (content) {
                 responseText += content;
-                yield { type: "chunk", content: content };
+                yield { type: "chunk", content: content, round: currentRound };
               }
               // 提取 reasoning_content（DeepSeek API 要求）
               const reasoning =
@@ -1343,7 +1348,7 @@ ${skillMd}`;
               if (reasoning) {
                 reasoningContent += reasoning;
                 // 实时 yield 思考过程 delta，避免长思考阶段前端长时间无输出
-                yield { type: "reasoning_chunk", content: reasoning };
+                yield { type: "reasoning_chunk", content: reasoning, round: currentRound };
               }
 
               // 检查工具调用
@@ -1408,6 +1413,7 @@ ${skillMd}`;
           type: "message_final",
           content: finalResponseText,
           extraThinking,
+          round: currentRound,
         };
       }
 
@@ -1417,6 +1423,7 @@ ${skillMd}`;
         yield {
           type: "reasoning_done",
           content: `💭 LLM思考过程:\n${finalReasoningContent.slice(0, 10000)}`,
+          round: currentRound,
         };
       }
 
@@ -1441,7 +1448,7 @@ ${skillMd}`;
         } catch (e) {
           logger.debug("JSON parse/split failed", { error: e.message });
         }
-        yield { type: "tool", log: logMsg };
+        yield { type: "tool", log: logMsg, round: currentRound };
       }
 
       // 保存 assistant 消息，需要包含 tool_calls
@@ -1711,6 +1718,7 @@ ${skillMd}`;
             yield {
               type: "tool_return",
               log: `🚫 拦截重复调用: ${toolName}\n参数: ${toolArgs}\n${p.dupCheck.message}`,
+              round: currentRound,
             };
             messages.push({
               role: "tool",
@@ -1730,6 +1738,7 @@ ${skillMd}`;
             yield {
               type: "tool_return",
               log: `🚫 ${errLabel}: ${p.toolName}\n${p.execError.message}`,
+              round: currentRound,
             };
             messages.push({
               role: "tool",
@@ -1750,11 +1759,13 @@ ${skillMd}`;
             yield {
               type: "tool_return",
               log: `✅ ${toolName} 参数已自动修复（裸 ASCII 双引号 → 中文右引号）。后续请直接使用中文引号 \`""\` 或 \`「」\`，或反斜杠转义 \`\\"\`；禁止裸 ASCII 双引号。`,
+              round: currentRound,
             };
           }
           yield {
             type: "tool_return",
             log: `📋 工具 ${toolName} 返回:\n${typeof resultContent === "string" ? resultContent : JSON.stringify(resultContent)}`,
+            round: currentRound,
           };
           messages.push({
             role: "tool",
@@ -1853,9 +1864,9 @@ ${skillMd}`;
       break;
     } catch (e) {
       if (e.name === "AbortError") {
-        yield { type: "error", content: "请求已被用户中断" };
+        yield { type: "error", content: "请求已被用户中断", round: currentRound };
       } else {
-        yield { type: "error", content: e.message };
+        yield { type: "error", content: e.message, round: currentRound };
       }
       return;
     }

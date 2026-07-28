@@ -385,17 +385,17 @@ router.post('/generate', async (req, res) => {
 
           if (chunk.type === 'chunk') {
             fullContent += chunk.content;
-            res.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk.content })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk.content, round: chunk.round || 0 })}\n\n`);
           } else if (chunk.type === 'usage') {
             totalPromptTokens += chunk.usage.prompt_tokens;
             totalCompletionTokens += chunk.usage.completion_tokens;
             totalTokens += chunk.usage.total_tokens;
-            // 每轮API调用都保存token记录
+            // 每轮API调用都保存token记录（带 round 字段）
             if (sessionId) {
               try {
                 const db = getDb();
-                db.prepare('INSERT INTO messages (session_id, role, content, prompt_tokens, completion_tokens, total_tokens) VALUES (?, ?, ?, ?, ?, ?)')
-                  .run(sessionId, 'usage', `Round token: ${chunk.usage.total_tokens} (prompt: ${chunk.usage.prompt_tokens}, completion: ${chunk.usage.completion_tokens})`, chunk.usage.prompt_tokens, chunk.usage.completion_tokens, chunk.usage.total_tokens);
+                db.prepare('INSERT INTO messages (session_id, role, content, prompt_tokens, completion_tokens, total_tokens, round) VALUES (?, ?, ?, ?, ?, ?, ?)')
+                  .run(sessionId, 'usage', `Round token: ${chunk.usage.total_tokens} (prompt: ${chunk.usage.prompt_tokens}, completion: ${chunk.usage.completion_tokens})`, chunk.usage.prompt_tokens, chunk.usage.completion_tokens, chunk.usage.total_tokens, chunk.round || 0);
               } catch (e) {
                 logger.error('保存usage失败', { error: e.message });
               }
@@ -403,37 +403,37 @@ router.post('/generate', async (req, res) => {
           } else if (chunk.type === 'LLM' || chunk.type === 'tool' || chunk.type === 'tool_return') {
             const logContent = chunk.log || '';
             allLogs.push(logContent);
-            res.write(`data: ${JSON.stringify({ type: chunk.type, log: logContent })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: chunk.type, log: logContent, round: chunk.round || 0 })}\n\n`);
 
-            // 实时保存每条日志到数据库
+            // 实时保存每条日志到数据库（带 round 字段，用于历史回显的"轮次轴"展示）
             if (sessionId && logContent) {
               try {
                 const db = getDb();
-                db.prepare('INSERT INTO messages (session_id, role, content, sql, results) VALUES (?, ?, ?, ?, ?)')
-                  .run(sessionId, chunk.type, logContent, '', '');
+                db.prepare('INSERT INTO messages (session_id, role, content, sql, results, round) VALUES (?, ?, ?, ?, ?, ?)')
+                  .run(sessionId, chunk.type, logContent, '', '', chunk.round || 0);
               } catch (e) {
                 logger.error('保存单条日志失败', { error: e.message });
               }
             }
           } else if (chunk.type === 'reasoning_chunk') {
             // 实时流式思考过程：只透传给前端，不入 DB，不累计到 fullContent
-            res.write(`data: ${JSON.stringify({ type: 'reasoning_chunk', content: chunk.content })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: 'reasoning_chunk', content: chunk.content, round: chunk.round || 0 })}\n\n`);
           } else if (chunk.type === 'message_final') {
             // 后处理：剥离 LLM 误倒进 content 的 thinking 后，更新前端 assistant 消息
-            res.write(`data: ${JSON.stringify({ type: 'message_final', content: chunk.content, extraThinking: chunk.extraThinking })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: 'message_final', content: chunk.content, extraThinking: chunk.extraThinking, round: chunk.round || 0 })}\n\n`);
           } else if (chunk.type === 'reasoning_done') {
             // 思考过程结束：单条入 DB（历史回显用），不传给 UI（UI 已通过 reasoning_chunk 实时显示）
             if (sessionId && chunk.content) {
               try {
                 const db = getDb();
-                db.prepare('INSERT INTO messages (session_id, role, content, sql, results) VALUES (?, ?, ?, ?, ?)')
-                  .run(sessionId, 'LLM', chunk.content, '', '');
+                db.prepare('INSERT INTO messages (session_id, role, content, sql, results, round) VALUES (?, ?, ?, ?, ?, ?)')
+                  .run(sessionId, 'LLM', chunk.content, '', '', chunk.round || 0);
               } catch (e) {
                 logger.error('保存reasoning失败', { error: e.message });
               }
             }
           } else if (chunk.type === 'error') {
-            res.write(`data: ${JSON.stringify({ type: 'error', content: chunk.content })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: 'error', content: chunk.content, round: chunk.round || 0 })}\n\n`);
           } else if (chunk.type === 'done') {
             sql = chunk.sql || '';
             message = chunk.message || '';

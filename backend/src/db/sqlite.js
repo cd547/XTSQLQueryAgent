@@ -153,6 +153,10 @@ export async function initDatabase() {
   // 添加 assistant 消息耗时（毫秒）字段：流式 done 时由后端写入，
   // 历史回显用此字段显示"耗时 Xs"；老数据无值，loadMessages 用 created_at 差值兜底
   addColumnIfMissing(db, 'messages', 'elapsed_ms', 'INTEGER DEFAULT 0');
+  // 添加 round 字段：LLM 工具调用轮次编号（从 0 开始）
+  // 流式每条 log 消息落库时由后端写入；历史回显时前端用此字段把同一轮的 log 包成一组
+  // 老数据无值（默认 0），loadMessages 不展示 round 轴（兼容老数据）
+  addColumnIfMissing(db, 'messages', 'round', 'INTEGER DEFAULT 0');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS configs (

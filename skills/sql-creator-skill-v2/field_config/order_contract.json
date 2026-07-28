@@ -1,7 +1,12 @@
 {
   "table_name": "order_contract",
   "field_aliases": {},
-  "field_enums": {},
+  "field_enums": {
+    "type":{
+      "1": "合同",
+      "2": "收据"
+    }
+  },
   "virtual_associations": [
     {
       "name": "关联订单",
