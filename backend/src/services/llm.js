@@ -364,12 +364,37 @@ function getOrCreateRegistry(sessionId) {
       // validate_sql_fields 注册表：追踪 LLM 是否调用 + 通过状态
       // 状态显示器（buildToolCallChecklistMessage）展示给 LLM 让其"看到"自己已调/未调/通过/失败
       // 注意：仅用于 LLM 上下文提示，**不强制拦截**——LLM 可自由跳过（参见 plan D-12 仅 LLM 自检）
+      //
+      // === 问题级独立状态（per-question）===
+      // validateSqlFields* 是"本问题独立"的状态：每次新 user 消息到来时由
+      // resetPerQuestionRegistryFlags 重置。理由：checklist 里的"✓passed"是
+      // 上一问题的 SQL 校验结果，跟当前问题无关，残留会误导 LLM 误判"已通过，
+      // 不要再调"，进而漏掉对新 SQL 的校验。
+      // 同一问题内的 Round 1+ 不重置（校验失败重写场景需要这些状态来提示 LLM）。
       validateSqlFieldsCalled: false,
       validateSqlFieldsPassed: false,
       validateSqlFieldsErrorCount: 0,
     });
   }
   return sessionToolRegistries.get(sessionId);
+}
+
+/**
+ * 重置注册表里的"问题级独立"标志。
+ *
+ * 调用时机：每次新 user 消息到来时（即 generateSQLWithLangChainStreamGen_BAK 入口）。
+ * 不重置会话级持久状态（getDomainIndexCalled / slicedDomains / tableSchema /
+ * tableDdl / termConfirmed / userChoiceAsked / getTablesCalled），因为这些
+ * 跟踪的是"已加载到 history 的数据"，数据本身跨问题仍然有效，重取会浪费 token。
+ *
+ * 历史 Bug 2026-07-28：未做此重置时，Q1 校验通过的"✓passed"会残留在 Q2/Q3 的
+ * checklist 里，误导 LLM 跳过本轮 SQL 校验。
+ */
+function resetPerQuestionRegistryFlags(reg) {
+  if (!reg) return;
+  reg.validateSqlFieldsCalled = false;
+  reg.validateSqlFieldsPassed = false;
+  reg.validateSqlFieldsErrorCount = 0;
 }
 
 function normalizeTableNames(arr) {
@@ -437,6 +462,8 @@ function buildToolCallChecklistMessage(reg) {
   //   passed=false: 上次校验有 N 个 errors → LLM 应重写 SQL 后再次调用直到通过
   //   called=false: LLM 还没调用 → 应在输出 SQL 前调用
   //   注：本工具**不被剪枝**也不被"重复调用"拦截，是稳定工具（不剪枝，可反复调用）
+  //   状态范围：per-question（由 resetPerQuestionRegistryFlags 在每次新 user
+  //   消息时重置），与上面的会话级持久状态（getDomainIndexCalled 等）不同。
   if (reg.validateSqlFieldsCalled) {
     const status = reg.validateSqlFieldsPassed
       ? "✓passed"
@@ -983,6 +1010,13 @@ export async function* generateSQLWithLangChainStreamGen_BAK(
     sessionId,
     username,
   });
+
+  // ★ 每次新 user 消息（= 一次 invoke）重置"问题级独立"标志。
+  //   validateSqlFields* 属于此范畴：避免上一问题的"✓passed"残留在本问题
+  //   的 checklist 里误导 LLM。会话级持久状态（getDomainIndexCalled /
+  //   slicedDomains / tableSchema / tableDdl / termConfirmed / userChoiceAsked）
+  //   保持不变，因为 history 已包含其结果。
+  resetPerQuestionRegistryFlags(getOrCreateRegistry(sessionId));
 
   let config;
   try {
