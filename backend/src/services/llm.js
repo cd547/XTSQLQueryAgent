@@ -1133,12 +1133,15 @@ ${skillMd}`;
     // 工具剪枝：一次性工具调用过后，从 LLM 请求的 tools 数组中移除以节省 token
     // - get_domain_index：调用后业务域列表已在 history 中，后续不需要
     // - get_sliced_index：调用后已加载的域在 history 中，后续不需要
-    // - validate_sql_fields：首轮（Round 0）不携带，Round 1+ 才携带
-    //   原因：首轮 LLM 刚拿到问题，不会输出 SQL（信息不全），携带工具是浪费 token
-    //   Round 1+（工具调用后 / 用户回答后）LLM 才可能输出 SQL，需自检
-    //   多轮对话 / user_choice 后自动切换的"第二轮"语义对应 Round 1+ 同样适用
     // 注意：toolsMap（用于执行工具的查找）保持不变，仅影响 LLM 看到哪些工具可选
-    const currentRound = maxToolCallsInitial - maxToolCalls;
+    //
+    // ★ validate_sql_fields：不再剪枝（含 Round 0）
+    //   历史 Bug 2026-07-28：Round 0 剪枝导致 LLM 在跨问题场景（Q3）跳过早轮工具调用、
+    //   直接调 validate_sql_fields 时被误拦，错误返回'已剪枝'，且错误信息误导 LLM
+    //   放弃后续校验 → 最终 SQL 未经验证直接输出。
+    //   修复：始终携带 validate_sql_fields，让 LLM 在任何轮次可自由调用。token 代价
+    //   ~600 字符（工具定义），相对正确性收益可接受。
+    // 关联：项目记忆 project_memory.md 'Engineering Conventions' 需要更新。
     const pruneReg = sessionId ? getOrCreateRegistry(sessionId) : null;
     const prunedTools = pruneReg
       ? toolsDefinition.filter((t) => {
@@ -1150,12 +1153,6 @@ ${skillMd}`;
           if (
             t.function.name === "get_sliced_index" &&
             pruneReg.slicedDomains.size > 0
-          )
-            return false;
-          // ★ validate_sql_fields：首轮不携带
-          if (
-            currentRound === 0 &&
-            t.function.name === "validate_sql_fields"
           )
             return false;
           return true;
