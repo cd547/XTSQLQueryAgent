@@ -157,7 +157,11 @@ function AuthenticatedApp({ user, logout }) {
   // - sessions: 首次加载会话列表（boolean）
   // - sessionsMore: 滚动加载更多会话（boolean）
   // - messagesId: 加载某 sessionId 的消息（sessionId 或 null）
-  const loadingRef = useRef({ model: false, sessions: false, sessionsMore: false, messagesId: null });
+  // - messagesVersion: F2 修复，每次 loadMessages 入口自增，用于丢弃过期响应
+  const loadingRef = useRef({ model: false, sessions: false, sessionsMore: false, messagesId: null, messagesVersion: 0 });
+  // ★ F2 修复：SSE 流式请求版本号。handleSessionClick 切会话时 abort 并自增，
+  //   in-flight 的 readSSEStream onEvent 回调顶部比对，失效则丢弃写入。
+  const streamRequestIdRef = useRef(0);
   const siderListRef = useRef(null);
   
   const handleTabChange = (key) => {
@@ -368,9 +372,13 @@ function AuthenticatedApp({ user, logout }) {
 
   const loadMessages = async (sessionId) => {
     if (loadingRef.current.messagesId === sessionId) return;
+    // ★ F2 修复：每次加载登记一个版本号。await 之后若已被新加载覆盖，
+    //   过期响应直接丢弃，避免"先点 A 再点 B，A 慢回包覆盖 B 界面"
+    const myVersion = ++loadingRef.current.messagesVersion;
     loadingRef.current.messagesId = sessionId;
     try {
       const data = await getSessionMessages(sessionId);
+      if (loadingRef.current.messagesVersion !== myVersion) return; // 已被新请求覆盖，丢弃
       if (data.messages) {
         const filtered = data.messages.filter(m => m.role !== 'usage');
         // 老数据兜底：没有 elapsed_ms 时按 user/assistant 成对消息的 created_at 差值补算
@@ -425,9 +433,14 @@ function AuthenticatedApp({ user, logout }) {
         hydrateFavoriteStates(loaded);
       }
     } catch (e) {
+      // 过期请求的报错不刷控制台（避免误报当前会话有问题）
+      if (loadingRef.current.messagesVersion !== myVersion) return;
       console.error('加载消息失败:', e);
     } finally {
-      loadingRef.current.messagesId = null;
+      // 只有"自己仍是最新"才清空 messagesId，避免误清覆盖中的新请求
+      if (loadingRef.current.messagesVersion === myVersion) {
+        loadingRef.current.messagesId = null;
+      }
     }
   };
   
@@ -485,6 +498,18 @@ function AuthenticatedApp({ user, logout }) {
   };
   
   const handleSessionClick = async (session) => {
+    // ★ F2 修复：切会话前先 abort 进行中的 SSE 流 + 提版本号，
+    //   防止旧会话的 chunk/log 继续被写进新会话消息数组，
+    //   并防止 catch 块把"已中断"文案写到新会话里。
+    // 注意：handleStop（用户主动中断）走的是 abort 但不 bump，
+    //   让"已中断"消息照常写进当前会话；只有切会话才 bump。
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    streamRequestIdRef.current++;
+    loadingRef.current.messagesVersion++;
+
     setCurrentSessionId(session.id);
     setActiveTabKey('chat');
     const newName = session.name ? `${session.name}#${session.id}` : '聊天';
@@ -762,14 +787,17 @@ function AuthenticatedApp({ user, logout }) {
 
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
+    // ★ F2 修复：本轮 SSE 流的"版本号"。handleSessionClick 切会话时会自增 streamRequestIdRef
+    //   并 abort 旧流；in-flight 的 readSSEStream 回调顶部比对，失效则丢弃写入
+    const myStreamVersion = ++streamRequestIdRef.current;
 
     try {
       const response = await api.queryGenerateStream({ question: userMessage, schemaMode: 'stream', sessionId: currentSessionId }, abortController.signal);
-      
+
       if (!response.ok) {
         throw new Error('请求失败');
       }
-      
+
       const reader = response.body.getReader();
       let fullContent = '';
 
@@ -778,6 +806,9 @@ function AuthenticatedApp({ user, logout }) {
       //   ② buf 半截行缓冲，避免 SSE 行跨 chunk 时 JSON.parse 抛错
       //   ③ 流结束 flush decoder + 处理 buf 末尾（覆盖"最后一帧无 \n 结尾"场景）
       await readSSEStream(reader, (data) => {
+        // ★ F2 修复：会话切换后版本号已自增，过期回调直接丢弃
+        //   否则旧会话的 chunk/log 会继续被写进新会话消息数组
+        if (streamRequestIdRef.current !== myStreamVersion) return;
         if (data.type === 'chunk') {
           fullContent += data.content;
           setMessages(prev => {
@@ -1002,6 +1033,10 @@ function AuthenticatedApp({ user, logout }) {
         }
       });
     } catch (error) {
+      // ★ F2 修复：会话切换触发的 abort 不应污染新会话消息
+      //   - handleStop（用户主动中断）走 abort 但不 bump → 版本号一致，catch 照常追加"已中断"到当前会话
+      //   - handleSessionClick（切会话）abort + bump → 版本号不一致，catch 直接 bail，新会话消息保持干净
+      if (streamRequestIdRef.current !== myStreamVersion) return;
       if (error.name !== 'AbortError') {
         message.error(error.message);
       }
@@ -1018,7 +1053,10 @@ function AuthenticatedApp({ user, logout }) {
     } finally {
       setLoading(false);
       setIsStreaming(false);
-      abortControllerRef.current = null;
+      // 只有"自己仍是最新流"才清空 abortControllerRef，避免误清覆盖中的新流
+      if (streamRequestIdRef.current === myStreamVersion) {
+        abortControllerRef.current = null;
+      }
     }
   };
 
