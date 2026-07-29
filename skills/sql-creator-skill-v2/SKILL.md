@@ -24,15 +24,16 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL 5.7 SQL
      `WHERE t_b.id IS NULL OR t_b.del = 0`，不要塞进 ON 末尾。
    - 无法判定（既无特殊说明，业务意图也不清晰）→ 必须调用 `request_user_choice` 询问用户，**禁止自行决定**。
 
-1. **字段**：输出时字段名必须来自 DDL，禁止自造或修改字段名。通过 `get_table_schema` 获取字段别名（`field_aliases`）、枚举映射（`field_enums`）、业务约束。禁止猜测。若字段有枚举映射，默认使用 CASE WHEN 或关联枚举表转为业务显示值输出。多表查询时所有字段必须带表别名（如 t1.id）。business_rules 中的每一条规则，在生成 SQL 时都必须以 WHERE、JOIN 或 CASE WHEN 的形式显式体现，不能只当作注释或背景说明。
+5. **字段**：输出时字段名必须来自 DDL，禁止自造或修改字段名。通过 `get_table_schema` 获取字段别名（`field_aliases`）、枚举映射（`field_enums`）、业务约束。禁止猜测。若字段有枚举映射，默认使用 CASE WHEN 或关联枚举表转为业务显示值输出。多表查询时所有字段必须带表别名（如 t1.id）。business_rules 中的每一条规则，在生成 SQL 时都必须以 WHERE、JOIN 或 CASE WHEN 的形式显式体现，不能只当作注释或背景说明。
 
-2. **字段别名**：含特殊字符（括号/空格/中文等）时必须用反引号包裹。
+6. **字段别名**：含特殊字符（括号/空格/中文等）时必须用反引号包裹。
 
-3. **MySQL 5.7 限制**：禁止窗口函数、CTE(WITH)、JSON_TABLE。
+7. **MySQL 5.7 限制**：禁止窗口函数、CTE(WITH)、JSON_TABLE。
+7.1 **UNION (UNION ALL) 子查询约束**：当 UNION 任一子查询需要 `LIMIT` 或 `ORDER BY` 时，**必须用括号 `(SELECT ...)` 显式包裹该子查询**。
 
-4. **歧义处理**：一个业务词匹配多个候选表 → 调用 request_user_choice 询问用户，禁止猜测。
+8. **歧义处理**：一个业务词匹配多个候选表 → 调用 request_user_choice 询问用户，禁止猜测。
 
-5. **【铁律】最终输出前冻结**：
+9. **【铁律】最终输出前冻结**：
    - **只调用本轮 tools 列表中的工具（程序会自动拦截列表外调用）**。
    - "信息已全"判定（满足以下条件后立即生成 SQL）：
      - 目标表 DDL ✓

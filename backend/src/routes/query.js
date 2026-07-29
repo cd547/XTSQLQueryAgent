@@ -5,7 +5,7 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { getDb } from '../db/sqlite.js';
 import { getConfig, getLlmConfig } from '../services/config.js';
-import { authRequired, sessionBelongsToUser } from '../services/auth.js';
+import { authRequired, adminRequired, sessionBelongsToUser } from '../services/auth.js';
 import { logger } from '../logger.js';
 import { generateSQLWithLangChainStreamGen_BAK, loadSkillMd, getLastMessages, loadMessagesFromDb, clearSessionRegistry } from '../services/llm.js';
 import { validateReadOnlySql } from '../services/sqlValidator.js';
@@ -210,8 +210,15 @@ router.get('/version', async (req, res) => {
 
 // 注意：此接口前端未调用（前端统一通过 /query/messages/:sessionId 获取消息历史）。
 // 保留仅作开发调试用途；返回的是 getLastMessages() 的进程级全局缓存，
-// 任何登录用户调用都可能拿到最后一个提问者的消息内容，请勿在生产环境对外开放。
-router.get('/messages', async (req, res) => {
+// 任何登录用户调用都可能拿到最后一个提问者的消息内容。
+// 双闸门保护：生产环境直接 404 屏蔽；非生产环境额外要求 admin 角色。
+const debugMessagesGate = (req, res, next) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ success: false, message: 'Not Found' });
+  }
+  next();
+};
+router.get('/messages', debugMessagesGate, adminRequired, async (req, res) => {
   const messages = getLastMessages();
   if (messages) {
     res.json({
