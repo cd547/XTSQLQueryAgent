@@ -670,10 +670,18 @@ router.post('/execute', async (req, res) => {
 
     if (sessionId) {
       const db = getDb();
+      // ★ results 改为 NULL（防御性修复，2026-07-29）
+      // 原代码:JSON.stringify(allRows) 把全量结果集塞进 messages.results
+      //   → 单次大查询(SELECT * FROM huge_table)可能写数百 MB 到 SQLite
+      //   → SELECT * FROM messages 会把这些巨型 JSON 全量回读(session.js:83 无 LIMIT)
+      //   → 前端仅做 JSON 原样展示(App.jsx:525),不解析 results 字段
+      //   → 当前前端从不传 sessionId(仅"复制并执行/查询"按钮触发 /execute)
+      //     所以此分支目前为死代码,但保留它作为未来 chat 流调 /execute 的安全兜底
+      // 存 NULL 的收益:保留 SQL 历史(用户能查看历史查询) + 彻底杜绝 DB 体积爆炸
       db.prepare(`
         INSERT INTO messages (session_id, role, sql, results)
-        VALUES (?, 'user', ?, ?)
-      `).run(sessionId, sql, JSON.stringify(allRows));
+        VALUES (?, 'user', ?, NULL)
+      `).run(sessionId, sql);
       db.prepare(`
         INSERT INTO messages (session_id, role, results)
         VALUES (?, 'assistant', ?)
@@ -767,6 +775,11 @@ ${JSON.stringify(explainResults, null, 2)}
 请用中文回复，结构化输出分析结果。`;
 
     let streamCompleted = false;
+    // ★ 提升到 try 之外：与 /generate 路由的 `if (schemaMode === 'stream')` 块作用域模式一致
+    // 原因：try 块内的 const 在 catch 块中不可见（catch 是不同块作用域），
+    //      之前直接写在 try 里会导致 catch 中的 `clearTimeout(overallTimer)` 抛 ReferenceError
+    //      → Express 4 不接住 async 异常 → unhandledRejection → 进程崩溃
+    let overallTimer = null;
     // 共享函数：同步校验 LLM provider，避免在 flushHeaders() 之后 res.json 触发 ERR_HTTP_HEADERS_SENT
     const validateLlmProvider = (p) => {
       if (p === 'deepseek' || p === 'openai') return { valid: true, provider: p };
@@ -799,7 +812,8 @@ ${JSON.stringify(explainResults, null, 2)}
 
     // 整体 SSE 超时（5min）—— 防御 LLM 流异常长时间挂起（与 /generate 路由一致）
     const OVERALL_TIMEOUT_MS = 5 * 60_000;
-    const overallTimer = setTimeout(() => {
+    // ★ 去掉 const：外层已 let 声明，这里只赋值；这样 catch 块也能访问到
+    overallTimer = setTimeout(() => {
       if (!streamCompleted) {
         logger.warn('EXPLAIN analyze overall timeout, aborting LLM request', { OVERALL_TIMEOUT_MS });
         abortController.abort(new Error(`Overall timeout after ${OVERALL_TIMEOUT_MS}ms`));
@@ -888,7 +902,8 @@ ${JSON.stringify(explainResults, null, 2)}
       res.end();
     }
   } catch (error) {
-    clearTimeout(overallTimer);
+    // ★ 守卫：overallTimer 可能在 setTimeout 之前就抛错（此时仍是 null），clearTimeout(null) 是 no-op 但保险起见显式判断
+    if (overallTimer) clearTimeout(overallTimer);
     if (error.name === 'AbortError') {
       logger.info('EXPLAIN analyze: aborted by client');
     } else {
