@@ -7,7 +7,7 @@ import { getDb } from '../db/sqlite.js';
 import { getConfig } from '../services/config.js';
 import { authRequired, adminRequired } from '../services/auth.js';
 import { logger } from '../logger.js';
-import { poolQuery } from '../services/mysqlPool.js';
+import { getPool } from '../services/mysqlPool.js';
 import { config } from '../config.js';
 import { createSkillTreeCache } from '../services/skillCache.js';
 import { addTableToDomains as addTableToDomainsImpl } from '../services/skillDomains.js';
@@ -419,7 +419,7 @@ router.post('/fetch-ddl', async (req, res) => {
     }
 
     // 复用连接池，不再每次新建 TCP 连接
-    const [rows] = await poolQuery(
+    const [rows] = await (await getPool()).query(
       `SHOW CREATE TABLE \`${safeTableName}\``
     );
 

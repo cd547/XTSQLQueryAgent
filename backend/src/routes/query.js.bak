@@ -9,7 +9,7 @@ import { authRequired, adminRequired, sessionBelongsToUser } from '../services/a
 import { logger } from '../logger.js';
 import { generateSQLWithLangChainStreamGen_BAK, loadSkillMd, getLastMessages, loadMessagesFromDb, clearSessionRegistry } from '../services/llm.js';
 import { validateReadOnlySql } from '../services/sqlValidator.js';
-import { poolQuery } from '../services/mysqlPool.js';
+import { getPool } from '../services/mysqlPool.js';
 import { config } from '../config.js';
 
 // /execute 端点：只允许查询，不允许 EXPLAIN
@@ -720,7 +720,7 @@ router.post('/execute', async (req, res) => {
     // 不再静默追加 LIMIT 1000：会破坏含 LIMIT 的复杂查询、UNION 也不会被正确处理。
     // 改为在应用层做显示上限，超过则截断并标记 truncated。
     const execSql = sqlCheck.cleaned;
-    const [allRows] = await poolQuery(execSql);
+    const [allRows] = await (await getPool()).query(execSql);
 
     // 应用层显示上限：默认 1000 行（保留与旧实现一致的默认值）
     const MAX_DISPLAY_ROWS = 1000;
@@ -796,7 +796,7 @@ router.post('/explain', async (req, res) => {
         ? `EXPLAIN ${cleanSql}`  // 使用标准表格格式
         : `EXPLAIN ${cleanSql}`;
     logger.info('EXPLAIN executing', { cleanSql, explainSql });
-    const [rows] = await poolQuery(explainSql);
+    const [rows] = await (await getPool()).query(explainSql);
 
     res.json({ results: rows, rowCount: rows.length });
   } catch (error) {
