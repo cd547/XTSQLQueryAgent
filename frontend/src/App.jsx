@@ -24,6 +24,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
 import './utils/monacoEnv';
+import { readSSEStream } from './utils/sseStream';
 import { createMarkdownRenderers } from './components/markdownRenderers.jsx';
 import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages, saveFavoriteQuery, checkFavorites, unfavoriteQuery, getFavoriteSuggestions } from './api';
 
@@ -770,248 +771,236 @@ function AuthenticatedApp({ user, logout }) {
       }
       
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
       let fullContent = '';
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        const text = decoder.decode(value);
-        const lines = text.split('\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (data.type === 'chunk') {
-                fullContent += data.content;
-                setMessages(prev => {
-                  const newMsgs = [...prev];
-                  const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
-                  if (lastAssistantIdx !== -1) {
-                    newMsgs[lastAssistantIdx] = { ...newMsgs[lastAssistantIdx], content: fullContent };
-                  }
-                  return newMsgs;
-                });
-                // 流式 chunk 不改变 messages.length，原 useEffect 不会触发滚动；
-                // 这里用 rAF 节流：同一帧多次 chunk 只滚动一次
-                if (!streamingScrollRafRef.current) {
-                  streamingScrollRafRef.current = requestAnimationFrame(() => {
-                    streamingScrollRafRef.current = 0;
-                    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-                  });
-                }
-              } else if (data.type === 'LLM' || data.type === 'tool' || data.type === 'tool_return') {
-                const logContent = data.log || '';
-                
-                // 检测 request_tag_confirmation 工具调用
-                if (data.type === 'tool' && logContent.includes('request_tag_confirmation')) {
-                  const paramMatch = logContent.match(/参数:\s*(\{[^}]+\})/);
-                  if (paramMatch) {
-                    try {
-                      const params = JSON.parse(paramMatch[1]);
-                      const term = Array.isArray(params.term) ? params.term : [params.term || ''];
-                      setConfirmTagAdd({
-                        visible: true,
-                        term: term.filter(t => t),
-                        table: params.table || '',
-                        description: params.description || ''
-                      });
-                    } catch (e) {
-                      console.warn('Parse tool params failed:', e);
-                    }
-                  }
-                }
-                
-                let logType = 'call';
-                if (data.type === 'LLM') logType = 'llm';
-                else if (data.type === 'tool_return') logType = 'return';
-                
-                setMessages(prev => {
-                  const newMsgs = [...prev];
-                  const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
-                  if (lastAssistantIdx !== -1) {
-                    const logMsg = {
-                      id: `c-${++clientMsgIdRef.current}`,
-                      role: 'log',
-                      content: logContent,
-                      timestamp: new Date().toISOString(),
-                      collapsed: true,
-                      logType: logType,
-                      // ★ LLM 工具调用轮次编号（用于前端"数轴式"轮次展示）
-                      //   后端 llm.js 在每个 yield 时附带 round 字段
-                      //   同 assistant 消息内多条 log 可能共享同一 round（思考→调用→返回属于同一轮）
-                      round: typeof data.round === 'number' ? data.round : 0,
-                    };
-                    newMsgs.splice(lastAssistantIdx, 0, logMsg);
-                  }
-                  return newMsgs;
-                });
-              } else if (data.type === 'reasoning_chunk') {
-                // 实时流式思考过程：找到/创建 llm log 消息，累加 content
-                setMessages(prev => {
-                  const newMsgs = [...prev];
-                  const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
-                  if (lastAssistantIdx === -1) return newMsgs;
 
-                  // 当前轮 = 最后一个 user 消息之后的所有消息
-                  // 关键：必须按"轮"隔离 llm log 查找范围，
-                  // 否则上一轮的 llm log 会被错误复用，导致第二轮的思考被追加到第一轮
-                  const lastUserIdx = newMsgs.findLastIndex(m => m.role === 'user');
-                  const currentRoundStart = lastUserIdx === -1 ? 0 : lastUserIdx + 1;
+      // ★ 2026-07-29 修复 F1：抽到 utils/sseStream.js 处理
+      //   ① TextDecoder.decode(value, { stream: true }) 避免中文多字节跨 chunk 切 U+FFFD
+      //   ② buf 半截行缓冲，避免 SSE 行跨 chunk 时 JSON.parse 抛错
+      //   ③ 流结束 flush decoder + 处理 buf 末尾（覆盖"最后一帧无 \n 结尾"场景）
+      await readSSEStream(reader, (data) => {
+        if (data.type === 'chunk') {
+          fullContent += data.content;
+          setMessages(prev => {
+            const newMsgs = [...prev];
+            const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+            if (lastAssistantIdx !== -1) {
+              newMsgs[lastAssistantIdx] = { ...newMsgs[lastAssistantIdx], content: fullContent };
+            }
+            return newMsgs;
+          });
+          // 流式 chunk 不改变 messages.length，原 useEffect 不会触发滚动；
+          // 这里用 rAF 节流：同一帧多次 chunk 只滚动一次
+          if (!streamingScrollRafRef.current) {
+            streamingScrollRafRef.current = requestAnimationFrame(() => {
+              streamingScrollRafRef.current = 0;
+              messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            });
+          }
+        } else if (data.type === 'LLM' || data.type === 'tool' || data.type === 'tool_return') {
+          const logContent = data.log || '';
 
-                  let lastLlmLogIdx = -1;
-                  let lastLogIdx = -1;
-                  for (let i = newMsgs.length - 1; i >= currentRoundStart; i--) {
-                    const m = newMsgs[i];
-                    if (m.role === 'log') {
-                      if (lastLogIdx === -1) lastLogIdx = i;
-                      if (m.logType === 'llm' && lastLlmLogIdx === -1) lastLlmLogIdx = i;
-                    }
-                  }
-                  const isCurrentRound = lastLlmLogIdx !== -1 && lastLlmLogIdx === lastLogIdx;
-
-                  if (isCurrentRound) {
-                    // ★ 累加内容时保留用户已选的 collapsed 状态（不再强制 true）
-                    //   背景：之前每 chunk 都重置 collapsed=true，导致用户无法在流式期间展开查看
-                    newMsgs[lastLlmLogIdx] = {
-                      ...newMsgs[lastLlmLogIdx],
-                      content: (newMsgs[lastLlmLogIdx].content || '') + data.content,
-                      // ★ 同步 round（防止 round 边界判断异常时遗漏）
-                      round: typeof data.round === 'number' ? data.round : (newMsgs[lastLlmLogIdx].round ?? 0),
-                    };
-                  } else {
-                    const logMsg = {
-                      id: `c-${++clientMsgIdRef.current}`,
-                      role: 'log',
-                      content: '💭 LLM思考过程:\n' + data.content,
-                      timestamp: new Date().toISOString(),
-                      collapsed: true,  // ★ 仅新建时设默认折叠
-                      logType: 'llm',
-                      // ★ LLM 工具调用轮次编号（用于前端"数轴式"轮次展示）
-                      round: typeof data.round === 'number' ? data.round : 0,
-                    };
-                    newMsgs.splice(lastAssistantIdx, 0, logMsg);
-                  }
-                  return newMsgs;
+          // 检测 request_tag_confirmation 工具调用
+          if (data.type === 'tool' && logContent.includes('request_tag_confirmation')) {
+            const paramMatch = logContent.match(/参数:\s*(\{[^}]+\})/);
+            if (paramMatch) {
+              try {
+                const params = JSON.parse(paramMatch[1]);
+                const term = Array.isArray(params.term) ? params.term : [params.term || ''];
+                setConfirmTagAdd({
+                  visible: true,
+                  term: term.filter(t => t),
+                  table: params.table || '',
+                  description: params.description || ''
                 });
-                // 流式 chunk 滚动到底部（rAF 节流）
-                if (!streamingScrollRafRef.current) {
-                  streamingScrollRafRef.current = requestAnimationFrame(() => {
-                    streamingScrollRafRef.current = 0;
-                    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-                  });
-                }
-              } else if (data.type === 'reasoning_done') {
-                // ★ 思考过程结束：保留用户已选的 collapsed 状态（之前强制 true 会把用户展开的内容又折叠回去）
-                setMessages(prev => prev);
-                return;
-              } else if (data.type === 'message_final') {
-                // 后处理：剥离 LLM 误倒进 content 的 thinking 后，用清理后的 content 替换 assistant 消息
-                setMessages(prev => {
-                  const newMsgs = [...prev];
-                  const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
-                  if (lastAssistantIdx !== -1) {
-                    newMsgs[lastAssistantIdx] = { ...newMsgs[lastAssistantIdx], content: data.content };
-                  }
-                  return newMsgs;
-                });
-              } else if (data.type === 'error') {
-                // ★ 2026-07-29：用后端透传的 interrupted 字段代替硬编码字符串"请求已被用户中断"
-                //   - interrupted=true → 用户主动中断 / 网络断连 / 超时 → 不弹红框 + 追加"已中断"标记
-                //   - interrupted=false(缺失) → 真实错误 → 弹红框 + 显示错误内容
-                // 优势：后端多场景(overll timeout / fetch abort / 用户主动 stop)统一走 interrupted 字段
-                //   不再依赖 llm.js:1867 那个特定 yield 文案(原硬编码检查其实很少匹配上)
-                const isInterrupted = data.interrupted === true;
-                if (!isInterrupted) {
-                  message.error(data.content);
-                }
-                setMessages(prev => {
-                  const newMsgs = [...prev];
-                  const lastIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
-                  if (lastIdx !== -1) {
-                    const startTime = newMsgs[lastIdx].startTime || Date.now();
-                    const elapsedMs = Date.now() - startTime;
-                    newMsgs[lastIdx] = {
-                      ...newMsgs[lastIdx],
-                      content: isInterrupted
-                        ? (newMsgs[lastIdx].content || '')
-                        : '错误: ' + data.content,
-                      isStreaming: false,
-                      elapsedMs,
-                      interrupted: isInterrupted  // ★ 在消息对象上记一下，ChatMessage 据此渲染 badge
-                    };
-                  }
-                  return newMsgs;
-                });
-              } else if (data.type === 'done') {
-                setMessages(prev => {
-                  const newMsgs = [...prev];
-                  const lastIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
-                  if (lastIdx !== -1) {
-                    const startTime = newMsgs[lastIdx].startTime || Date.now();
-                    // 优先用后端权威耗时（含网络/工具调用），fallback 到前端本地计时
-                    const elapsedMs = (typeof data.elapsedMs === 'number' && data.elapsedMs >= 0)
-                      ? data.elapsedMs
-                      : Date.now() - startTime;
-                    newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: data.message || '', sql: data.sql || '', isStreaming: false, elapsedMs };
-                  }
-                  return newMsgs;
-                });
-                // 更新 token 显示
-                if (data.totalTokens) {
-                  setCurrentTokens(prev => prev + data.totalTokens);
-                }
-                // ★ 关键修复：后端 SSE done 事件返回的 sessionId 是权威值。
-                //   场景：用户清空日志后第一次问时前端 currentSessionId=null，
-                //   后端会 auto-create 一个 session；若前端不捕获并回写，
-                //   下次（user_choice 答案/重发）handleSend 还会以 null 调 /generate，
-                //   后端又会 auto-create 一个新 session → 上下文丢失、registry 重置、
-                //   LLM 重新调 get_domain_index/get_sliced_index。
-                if (data.sessionId && data.sessionId !== currentSessionId) {
-                  const newId = data.sessionId;
-                  setCurrentSessionId(newId);
-                  // 把新 session 插到左侧列表（避免下次刷新才看到）
-                  setSessions(prev => {
-                    if (prev.some(s => s.id === newId)) return prev;
-                    return [{
-                      id: newId,
-                      name: '新对话',
-                      created_at: new Date().toISOString(),
-                      total_tokens: data.totalTokens || 0
-                    }, ...prev];
-                  });
-                  setSessionsTotal(prev => prev + 1);
-                }
-                // ★ 检测 user_choice_request 弹窗（来自 llm.js 终止分支）
-                // v2 链式弹窗：后端 yield 的是数组（1-3 个问题）；兼容旧版单值 fallback
-                if (data.user_choice_request) {
-                  const rawReqs = Array.isArray(data.user_choice_request)
-                    ? data.user_choice_request
-                    : [data.user_choice_request];
-                  // 归一化每个元素为 {id, question, options, multiSelect, header}
-                  const reqs = rawReqs.map(r => ({
-                    id: r.id || '',
-                    question: r.question || '',
-                    options: Array.isArray(r.options) ? r.options : [],
-                    multiSelect: !!r.multi_select,
-                    header: r.header || ''
-                  }));
-                  setUserChoiceRequest({
-                    visible: true,
-                    requests: reqs,
-                    currentIndex: 0,
-                    answers: reqs.map(() => ({ selected: [], text: '' }))
-                  });
-                }
+              } catch (e) {
+                console.warn('Parse tool params failed:', e);
               }
-            } catch (e) {
-              console.warn('Parse SSE error:', e);
             }
           }
+
+          let logType = 'call';
+          if (data.type === 'LLM') logType = 'llm';
+          else if (data.type === 'tool_return') logType = 'return';
+
+          setMessages(prev => {
+            const newMsgs = [...prev];
+            const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+            if (lastAssistantIdx !== -1) {
+              const logMsg = {
+                id: `c-${++clientMsgIdRef.current}`,
+                role: 'log',
+                content: logContent,
+                timestamp: new Date().toISOString(),
+                collapsed: true,
+                logType: logType,
+                // ★ LLM 工具调用轮次编号（用于前端"数轴式"轮次展示）
+                //   后端 llm.js 在每个 yield 时附带 round 字段
+                //   同 assistant 消息内多条 log 可能共享同一 round（思考→调用→返回属于同一轮）
+                round: typeof data.round === 'number' ? data.round : 0,
+              };
+              newMsgs.splice(lastAssistantIdx, 0, logMsg);
+            }
+            return newMsgs;
+          });
+        } else if (data.type === 'reasoning_chunk') {
+          // 实时流式思考过程：找到/创建 llm log 消息，累加 content
+          setMessages(prev => {
+            const newMsgs = [...prev];
+            const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+            if (lastAssistantIdx === -1) return newMsgs;
+
+            // 当前轮 = 最后一个 user 消息之后的所有消息
+            // 关键：必须按"轮"隔离 llm log 查找范围，
+            // 否则上一轮的 llm log 会被错误复用，导致第二轮的思考被追加到第一轮
+            const lastUserIdx = newMsgs.findLastIndex(m => m.role === 'user');
+            const currentRoundStart = lastUserIdx === -1 ? 0 : lastUserIdx + 1;
+
+            let lastLlmLogIdx = -1;
+            let lastLogIdx = -1;
+            for (let i = newMsgs.length - 1; i >= currentRoundStart; i--) {
+              const m = newMsgs[i];
+              if (m.role === 'log') {
+                if (lastLogIdx === -1) lastLogIdx = i;
+                if (m.logType === 'llm' && lastLlmLogIdx === -1) lastLlmLogIdx = i;
+              }
+            }
+            const isCurrentRound = lastLlmLogIdx !== -1 && lastLlmLogIdx === lastLogIdx;
+
+            if (isCurrentRound) {
+              // ★ 累加内容时保留用户已选的 collapsed 状态（不再强制 true）
+              //   背景：之前每 chunk 都重置 collapsed=true，导致用户无法在流式期间展开查看
+              newMsgs[lastLlmLogIdx] = {
+                ...newMsgs[lastLlmLogIdx],
+                content: (newMsgs[lastLlmLogIdx].content || '') + data.content,
+                // ★ 同步 round（防止 round 边界判断异常时遗漏）
+                round: typeof data.round === 'number' ? data.round : (newMsgs[lastLlmLogIdx].round ?? 0),
+              };
+            } else {
+              const logMsg = {
+                id: `c-${++clientMsgIdRef.current}`,
+                role: 'log',
+                content: '💭 LLM思考过程:\n' + data.content,
+                timestamp: new Date().toISOString(),
+                collapsed: true,  // ★ 仅新建时设默认折叠
+                logType: 'llm',
+                // ★ LLM 工具调用轮次编号（用于前端"数轴式"轮次展示）
+                round: typeof data.round === 'number' ? data.round : 0,
+              };
+              newMsgs.splice(lastAssistantIdx, 0, logMsg);
+            }
+            return newMsgs;
+          });
+          // 流式 chunk 滚动到底部（rAF 节流）
+          if (!streamingScrollRafRef.current) {
+            streamingScrollRafRef.current = requestAnimationFrame(() => {
+              streamingScrollRafRef.current = 0;
+              messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            });
+          }
+        } else if (data.type === 'reasoning_done') {
+          // ★ 思考过程结束：保留用户已选的 collapsed 状态（之前强制 true 会把用户展开的内容又折叠回去）
+          setMessages(prev => prev);
+          return;
+        } else if (data.type === 'message_final') {
+          // 后处理：剥离 LLM 误倒进 content 的 thinking 后，用清理后的 content 替换 assistant 消息
+          setMessages(prev => {
+            const newMsgs = [...prev];
+            const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+            if (lastAssistantIdx !== -1) {
+              newMsgs[lastAssistantIdx] = { ...newMsgs[lastAssistantIdx], content: data.content };
+            }
+            return newMsgs;
+          });
+        } else if (data.type === 'error') {
+          // ★ 2026-07-29：用后端透传的 interrupted 字段代替硬编码字符串"请求已被用户中断"
+          //   - interrupted=true → 用户主动中断 / 网络断连 / 超时 → 不弹红框 + 追加"已中断"标记
+          //   - interrupted=false(缺失) → 真实错误 → 弹红框 + 显示错误内容
+          // 优势：后端多场景(overll timeout / fetch abort / 用户主动 stop)统一走 interrupted 字段
+          //   不再依赖 llm.js:1867 那个特定 yield 文案(原硬编码检查其实很少匹配上)
+          const isInterrupted = data.interrupted === true;
+          if (!isInterrupted) {
+            message.error(data.content);
+          }
+          setMessages(prev => {
+            const newMsgs = [...prev];
+            const lastIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+            if (lastIdx !== -1) {
+              const startTime = newMsgs[lastIdx].startTime || Date.now();
+              const elapsedMs = Date.now() - startTime;
+              newMsgs[lastIdx] = {
+                ...newMsgs[lastIdx],
+                content: isInterrupted
+                  ? (newMsgs[lastIdx].content || '')
+                  : '错误: ' + data.content,
+                isStreaming: false,
+                elapsedMs,
+                interrupted: isInterrupted  // ★ 在消息对象上记一下，ChatMessage 据此渲染 badge
+              };
+            }
+            return newMsgs;
+          });
+        } else if (data.type === 'done') {
+          setMessages(prev => {
+            const newMsgs = [...prev];
+            const lastIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+            if (lastIdx !== -1) {
+              const startTime = newMsgs[lastIdx].startTime || Date.now();
+              // 优先用后端权威耗时（含网络/工具调用），fallback 到前端本地计时
+              const elapsedMs = (typeof data.elapsedMs === 'number' && data.elapsedMs >= 0)
+                ? data.elapsedMs
+                : Date.now() - startTime;
+              newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: data.message || '', sql: data.sql || '', isStreaming: false, elapsedMs };
+            }
+            return newMsgs;
+          });
+          // 更新 token 显示
+          if (data.totalTokens) {
+            setCurrentTokens(prev => prev + data.totalTokens);
+          }
+          // ★ 关键修复：后端 SSE done 事件返回的 sessionId 是权威值。
+          //   场景：用户清空日志后第一次问时前端 currentSessionId=null，
+          //   后端会 auto-create 一个 session；若前端不捕获并回写，
+          //   下次（user_choice 答案/重发）handleSend 还会以 null 调 /generate，
+          //   后端又会 auto-create 一个新 session → 上下文丢失、registry 重置、
+          //   LLM 重新调 get_domain_index/get_sliced_index。
+          if (data.sessionId && data.sessionId !== currentSessionId) {
+            const newId = data.sessionId;
+            setCurrentSessionId(newId);
+            // 把新 session 插到左侧列表（避免下次刷新才看到）
+            setSessions(prev => {
+              if (prev.some(s => s.id === newId)) return prev;
+              return [{
+                id: newId,
+                name: '新对话',
+                created_at: new Date().toISOString(),
+                total_tokens: data.totalTokens || 0
+              }, ...prev];
+            });
+            setSessionsTotal(prev => prev + 1);
+          }
+          // ★ 检测 user_choice_request 弹窗（来自 llm.js 终止分支）
+          // v2 链式弹窗：后端 yield 的是数组（1-3 个问题）；兼容旧版单值 fallback
+          if (data.user_choice_request) {
+            const rawReqs = Array.isArray(data.user_choice_request)
+              ? data.user_choice_request
+              : [data.user_choice_request];
+            // 归一化每个元素为 {id, question, options, multiSelect, header}
+            const reqs = rawReqs.map(r => ({
+              id: r.id || '',
+              question: r.question || '',
+              options: Array.isArray(r.options) ? r.options : [],
+              multiSelect: !!r.multi_select,
+              header: r.header || ''
+            }));
+            setUserChoiceRequest({
+              visible: true,
+              requests: reqs,
+              currentIndex: 0,
+              answers: reqs.map(() => ({ selected: [], text: '' }))
+            });
+          }
         }
-      }
+      });
     } catch (error) {
       if (error.name !== 'AbortError') {
         message.error(error.message);
@@ -1210,34 +1199,20 @@ const handleExplain = async (sql) => {
       }
       
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        const text = decoder.decode(value);
-        const lines = text.split('\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (data.type === 'chunk' && data.content) {
-                contentRef.current += data.content;
-                setExplainAnalysisContent(contentRef.current);
-              } else if (data.type === 'error') {
-                message.error(data.content);
-                setExplainAnalysisLoading(false);
-              } else if (data.type === 'done') {
-                setExplainAnalysisLoading(false);
-              }
-            } catch (e) {
-              console.warn('Parse SSE error:', e);
-            }
-          }
+
+      // ★ 2026-07-29 修复 F1：与 handleSend 共用 readSSEStream，
+      //   解决 ① UTF-8 跨 chunk 切乱码 ② SSE 行跨 chunk parse 抛错 ③ 异常静默吞
+      await readSSEStream(reader, (data) => {
+        if (data.type === 'chunk' && data.content) {
+          contentRef.current += data.content;
+          setExplainAnalysisContent(contentRef.current);
+        } else if (data.type === 'error') {
+          message.error(data.content);
+          setExplainAnalysisLoading(false);
+        } else if (data.type === 'done') {
+          setExplainAnalysisLoading(false);
         }
-      }
+      });
     } catch (error) {
       message.error(error.message);
       setExplainAnalysisLoading(false);
