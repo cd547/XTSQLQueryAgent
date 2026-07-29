@@ -5,7 +5,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { getDb } from '../db/sqlite.js';
 import { getConfig } from '../services/config.js';
-import { authRequired } from '../services/auth.js';
+import { authRequired, adminRequired } from '../services/auth.js';
 import { logger } from '../logger.js';
 import { getPool } from '../services/mysqlPool.js';
 import { config } from '../config.js';
@@ -95,7 +95,7 @@ function buildTree(dirPath, relativePath = '') {
   });
 }
 
-router.get('/debug', (req, res) => {
+router.get('/debug', adminRequired, (req, res) => {
   res.json({
     __dirname,
     projectRoot,
@@ -158,7 +158,7 @@ router.get('/domains', (req, res) => {
   }
 });
 
-router.post('/add-tag', (req, res) => {
+router.post('/add-tag', adminRequired, (req, res) => {
   const { tableName, tag } = req.body;
   
   if (!tableName) {
@@ -225,7 +225,7 @@ router.post('/add-tag', (req, res) => {
   }
 });
 
-router.post('/save', (req, res) => {
+router.post('/save', adminRequired, (req, res) => {
   const { path: filePath, content } = req.body;
   if (!filePath || content === undefined) {
     return res.status(400).json({ success: false, message: 'Missing path or content parameter' });
@@ -448,7 +448,7 @@ function addTableToDomains(tableName, domainIds) {
   return addTableToDomainsImpl(tableName, domainIds, SKILL_V2_PATH, isPathSafe, getDb);
 }
 
-router.post('/create-table-files', (req, res) => {
+router.post('/create-table-files', adminRequired, (req, res) => {
   const { tableName, ddl, description, domains } = req.body;
   if (!tableName || !ddl) {
     return res.status(400).json({ success: false, message: 'Missing tableName or ddl' });
