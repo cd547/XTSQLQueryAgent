@@ -376,12 +376,23 @@ router.post('/generate', async (req, res) => {
         let totalPromptTokens = 0;
         let totalCompletionTokens = 0;
         let totalTokens = 0;
+        // ★ 防止 happy path 落库后 catch 块重复插入 partial（流中断 partial 保存时会检查此标志）
+        let messageSaved = false;
+        // ★ 跟踪当前 chunk 的 round，中断时 partial 落库需要正确的 round 用于前端轮次轴分组
+        //   2026-07-29 修复：之前漏写 round 字段，partial 消息 round=0 与第一轮日志混淆
+        let lastRound = 0;
         // ★ request_user_choice 弹窗请求：捕获 llm.js yield done 中的事件字段
         // 用于穿透到 SSE doneData，驱动前端 UserChoiceDialog
         let userChoiceRequestFromStream = null;
 
         for await (const chunk of generator) {
           if (abortController.signal.aborted) break;
+
+          // 统一更新 lastRound：所有 chunk 都来自 llm.js:1112 计算的 currentRound
+          // 在这里集中处理一次，避免每个 chunk 类型分支都漏写
+          if (typeof chunk.round === 'number') {
+            lastRound = chunk.round;
+          }
 
           if (chunk.type === 'chunk') {
             fullContent += chunk.content;
@@ -471,12 +482,23 @@ logger.info('Stream done, sending final result', { sql: sql?.substring(0, 50), m
         const elapsedMs = Date.now() - requestStartTime;
 
         // 保存最终消息到数据库（包含token统计与耗时）
-        const contentForDb = fullContent || message;
+        // ★ Bug A 修复（2026-07-29）：abort 场景下允许空内容落库
+        //   之前 fullContent='' 且 message='' 时整段 INSERT 被跳过（line 484 原条件 `if (sessionId && contentForDb)`），
+        //   导致"LLM 还在 thinking 阶段就被用户中断"的消息彻底丢失——既无记录也无 interrupted 标记。
+        //   现在：正常完成保持原行为（空内容不存，避免噪音）；中断场景补占位符 '(已中断)' 让消息入库。
+        const wasInterrupted = abortController.signal.aborted ? 1 : 0;
+        let contentForDb = fullContent || message;
+        if (wasInterrupted && !contentForDb) {
+          contentForDb = '(已中断)';  // 占位符；前端 ChatMessage badge 已显示"⚠ 已中断"
+        }
         if (sessionId && contentForDb) {
           try {
             const db = getDb();
-            db.prepare('INSERT INTO messages (session_id, role, content, sql, results, prompt_tokens, completion_tokens, total_tokens, elapsed_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-              .run(sessionId, 'assistant', contentForDb, sql || '', '', totalPromptTokens, totalCompletionTokens, totalTokens, elapsedMs);
+            // ★ 如果 abortController 已触发（客户端断连 / 超时），happy path 也会走到这里（for 循环 break 后自然退出 try）
+            //   此时把 interrupted 标为 1，前端可显示"已中断"
+            db.prepare('INSERT INTO messages (session_id, role, content, sql, results, prompt_tokens, completion_tokens, total_tokens, elapsed_ms, round, interrupted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+              .run(sessionId, 'assistant', contentForDb, sql || '', '', totalPromptTokens, totalCompletionTokens, totalTokens, elapsedMs, lastRound, wasInterrupted);
+            messageSaved = true;  // ★ 标记 happy path 已落库,catch 块不再重复插入
           } catch (e) {
             logger.error('保存最终消息失败', { error: e.message });
           }
@@ -526,8 +548,45 @@ logger.info('Stream done, sending final result', { sql: sql?.substring(0, 50), m
       } catch (error) {
         streamCompleted = true; clearTimeout(overallTimer);
         logger.error('Stream query failed', { error: error.message, stack: error.stack });
+
+        // ★ 修复流中断时 partial 不落库的 bug（2026-07-29）：
+        //   原代码只写 error 事件，已生成的 fullContent / 已消耗的 token 全部丢失。
+        //   现在在 catch 块里补一次 partial 落库（仅中断/超时场景；LLM 真实错误不保存 partial）。
+        //   三个条件：① 客户端主动中断或超时（abortController.signal.aborted）
+        //             ② happy path 还没成功落库（!messageSaved）
+        //             ③ 有 sessionId
+        //   ★ Bug A 修复：去掉 fullContent 非空要求；中断场景即使 LLM 一字未吐也落库（用占位符）
+        const isAbort = abortController.signal.aborted
+          || error.name === 'AbortError'
+          || /aborted|abort|timeout/i.test(error.message || '');
+        if (isAbort && !messageSaved && sessionId) {
+          try {
+            const db = getDb();
+            const elapsedMs = Date.now() - requestStartTime;
+            // ★ Bug A：空内容也落库，用占位符让前端能识别"已中断但无内容"
+            const contentForDb = fullContent || message || '(已中断)';
+            // 1) 写入 partial 消息，标记 interrupted=1，round=lastRound（前端按 round 分组）
+            db.prepare('INSERT INTO messages (session_id, role, content, sql, results, prompt_tokens, completion_tokens, total_tokens, elapsed_ms, round, interrupted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+              .run(sessionId, 'assistant', contentForDb, sql || '', '', totalPromptTokens, totalCompletionTokens, totalTokens, elapsedMs, lastRound, 1);
+            messageSaved = true;
+            // 2) 累计 token 到 session（不管中断与否，LLM token 已消耗）
+            if (totalTokens > 0) {
+              const current = db.prepare('SELECT total_tokens FROM sessions WHERE id = ?').get(sessionId);
+              const newTotal = (current?.total_tokens || 0) + totalTokens;
+              db.prepare('UPDATE sessions SET total_tokens = ? WHERE id = ?').run(newTotal, sessionId);
+            }
+            logger.info('Partial assistant message saved (interrupted)', {
+              sessionId, contentLength: fullContent.length, totalTokens, elapsedMs, round: lastRound,
+              isEmptyContent: !fullContent && !message  // ★ 标记空内容场景,便于排错
+            });
+          } catch (saveErr) {
+            logger.error('保存中断 partial 消息失败', { error: saveErr.message });
+          }
+        }
+
         if (!res.writableEnded) {
-          res.write(`data: ${JSON.stringify({ type: 'error', content: error.message })}\n\n`);
+          // 把 interrupted 标记也透传给前端，前端可选择性显示"已中断"提示
+          res.write(`data: ${JSON.stringify({ type: 'error', content: error.message, interrupted: isAbort })}\n\n`);
         }
       }
 
@@ -905,7 +964,9 @@ ${JSON.stringify(explainResults, null, 2)}
     // ★ 守卫：overallTimer 可能在 setTimeout 之前就抛错（此时仍是 null），clearTimeout(null) 是 no-op 但保险起见显式判断
     if (overallTimer) clearTimeout(overallTimer);
     if (error.name === 'AbortError') {
-      logger.info('EXPLAIN analyze: aborted by client');
+      // 2026-07-29 顺手加诊断日志：/explain-analyze 不落库（分析结果仅通过 SSE 返回给客户端），
+      //   但记录下中断时已收到多少字符，方便排查"分析结果不完整"类工单
+      logger.info('EXPLAIN analyze: aborted by client', { partialLength: fullContent.length });
     } else {
       logger.error('EXPLAIN analyze failed', { error: error.message });
       // abortController / overallTimer 可能在 abortController 声明前抛错，用 typeof 守卫

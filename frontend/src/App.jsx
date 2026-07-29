@@ -396,6 +396,9 @@ function AuthenticatedApp({ user, logout }) {
             //   老数据（无 round 信息）会全归到 round 0 组里，仍然会显示 round 轴（数字 0）
             //   如果想老数据不显示 round 轴，可加判断：只有 round > 0 时才走 roundGroup
             round: typeof m.round === 'number' ? m.round : 0,
+            // ★ 2026-07-29：透传 interrupted 字段，用于渲染"已中断" badge
+            //   老数据（无 interrupted 列）默认 0/false，行为兼容
+            interrupted: m.interrupted === 1 || m.interrupted === true,
           };
         });
         // 老数据回填：相邻 user → assistant 配对，差值作为 elapsedMs
@@ -915,7 +918,13 @@ function AuthenticatedApp({ user, logout }) {
                   return newMsgs;
                 });
               } else if (data.type === 'error') {
-                if (data.content !== '请求已被用户中断') {
+                // ★ 2026-07-29：用后端透传的 interrupted 字段代替硬编码字符串"请求已被用户中断"
+                //   - interrupted=true → 用户主动中断 / 网络断连 / 超时 → 不弹红框 + 追加"已中断"标记
+                //   - interrupted=false(缺失) → 真实错误 → 弹红框 + 显示错误内容
+                // 优势：后端多场景(overll timeout / fetch abort / 用户主动 stop)统一走 interrupted 字段
+                //   不再依赖 llm.js:1867 那个特定 yield 文案(原硬编码检查其实很少匹配上)
+                const isInterrupted = data.interrupted === true;
+                if (!isInterrupted) {
                   message.error(data.content);
                 }
                 setMessages(prev => {
@@ -924,7 +933,15 @@ function AuthenticatedApp({ user, logout }) {
                   if (lastIdx !== -1) {
                     const startTime = newMsgs[lastIdx].startTime || Date.now();
                     const elapsedMs = Date.now() - startTime;
-                    newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: data.content === '请求已被用户中断' ? (newMsgs[lastIdx].content || '') + '\n\n*[已中断]*' : '错误: ' + data.content, isStreaming: false, elapsedMs };
+                    newMsgs[lastIdx] = {
+                      ...newMsgs[lastIdx],
+                      content: isInterrupted
+                        ? (newMsgs[lastIdx].content || '')
+                        : '错误: ' + data.content,
+                      isStreaming: false,
+                      elapsedMs,
+                      interrupted: isInterrupted  // ★ 在消息对象上记一下，ChatMessage 据此渲染 badge
+                    };
                   }
                   return newMsgs;
                 });
@@ -1635,6 +1652,7 @@ const explainColumns = useMemo(() => explainResults.length > 0
                           favoriteState={favoriteStates[msg.id]}
                           onFavorite={userQuestion ? ({ userQuestion: uq, sqlOutput }) => handleFavorite({ msgId: msg.id, userQuestion: uq, sqlOutput }) : undefined}
                           userAvatar={(user?.display_name || user?.username || 'U').slice(0, 1).toUpperCase()}
+                          interrupted={msg.interrupted}  // ★ 2026-07-29：从 DB 或 SSE error 传入，渲染"已中断" badge
                         />
                       );
                     })}

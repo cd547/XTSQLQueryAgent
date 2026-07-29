@@ -7,7 +7,7 @@ import AppIcon from './AppIcon.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { createMarkdownRenderers } from './markdownRenderers.jsx';
 
-const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, onOpenSqlTab, onCopyAndExecute, onFavorite, favoriteState, userQuestion, userAvatar }) {
+const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, onOpenSqlTab, onCopyAndExecute, onFavorite, favoriteState, userQuestion, userAvatar, interrupted }) {
   const { theme: themeMode } = useTheme();
   const isUser = role === 'user';
   const isLog = role === 'log' || role === 'LLM' || role === 'tool' || role === 'tool_return';
@@ -95,6 +95,13 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
           <span>{isUser ? '我' : 'AI 助手'}</span>
           <span>·</span>
           <span>{timeStr}</span>
+          {/* ★ 2026-07-29：interrupted=1 时显示"已中断" badge
+              来源：① SSE error 事件（实时中断）② 历史回显（DB.interrupted=1） */}
+          {!isUser && interrupted && (
+            <Tooltip title="本次回答因客户端断连或超时未正常完成,部分内容已保存">
+              <span className="xtsql-msg-interrupted-tag">⚠ 已中断</span>
+            </Tooltip>
+          )}
         </div>
         <div className="xtsql-msg-bubble">
           {isUser ? (

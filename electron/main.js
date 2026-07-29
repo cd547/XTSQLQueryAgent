@@ -325,7 +325,10 @@ async function startBackend() {
     env.SKILL_PATH = path.join(projectRoot, 'skills');
     env.LOG_PATH = path.join(projectRoot, 'logs');
 
-    let backendProcess;
+    // ★ 删除原 line 328 的 `let backendProcess;`（局部声明）—— 之前的局部变量
+    //   会遮蔽 line 9 的全局声明，导致 L330 的 spawn 赋值只写到局部、
+    //   全局 backendProcess 永远 undefined、L590 的 kill 永远走不到
+    //   （关窗时后端进程成为孤儿，靠下次启动时 killProcessOnPort 兜底强杀）
     try {
       backendProcess = spawn(nodePath, [backendPath], {
         cwd: backendCwd,
@@ -596,4 +599,18 @@ app.on('window-all-closed', () => {
     }
   }
   if (process.platform !== 'darwin') app.quit();
+});
+
+// ★ 兑底（2026-07-29）：macOS 上 window-all-closed 不会触发 quit，
+//   只有 before-quit 会 —— 所以仅靠 window-all-closed 在 macOS 上会泄漏后端进程。
+//   同时覆盖“用户从菜单 Quit / app.quit() 被调用 / 系统信号”等其他退出路径。
+app.on('before-quit', () => {
+  if (backendProcess) {
+    try {
+      backendProcess.kill();
+      console.log('Backend process killed (before-quit)');
+    } catch (e) {
+      console.error('Failed to kill backend process (before-quit):', e);
+    }
+  }
 });

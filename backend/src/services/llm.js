@@ -975,8 +975,16 @@ export function loadMessagesFromDb(sessionId) {
       )
       .get(sessionId);
     if (record && record.messages) {
+      const rawMessages = JSON.parse(record.messages);
+      // ★ 2026-07-29: 修复"继续"时报 tool_calls 契约错误
+      //   根因：saveMessagesToDb 在 line 1483 时机太早（assistant push 后、tool 响应入栈前），
+      //         用户在工具执行过程中点停止时，DB 中最后一条 assistant 消息可能含未完整响应的 tool_calls。
+      //         喂给 LLM 时 DeepSeek 拒绝：
+      //         "An assistant message with 'tool_calls' must be followed by tool messages responding to each 'tool_call_id'"
+      //   修复：load 时 sanitize —— 给缺失响应的 tool_call_id 补 synthetic tool 响应，
+      //         内容标记为"用户中断,工具未完成"，让 LLM 看到完整契约又不丢失上下文。
       return {
-        messages: JSON.parse(record.messages),
+        messages: sanitizeMessagesForLLM(rawMessages),
         messageTokens: record.message_tokens || 0,
       };
     }
@@ -985,6 +993,104 @@ export function loadMessagesFromDb(sessionId) {
     logger.error("Failed to load messages from database", { error: e.message });
     return null;
   }
+}
+
+/**
+ * 修复"中断导致 messages 含未完成 tool_calls"问题
+ *
+ * 场景：用户在 LLM 工具执行过程中点停止时，由于 saveMessagesToDb 时机太早
+ *   （line 1483: assistant push 后立刻 save,tool 响应在 line 1722/1743/1770 才入栈），
+ *   DB 中的 messages 数组可能含：
+ *     [..., assistant(tool_calls=[A,B]), tool(A)]   ← B 缺响应
+ *   这种状态喂给 LLM 会报 tool_calls 契约错误。
+ *
+ * 修复策略：给缺失响应的 tool_call_id 补 synthetic tool 响应
+ *   - 位置：紧跟所有已有的 tool 响应之后（按 tool_calls 顺序）
+ *   - 内容：'[用户中断,工具未完成,调用未返回结果]'
+ *   - 为什么是补响应而不是删 tool_calls：
+ *       删 tool_calls 会让 LLM 失去"我做过这个工具调用"的信息；
+ *       补响应让 LLM 明确知道中断状态，可基于已有信息继续或重新调用。
+ *
+ * @param {Array} messages 原始 messages 数组
+ * @returns {Array} 补全后的 messages 数组（如果原数组已合法，原样返回）
+ */
+function sanitizeMessagesForLLM(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) return messages;
+
+  // 从后往前找最后一个含 tool_calls 的 assistant 消息
+  let lastAssistantIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (
+      m?.role === "assistant" &&
+      Array.isArray(m.tool_calls) &&
+      m.tool_calls.length > 0
+    ) {
+      lastAssistantIdx = i;
+      break;
+    }
+  }
+
+  // 没有含 tool_calls 的 assistant 消息,无需处理
+  if (lastAssistantIdx === -1) return messages;
+
+  const lastAssistant = messages[lastAssistantIdx];
+  const toolCalls = lastAssistant.tool_calls;
+
+  // 收集所有 tool_call_id 和已有响应的 tool_call_id
+  const respondedIds = new Set();
+  for (let i = lastAssistantIdx + 1; i < messages.length; i++) {
+    const m = messages[i];
+    if (m?.role === "tool" && m.tool_call_id) {
+      respondedIds.add(m.tool_call_id);
+    }
+  }
+
+  // 找出未响应的 tool_call
+  const unresponded = toolCalls.filter(
+    (tc) => tc.id && !respondedIds.has(tc.id),
+  );
+
+  if (unresponded.length === 0) {
+    return messages; // 全部有响应,消息数组合法,直接返回
+  }
+
+  logger.warn(
+    "Sanitizing incomplete assistant tool_calls (interrupted mid-execution)",
+    {
+      lastAssistantIdx,
+      unrespondedToolCallIds: unresponded.map((tc) => tc.id),
+      respondedCount: respondedIds.size,
+      totalCount: toolCalls.length,
+    },
+  );
+
+  // 构造补全后的 messages 数组
+  // 1) 复制到最后一个 assistant 之前的所有消息
+  // 2) 复制最后一个 assistant 消息本身
+  // 3) 复制 assistant 之后的所有 tool 响应（保持原顺序）
+  // 4) 给未响应的 tool_call_id 补 synthetic 响应（按 tool_calls 顺序）
+  const sanitized = [];
+  for (let i = 0; i <= lastAssistantIdx; i++) {
+    sanitized.push(messages[i]);
+  }
+  for (let i = lastAssistantIdx + 1; i < messages.length; i++) {
+    if (messages[i]?.role === "tool") {
+      sanitized.push(messages[i]);
+    } else {
+      // 遇到非 tool 消息,停止（防御性：正常情况不会有）
+      break;
+    }
+  }
+  for (const tc of unresponded) {
+    sanitized.push({
+      role: "tool",
+      tool_call_id: tc.id,
+      content: "[用户中断,工具未完成,调用未返回结果]",
+    });
+  }
+
+  return sanitized;
 }
 
 // 备份原有函数

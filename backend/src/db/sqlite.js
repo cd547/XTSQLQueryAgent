@@ -157,6 +157,10 @@ export async function initDatabase() {
   // 流式每条 log 消息落库时由后端写入；历史回显时前端用此字段把同一轮的 log 包成一组
   // 老数据无值（默认 0），loadMessages 不展示 round 轴（兼容老数据）
   addColumnIfMissing(db, 'messages', 'round', 'INTEGER DEFAULT 0');
+  // 添加 interrupted 字段：标记 assistant 消息是否因客户端断连 / 超时 / abort 而未正常完成
+  // 2026-07-29 修复流中断时 partial 不落库的 bug：catch 块会写入 interrupted=1 + partial content
+  // 前端可据此显示"已中断"标记；老数据为 0（未中断），行为兼容
+  addColumnIfMissing(db, 'messages', 'interrupted', 'INTEGER DEFAULT 0');
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS configs (
