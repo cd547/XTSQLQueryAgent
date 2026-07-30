@@ -1410,7 +1410,7 @@ ${skillMd}`;
         }
 
         for (const line of lines) {
-          if (line.startsWith("data: ") && !line.includes("[DONE]")) {
+          if (line.startsWith("data: ") && line !== "data: [DONE]") {
             try {
               const data = JSON.parse(line.slice(6));
               const usage = data.usage;
