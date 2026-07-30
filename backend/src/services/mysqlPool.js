@@ -37,6 +37,11 @@ const QUERY_TIMEOUT_MS = 30000;    // 单查询 30s 超时（mysql2 会 destroy 
 let pool = null;
 let poolKey = null;     // 当前 pool 对应的配置指纹
 let poolConfigSnapshot = null;  // 当前 pool 用到的完整 config（用于查询/连接参数）
+// ★ B22 修复：单例锁——并发请求只跑一次 getPool 主体，防止 double-close / 重复创建
+//   场景：配置变更期间 await closePool() 挂起时，新请求进入会"看到"旧 pool 并触发
+//   第二次 closePool，把刚刚被赋值的 pool 错误地关闭掉。
+//   锁存在时所有并发请求共享同一 Promise 解析结果，串行化整个初始化过程。
+let poolInitPromise = null;
 
 /**
  * 计算 config 指纹：host/port/user/database 任一变化则重建 pool
@@ -70,34 +75,44 @@ export async function closePool() {
  * @throws  当 db_config 未配置或连接失败时抛错
  */
 export async function getPool() {
-  const cfg = getConfig();
-  if (!cfg) {
-    throw new Error('数据库未配置');
-  }
+  // ★ B22 修复：单例锁——已有进行中的初始化，直接复用其结果
+  if (poolInitPromise) return poolInitPromise;
 
-  const key = buildPoolKey(cfg);
+  poolInitPromise = (async () => {
+    const cfg = getConfig();
+    if (!cfg) {
+      throw new Error('数据库未配置');
+    }
 
-  // 配置指纹变了 → 关旧 pool，开新的
-  if (pool && poolKey !== key) {
-    logger.info('MySQL config changed, recreating pool', { oldKey: poolKey, newKey: key });
-    await closePool();
-  }
+    const key = buildPoolKey(cfg);
 
-  if (!pool) {
-    pool = mysql.createPool({
-      ...POOL_CONFIG,
-      host: cfg.host,
-      port: cfg.port || 3306,
-      user: cfg.user,
-      password: cfg.password,
-      database: cfg.database,
-    });
-    poolKey = key;
-    poolConfigSnapshot = cfg;
-    logger.info('MySQL pool created', { key, connectionLimit: POOL_CONFIG.connectionLimit });
-  }
+    // 配置指纹变了 → 关旧 pool，开新的
+    if (pool && poolKey !== key) {
+      logger.info('MySQL config changed, recreating pool', { oldKey: poolKey, newKey: key });
+      await closePool();
+    }
 
-  return pool;
+    if (!pool) {
+      pool = mysql.createPool({
+        ...POOL_CONFIG,
+        host: cfg.host,
+        port: cfg.port || 3306,
+        user: cfg.user,
+        password: cfg.password,
+        database: cfg.database,
+      });
+      poolKey = key;
+      poolConfigSnapshot = cfg;
+      logger.info('MySQL pool created', { key, connectionLimit: POOL_CONFIG.connectionLimit });
+    }
+
+    return pool;
+  })().finally(() => {
+    // 无论成功失败都解锁，让下一轮 getPool 能正常进入
+    poolInitPromise = null;
+  });
+
+  return poolInitPromise;
 }
 
 /**
