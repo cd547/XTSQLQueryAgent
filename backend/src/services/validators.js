@@ -28,6 +28,7 @@ import {
   extractColumnRefs,
   extractTables,
   buildAliasMap,
+  extractDerivedTableColumns,
   hasCte,
   hasWindowFunction,
   hasJsonTable,
@@ -79,11 +80,25 @@ export async function validateR1FieldOwnership(ctx) {
     // 原因：单表场景下 R1 较难精确归属
     if (!ref.table) continue;
 
-    // alias → real table（兼容 parser 已解析的情况）
-    const resolvedTable = aliasMap.get(ref.table) || ref.table;
+    // ★ 2026-07-30：处理 derived table 别名（修复 JOIN/FROM 子查询误报"未知别名"）
+    //   - aliasMap.get(alias) 返回 string  → 普通物理表别名
+    //   - aliasMap.get(alias) 返回 {isDerived:true} → 子查询别名
+    //   - aliasMap.get(alias) 返回 undefined → 未登记（真未知）
+    const aliasValue = aliasMap.get(ref.table);
+    let resolvedTable;
+    if (typeof aliasValue === 'string') {
+      resolvedTable = aliasValue;
+    } else if (aliasValue && aliasValue.isDerived) {
+      // 子查询别名走虚拟表 `__DERIVED__<alias>`（由主入口预先注入 columnsMap）
+      resolvedTable = `__DERIVED__${ref.table}`;
+    } else {
+      resolvedTable = ref.table;
+    }
+
     const tableColumns = columnsMap.get(resolvedTable);
 
-    // 表不在 columnsMap 中（极端情况：parser 抽出的 table 未在 SQL 引用列表中）
+    // 表不在 columnsMap 中（极端情况：parser 抽出的 table 未在 SQL 引用列表中，
+    //   或 derived table 未被主入口正确注入虚拟表）
     if (!tableColumns) {
       errors.push({
         rule: 'R1_FIELD_OWNERSHIP',
@@ -292,6 +307,16 @@ export async function validateSqlFields({ sql }) {
     const ddlBlocks = await getTableDDL(tables, { short: true });
     missingDdl = tables.filter(t => ddlBlocks.includes(`-- 表 ${t} 的DDL不存在`));
     columnsMap = await loadColumnsMap(tables);
+  }
+
+  // ★ 2026-07-30：子查询（derived table）虚拟表注入
+  //   - 解析所有 (SELECT ...) t_sub 形式的子查询，收集 t_sub 的输出列
+  //   - 注入到 columnsMap：`__DERIVED__t_sub` → Set<输出列>
+  //   - 配合 buildAliasMap 的 `{isDerived:true}` 标记，让 R1 校验能基于
+  //     子查询实际 SELECT 列表判断 `t_sub.col` 是否合法
+  const derivedColumns = extractDerivedTableColumns(sql);
+  for (const [alias, cols] of derivedColumns) {
+    columnsMap.set(`__DERIVED__${alias}`, cols);
   }
 
   // 4. 共享 ctx

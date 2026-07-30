@@ -189,15 +189,22 @@ export function hasLimitClause(sql) {
 }
 
 /**
- * 解析 SQL 中的表别名映射（alias → table）
+ * 解析 SQL 中的表别名映射（alias → table 或 {isDerived:true}）
  *
  * 支持：
  * - `FROM table t` → {t: 'table'}
  * - `FROM table AS t` → {t: 'table'}
  * - `FROM schema.table t` → {t: 'table'}
+ * - `FROM (subquery) t_sub` → {t_sub: {isDerived: true}}        ★ 2026-07-30：null 改对象
+ * - `JOIN table t` → {t: 'table'}
+ * - `JOIN (subquery) t_sub` → {t_sub: {isDerived: true}}         ★ 2026-07-30：修复 JOIN 子查询盲区
+ *
+ * 子查询（derived table）的别名不映射到物理表，而是用 `{isDerived: true}` 标记。
+ * 调用方在 `validateSqlFields` 主入口里会用 `__DERIVED__<alias>` 虚拟表键名，
+ * 配合 `extractDerivedTableColumns` 收集到的输出列做 R1 校验。
  *
  * @param {string} sql - SQL 语句
- * @returns {Map<string, string>} - {alias -> tableName}
+ * @returns {Map<string, string | {isDerived: true}>} - alias → 物理表名 / 子查询标记
  */
 export function buildAliasMap(sql) {
   const map = new Map();
@@ -208,19 +215,23 @@ export function buildAliasMap(sql) {
       if (!fromItem) return;
       const table = fromItem.table;
       const alias = fromItem.as;
+      // FROM 项：物理表 / 子查询分支
       if (table && alias && alias !== table) {
         map.set(alias, table);
       }
-      // 子查询（无 table 字段，但 expr 里有 from）
       if (fromItem.expr && fromItem.as) {
-        // 子查询的别名 → 用 as 作为 key，但 table 标记为 null
-        map.set(fromItem.as, null);
+        // ★ 子查询（derived table）别名登记为 {isDerived:true}
+        map.set(fromItem.as, { isDerived: true });
       }
       // JOIN
       if (fromItem.join) {
         for (const join of fromItem.join) {
           if (join.table && join.as) {
             map.set(join.as, join.table);
+          }
+          // ★ 修复：JOIN 子查询原代码完全漏掉，会导致 R1 报"未知别名"
+          if (join.expr && join.as) {
+            map.set(join.as, { isDerived: true });
           }
         }
       }
@@ -232,7 +243,94 @@ export function buildAliasMap(sql) {
 }
 
 /**
+ * 提取 SQL 中所有子查询（derived table）的输出列集合
+ *
+ * 用法：在 `validateSqlFields` 主入口调用，结果用于给每个子查询别名
+ *       构造虚拟 columnsMap 条目（key: `__DERIVED__<alias>`，value: 输出列 Set），
+ *       这样 R1 校验能基于子查询实际 SELECT 列表判断 `t_sub.col` 是否合法。
+ *
+ * 输出列名提取优先级：
+ *   1. `AS xxx` 的别名
+ *   2. 列引用 `{type:'column_ref', column:'xxx'}` 的列名
+ *   3. 函数调用（`SUM/COUNT/...`）的函数名（兜底）
+ *   4. 其它表达式（字面量、运算）→ 跳过（无法静态命名）
+ *
+ * @param {string} sql - SQL 语句
+ * @returns {Map<string, Set<string>>} - alias → 输出列名集合
+ */
+export function extractDerivedTableColumns(sql) {
+  const result = new Map();
+  try {
+    const { ast } = parseSql(sql) || {};
+    if (!ast) return result;
+    walkDerivedTables(ast, (alias, subqueryAst) => {
+      const cols = new Set();
+      const colArr = subqueryAst?.columns || [];
+      for (const col of colArr) {
+        let name = null;
+        if (col?.as) {
+          name = col.as;
+        } else if (col?.expr?.type === 'column_ref' && col.expr.column) {
+          name = col.expr.column;
+        } else if (col?.expr?.type === 'function' && col.expr.name) {
+          name = col.expr.name;
+        }
+        if (name) cols.add(name);
+      }
+      result.set(alias, cols);
+    });
+  } catch {
+    // parse 失败返回空 map
+  }
+  return result;
+}
+
+/**
+ * 递归遍历 AST 收集所有子查询的 (alias, subqueryAst) 对
+ * - 覆盖 FROM 级子查询：`FROM (SELECT ...) t_sub`
+ * - 覆盖 JOIN 级子查询：`LEFT JOIN (SELECT ...) t_sub ON ...`
+ *   ★ 关键：node-sql-parser 把 JOIN 也扁平化放在 ast.from 数组里，
+ *     每个 from 元素可能是 `{table, as}`（普通表）或 `{expr:{ast,...}, as, join, on}`（子查询 JOIN）
+ *   所以不需要单独处理 `fromItem.join` 数组
+ * - 递归进子查询内部（fromItem.expr.ast），处理嵌套 derived table
+ *   ★ 2026-07-30 修复：原 walkFromClauses 只递归到 ast 的兄弟字段，
+ *     不会进入 fromItem.expr.ast，导致嵌套子查询（如 `t1(col) FROM (t2 FROM (...) t2) t1`）
+ *     里的 t2 被遗漏
+ */
+function walkDerivedTables(ast, callback) {
+  if (!ast || typeof ast !== 'object') return;
+  if (Array.isArray(ast)) {
+    ast.forEach(item => walkDerivedTables(item, callback));
+    return;
+  }
+  if (ast.from) {
+    const fromArr = Array.isArray(ast.from) ? ast.from : [ast.from];
+    for (const fromItem of fromArr) {
+      if (!fromItem) continue;
+      // ★ 修复：真子查询 AST 在 fromItem.expr.ast，原代码错传 fromItem.expr
+      //   fromItem.expr 实际是 {ast, tableList, columnList, parentheses} 包装对象
+      if (fromItem.expr && fromItem.as) {
+        const subAst = fromItem.expr.ast || fromItem.expr;
+        callback(fromItem.as, subAst);
+        // ★ 修复：递归进子查询的 ast.from，处理嵌套 derived table
+        if (subAst && subAst.from) {
+          walkDerivedTables(subAst, callback);
+        }
+      }
+    }
+  }
+  // 递归进其它字段（注意：会进入子查询内部，可能遇到更深的子查询）
+  for (const key of Object.keys(ast)) {
+    if (key === 'from') continue;
+    walkDerivedTables(ast[key], callback);
+  }
+}
+
+/**
  * 递归遍历 AST 收集所有 FROM/JOIN 子句
+ * ★ 2026-07-30 修复：递归进子查询（fromItem.expr.ast）以处理嵌套子查询
+ *   原版只递归到 ast 的兄弟字段，不会进入 fromItem.expr.ast，
+ *   导致嵌套子查询里的 from 节点被遗漏
  */
 function walkFromClauses(ast, callback) {
   if (!ast || typeof ast !== 'object') return;
@@ -242,7 +340,14 @@ function walkFromClauses(ast, callback) {
   }
   if (ast.from) {
     const fromArr = Array.isArray(ast.from) ? ast.from : [ast.from];
-    for (const fromItem of fromArr) callback(fromItem);
+    for (const fromItem of fromArr) {
+      if (!fromItem) continue;
+      callback(fromItem);
+      // ★ 递归进子查询的 from，处理嵌套子查询（如 t1 FROM (t2 FROM (...) t2) t1）
+      if (fromItem.expr && fromItem.expr.ast) {
+        walkFromClauses(fromItem.expr.ast, callback);
+      }
+    }
   }
   for (const key of Object.keys(ast)) {
     if (key === 'from') continue; // 已处理
