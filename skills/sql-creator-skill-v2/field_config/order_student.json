@@ -102,6 +102,8 @@
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": [
-    "订单金额通常指成交金额 transaction_amount，而非 total_amount（订单总金额）"
+    { "name":"订单金额",
+      "description": "通常指成交金额 transaction_amount，而非 total_amount（订单总金额）"
+    }
   ]
 }
