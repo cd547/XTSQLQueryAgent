@@ -39,6 +39,33 @@ app.use('/api/skills', skillRouter);
 app.use('/api/export', exportRouter);
 app.use('/api/queries', favoriteQueryRouter);
 
+// ★ 兜底（B13 修复）：Express 4 不自动捕获 async 路由的 rejected promise，
+//   漏 try/catch 时 Node 15+ 会以 unhandledRejection 终止进程。
+//   任何逃出路由的异常都会落到这里，统一 500 + 日志。
+app.use((err, req, res, next) => {
+  // ★ 必须保留 next 形参（即便未用），Express 靠 4 参数识别错误中间件
+  logger.error('[express:unhandled]', {
+    method: req.method,
+    url: req.url,
+    error: err.message,
+    stack: err.stack
+  });
+  if (!res.headersSent) {
+    res.status(500).json({ error: 'Internal Server Error', message: err.message });
+  }
+});
+
+// ★ 最后一道防线（B13 修复）：即使错误中间件也漏掉的极端情况，
+//   也只记录日志不退出进程——避免用户每次遇到坏 JSON 配置就把后端炸掉。
+//   依据：Node 官方建议 unhandledRejection 应至少打日志；uncaughtException 后
+//   进程状态已不可靠但 Electron 主进程会检测子进程退出并提示用户重启。
+process.on('unhandledRejection', (reason) => {
+  logger.error('[process:unhandledRejection]', { reason: String(reason) });
+});
+process.on('uncaughtException', (err) => {
+  logger.error('[process:uncaughtException]', { error: err.message, stack: err.stack });
+});
+
 // 启动序列：必须先完成数据库初始化，再启动 HTTP 监听
 // 失败时 process.exit(1)，让 Electron 立即看到 stderr
 (async () => {

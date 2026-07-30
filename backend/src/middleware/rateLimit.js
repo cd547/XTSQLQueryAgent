@@ -21,8 +21,18 @@ export const authRateLimiter = rateLimit({
   },
   standardHeaders: true,       // 返回 RateLimit-* 标准头
   legacyHeaders: false,
-  // 默认 keyGenerator 用 req.ip；这里显式声明以便后续扩展
-  keyGenerator: (req) => req.ip,
+  // ★ B15 修复：复合 key 隔离同机多用户，避免"用户 A 输错 10 次 → B/C/D 全部被锁"
+  //   - login/register：取 req.body.username 拼 IP
+  //   - change-password：req.body 没有 username（限流器在 authRequired 之前），
+  //     统一归入 "::cpw::" key——change-password 本身就是低频操作，可以接受
+  //   - username 统一 toLowerCase：防大小写绕过（Admin vs admin 视为同一用户）
+  keyGenerator: (req) => {
+    const username = String(req.body?.username || '').toLowerCase().trim();
+    return username ? `${req.ip}::login::${username}` : `${req.ip}::cpw`;
+  },
+  // ★ B15 修复：成功请求不计数（401 密码错才计入，200 登录成功不计）
+  //   防止"正常用户连续登录 10 次"被误限流
+  skipSuccessfulRequests: true,
 });
 
 /**

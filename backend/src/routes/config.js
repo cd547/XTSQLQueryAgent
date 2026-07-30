@@ -3,6 +3,7 @@ import { getDb } from '../db/sqlite.js';
 import { logger } from '../logger.js';
 import { getAgentConfig, updateAgentConfig, getTokenWarningLevel } from '../services/config.js';
 import { authRequired, adminRequired } from '../services/auth.js';
+import asyncHandler from '../utils/asyncHandler.js';
 
 const router = Router();
 
@@ -27,7 +28,7 @@ router.post('/test', adminRequired, async (req, res) => {
   }
 });
 
-router.post('/db', adminRequired, async (req, res) => {
+router.post('/db', adminRequired, asyncHandler(async (req, res) => {
   const { host, port, user, password, database } = req.body;
   const db = getDb();
 
@@ -40,9 +41,9 @@ router.post('/db', adminRequired, async (req, res) => {
   stmt.run('db_config', configData);
 
   res.json({ success: true });
-});
+}));
 
-router.get('/db', adminRequired, async (req, res) => {
+router.get('/db', adminRequired, asyncHandler(async (req, res) => {
   const db = getDb();
   const row = db.prepare('SELECT value FROM configs WHERE key = ?').get('db_config');
 
@@ -53,9 +54,9 @@ router.get('/db', adminRequired, async (req, res) => {
   } else {
     res.json({});
   }
-});
+}));
 
-router.post('/llm', adminRequired, async (req, res) => {
+router.post('/llm', adminRequired, asyncHandler(async (req, res) => {
   const { provider, apiKey, model } = req.body;
   const db = getDb();
 
@@ -68,9 +69,9 @@ router.post('/llm', adminRequired, async (req, res) => {
   stmt.run('llm_config', llmConfig);
 
   res.json({ success: true });
-});
+}));
 
-router.get('/llm', adminRequired, async (req, res) => {
+router.get('/llm', adminRequired, asyncHandler(async (req, res) => {
   const db = getDb();
   const row = db.prepare('SELECT value FROM configs WHERE key = ?').get('llm_config');
 
@@ -82,9 +83,9 @@ router.get('/llm', adminRequired, async (req, res) => {
   } else {
     res.json({ hasApiKey: false });
   }
-});
+}));
 
-router.get('/llm/models', adminRequired, async (req, res) => {
+router.get('/llm/models', adminRequired, asyncHandler(async (req, res) => {
   const db = getDb();
   const row = db.prepare('SELECT value FROM configs WHERE key = ?').get('llm_config');
 
@@ -118,7 +119,7 @@ router.get('/llm/models', adminRequired, async (req, res) => {
     logger.error('Failed to fetch deepseek models', { error: error.message });
     res.json({ success: false, message: error.message });
   }
-});
+}));
 
 router.get('/agent', async (req, res) => {  // 普通用户也用：读 token 警告阈值
   try {
