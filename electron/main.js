@@ -525,12 +525,16 @@ function createWindow() {
 
   installAuthCookieCompat();
 
-  const startUrl = app.isPackaged
-    ? `file://${path.join(__dirname, '../frontend/dist/index.html')}`
-    : 'http://localhost:5173';
-    
-  console.log('Loading URL:', startUrl);
-  mainWindow.loadURL(startUrl);
+  if (app.isPackaged) {
+    // ★ 修复 E4：用 loadFile 替代 `file://${path}` 字符串拼接，
+    //   避免安装路径含空格/中文/#/% 时页面加载失败或资源路径解析错误。
+    const indexFile = path.join(__dirname, '../frontend/dist/index.html');
+    console.log('Loading file:', indexFile);
+    mainWindow.loadFile(indexFile);
+  } else {
+    console.log('Loading URL:', 'http://localhost:5173');
+    mainWindow.loadURL('http://localhost:5173');
+  }
 
   mainWindow.on('closed', () => (mainWindow = null));
 }
