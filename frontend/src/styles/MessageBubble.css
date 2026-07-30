@@ -55,6 +55,33 @@
   padding: 0 4px;
 }
 .xtsql-msg.user .xtsql-msg-meta { flex-direction: row-reverse; }
+
+/* ★ 2026-07-30：interrupted=1 时的"已中断" badge 样式
+   - 用 warning 色系（amber/orange）而非 danger：中断是用户主动行为，不是错误
+   - 浅色/暗色主题都用同一组 token，tokens.css 已定义
+   - pill 形状 + 浅色背景 + 边框，比之前的"小字"明显得多 */
+.xtsql-msg-interrupted-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: 4px;
+  padding: 1px 8px;
+  border-radius: var(--xtsql-radius-pill);
+  background: var(--xtsql-warning-bg);
+  border: 1px solid var(--xtsql-warning-border);
+  color: var(--xtsql-warning-border);
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.4;
+  letter-spacing: 0.2px;
+  cursor: help;
+  user-select: none;
+  transition: opacity 0.2s;
+}
+.xtsql-msg-interrupted-tag:hover {
+  opacity: 0.85;
+}
+
 .xtsql-msg-bubble {
   padding: 11px 15px;
   border-radius: var(--xtsql-radius-lg);
