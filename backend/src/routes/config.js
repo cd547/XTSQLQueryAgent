@@ -60,12 +60,26 @@ router.post('/llm', adminRequired, asyncHandler(async (req, res) => {
   const { provider, apiKey, model } = req.body;
   const db = getDb();
 
+  // ★ F3 修复：未传 apiKey 或传空字符串时，保留 DB 已有值
+  //   背景：前端 useEffect 不再把明文 key 写进 state（改为 maskedKey 占位），
+  //   saveLlm 仅在用户真正改动时才提交 apiKey。但若前端 bug 或手写 API 调用
+  //   传了空字符串，会直接把 key 覆盖成空，造成"什么都没改但 key 没了"。
+  //   这里兜底：传空 → 保留旧值；只有传非空才覆盖。
+  let finalApiKey = '';
+  if (typeof apiKey === 'string' && apiKey.length > 0) {
+    finalApiKey = apiKey;
+  } else {
+    const existing = db.prepare('SELECT value FROM configs WHERE key = ?').get('llm_config');
+    if (existing) {
+      try { finalApiKey = JSON.parse(existing.value).apiKey || ''; } catch (_) { /* malformed json, fall through */ }
+    }
+  }
+
   const stmt = db.prepare(`
     INSERT OR REPLACE INTO configs (key, value, updated_at)
     VALUES (?, ?, CURRENT_TIMESTAMP)
   `);
-
-  const llmConfig = JSON.stringify({ provider, apiKey, model });
+  const llmConfig = JSON.stringify({ provider, apiKey: finalApiKey, model });
   stmt.run('llm_config', llmConfig);
 
   res.json({ success: true });
@@ -77,11 +91,18 @@ router.get('/llm', adminRequired, asyncHandler(async (req, res) => {
 
   if (row) {
     const config = JSON.parse(row.value);
-    const hasApiKey = !!config.apiKey;
+    const rawKey = config.apiKey || '';
+    const hasApiKey = rawKey.length > 0;
+    // ★ F3 修复：返回掩码（sk-****abcd 风格）供前端占位展示，绝不返回明文
+    //   规则：key 长度 ≥ 8 字符 → 前 3 + **** + 末 4；否则全 ****（不暴露长度）
+    //   理由：仅前 3 + 末 4 既能"看着像真 key"便于用户识别，又无法被用于鉴权
+    const maskedKey = hasApiKey
+      ? (rawKey.length >= 8 ? `${rawKey.slice(0, 3)}****${rawKey.slice(-4)}` : '****')
+      : '';
     delete config.apiKey;
-    res.json({ ...config, hasApiKey });
+    res.json({ ...config, hasApiKey, maskedKey });
   } else {
-    res.json({ hasApiKey: false });
+    res.json({ hasApiKey: false, maskedKey: '' });
   }
 }));
 
