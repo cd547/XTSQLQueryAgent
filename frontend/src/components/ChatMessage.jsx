@@ -5,7 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import AppIcon from './AppIcon.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
-import { createMarkdownRenderers } from './markdownRenderers.jsx';
+import { getMarkdownRenderers } from './markdownRenderers.jsx';
 
 const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, onOpenSqlTab, onCopyAndExecute, onFavorite, favoriteState, userQuestion, userAvatar, interrupted }) {
   const { theme: themeMode } = useTheme();
@@ -70,7 +70,12 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
     messageText = content;
   }
 
-  const { pre: PreRender, code: CodeRender } = createMarkdownRenderers(themeMode === 'dark');
+  // ★ F7 修复：用 getMarkdownRenderers 替换 createMarkdownRenderers。
+  //   getMarkdownRenderers 内部用 Map 缓存 (isDark, opts) → renderers 引用，
+  //   同主题同 opts 下返回稳定引用 → ReactMarkdown components.pre/code 类型不变 →
+  //   流式 chunk 期间不 unmount/remount SyntaxHighlighter 子树（无闪烁 + 无滚动跳动 + 无高亮重算）。
+  const isDarkTheme = themeMode === 'dark';
+  const { pre: PreRender, code: CodeRender } = getMarkdownRenderers(isDarkTheme);
   const markdownComponents = {
     pre: PreRender,
     code: CodeRender,

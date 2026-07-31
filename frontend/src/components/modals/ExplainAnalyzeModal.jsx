@@ -2,7 +2,7 @@ import React from 'react';
 import { Modal, Spin } from 'antd';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import { createMarkdownRenderers } from '../markdownRenderers.jsx';
+import { getMarkdownRenderers } from '../markdownRenderers.jsx';
 
 /**
  * AI 分析 EXPLAIN 结果 Modal
@@ -47,7 +47,11 @@ export default function ExplainAnalyzeModal({ open, onClose, content, loading, i
               h3: ({ node, ...props }) => <h3 style={{ fontSize: 13, marginTop: 8, marginBottom: 6 }} {...props} />,
               ul: ({ node, ...props }) => <ul style={{ fontSize: 12, paddingLeft: 20, marginTop: 4, marginBottom: 8 }} {...props} />,
               li: ({ node, ...props }) => <li style={{ fontSize: 12, marginBottom: 4 }} {...props} />,
-              ...createMarkdownRenderers(isDarkTheme, { fontSize: 11 }),
+              // ★ F7 修复：用 getMarkdownRenderers（模块级缓存）替换 createMarkdownRenderers。
+              //   流式 AI 分析期间每来一个 chunk 调用一次 → 旧实现 pre/code 引用每次新建 →
+              //   SyntaxHighlighter 子树 unmount + remount + Prism 重算。getMarkdownRenderers
+              //   在同 isDarkTheme + fontSize 下返回稳定引用 → 复用现有实例，零闪烁。
+              ...getMarkdownRenderers(isDarkTheme, { fontSize: 11 }),
             }}
           >
             {content || (loading ? '正在分析...' : '')}

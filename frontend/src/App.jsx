@@ -25,7 +25,6 @@ import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
 import './utils/monacoEnv';
 import { readSSEStream } from './utils/sseStream';
-import { createMarkdownRenderers } from './components/markdownRenderers.jsx';
 import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages, saveFavoriteQuery, checkFavorites, unfavoriteQuery, getFavoriteSuggestions } from './api';
 
 const { TextArea } = Input;
