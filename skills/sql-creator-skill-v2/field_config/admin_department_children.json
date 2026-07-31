@@ -13,7 +13,7 @@
       "target_table": "admin_department",
       "join_condition": "admin_department.id = admin_department_children.department_id",
       "type": "one_to_one",
-      "description": "1个二级部门对应1个一级部门",
+      "description": "",
       "business_rule": ""
     }
   ],

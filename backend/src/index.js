@@ -3,6 +3,7 @@ import cors from 'cors';
 import cookieParser from 'cookie-parser';
 import { initDatabase, initSkillLogTable } from './db/sqlite.js';
 import { config } from './config.js';
+import { logger } from './logger.js';   // ★ 2026-07-31：B13 修复时漏导入，导致 uncaughtException handler 自己 ReferenceError → 二次崩溃
 
 const app = express();
 const PORT = config.port;
@@ -59,11 +60,21 @@ app.use((err, req, res, next) => {
 //   也只记录日志不退出进程——避免用户每次遇到坏 JSON 配置就把后端炸掉。
 //   依据：Node 官方建议 unhandledRejection 应至少打日志；uncaughtException 后
 //   进程状态已不可靠但 Electron 主进程会检测子进程退出并提示用户重启。
+//   ★ 2026-07-31：handler 内 try/catch + console.error 兜底，防止 logger 自身出问题时
+//   handler 自身崩溃（原 ReferenceError 的"二次崩溃"教训）
 process.on('unhandledRejection', (reason) => {
-  logger.error('[process:unhandledRejection]', { reason: String(reason) });
+  try {
+    logger.error('[process:unhandledRejection]', { reason: String(reason) });
+  } catch (e) {
+    console.error('[process:unhandledRejection] logger failed:', e.message, '| original:', String(reason));
+  }
 });
 process.on('uncaughtException', (err) => {
-  logger.error('[process:uncaughtException]', { error: err.message, stack: err.stack });
+  try {
+    logger.error('[process:uncaughtException]', { error: err.message, stack: err.stack });
+  } catch (e) {
+    console.error('[process:uncaughtException] logger failed:', e.message, '| original:', err.message);
+  }
 });
 
 // 启动序列：必须先完成数据库初始化，再启动 HTTP 监听

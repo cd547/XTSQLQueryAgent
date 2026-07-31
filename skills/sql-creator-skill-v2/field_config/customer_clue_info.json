@@ -193,14 +193,14 @@
       "target_table": "crm_channels",
       "join_condition": "crm_channels.channel_code = customer_clue_info.level1_channel_code",
       "type": "many_to_one",
-      "description": "多条线索可归属同一一级渠道"
+      "description": ""
     },
     {
       "name": "关联二级渠道",
       "target_table": "crm_channels",
       "join_condition": "crm_channels.channel_code = customer_clue_info.level2_channel_code",
       "type": "conditional_many_to_one",
-      "description": "多条线索可归属同一二级渠道",
+      "description": "",
       "fields": {
         "channel_name": "channel_name",
         "channel_type": "channel_type"
@@ -223,35 +223,35 @@
       "target_table": "crm_channels",
       "join_condition": "crm_channels.channel_code = customer_clue_info.level3_channel_code",
       "type": "many_to_one",
-      "description": "多条线索可归属同一三级渠道"
+      "description": ""
     },
     {
       "name": "关联四级渠道",
       "target_table": "crm_channels",
       "join_condition": "crm_channels.channel_code = customer_clue_info.level4_channel_code",
       "type": "many_to_one",
-      "description": "多条线索可归属同一四级渠道"
+      "description": ""
     },
     {
       "name": "关联五级渠道",
       "target_table": "crm_channels",
       "join_condition": "crm_channels.channel_code = customer_clue_info.level5_channel_code",
       "type": "many_to_one",
-      "description": "多条线索可归属同一五级渠道"
+      "description": ""
     },
     {
       "name": "关联负责顾问",
       "target_table": "admin_user",
       "join_condition": "admin_user.id = customer_clue_info.charge_person_id",
       "type": "many_to_one",
-      "description": "多条线索可由同一顾问负责"
+      "description": ""
     },
     {
       "name": "关联前负责人",
       "target_table": "admin_user",
       "join_condition": "admin_user.id = customer_clue_info.before_charge_person_id",
       "type": "many_to_one",
-      "description": "多条线索可有相同的前负责人"
+      "description": ""
     },
     {
       "name": "关联TMK人员",
@@ -265,14 +265,14 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = customer_clue_info.sale_user_id",
       "type": "many_to_one",
-      "description": "多条线索可分配给同一销售"
+      "description": ""
     },
     {
       "name": "关联创建人",
       "target_table": "admin_user",
       "join_condition": "admin_user.id = customer_clue_info.create_by",
       "type": "many_to_one",
-      "description": "多条线索可由同一后台用户录入"
+      "description": ""
     },
     {
       "name": "关联TMK递交人",
@@ -293,14 +293,14 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = customer_clue_info.first_create_by",
       "type": "many_to_one",
-      "description": "多条线索可有相同的首次创建人"
+      "description": ""
     },
     {
       "name": "关联咨询校区",
       "target_table": "edu_campus",
       "join_condition": "edu_campus.simple = customer_clue_info.consult_campus_value AND edu_campus.del = 0",
       "type": "many_to_one",
-      "description": "多条线索可属于同一咨询校区",
+      "description": "",
       "business_rule": "通过campus.simple（校区别名）关联。campus.manager_id可进一步关联admin_user获取校区负责人"
     },
     {
@@ -308,7 +308,7 @@
       "target_table": "edu_campus",
       "join_condition": "edu_campus.simple = customer_clue_info.campus_value AND edu_campus.del = 0",
       "type": "many_to_one",
-      "description": "多条线索可属于同一归属校区",
+      "description": "",
       "business_rule": "通过campus.simple（校区别名）关联"
     },
     {
