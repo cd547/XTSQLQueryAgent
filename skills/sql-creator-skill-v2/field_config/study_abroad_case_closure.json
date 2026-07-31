@@ -21,7 +21,7 @@
       "target_table": "study_abroad_planning_info",
       "join_condition": "study_abroad_planning_info.student_id = study_abroad_case_closure.student_id",
       "type": "one_to_one",
-      "description": "1个学生对应1条结案记录"
+      "description": ""
     }
   ],
   "calculated_fields": {},

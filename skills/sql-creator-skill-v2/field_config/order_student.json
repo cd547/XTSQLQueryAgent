@@ -103,7 +103,7 @@
   "business_constraints": {},
   "business_rules": [
     { "name":"订单金额",
-      "description": "通常指成交金额 transaction_amount，而非 total_amount（订单总金额）"
+      "description": "指成交金额 transaction_amount，而非 total_amount（订单总金额）"
     }
   ]
 }

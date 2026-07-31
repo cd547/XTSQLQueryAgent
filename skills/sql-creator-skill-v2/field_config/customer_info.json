@@ -40,14 +40,14 @@
       "target_table": "customer_education_info",
       "join_condition": "customer_education_info.customer_code = customer_info.code AND customer_education_info.deleted = 0",
       "type": "one_to_one",
-      "description": "1个客户对应1条教育信息"
+      "description": ""
     },
     {
       "name": "关联意向信息",
       "target_table": "customer_intention_info",
       "join_condition": "customer_intention_info.customer_code = customer_info.code AND customer_intention_info.deleted = 0",
       "type": "one_to_one",
-      "description": "1个客户对应1条意向信息"
+      "description": ""
     },
     {
       "name": "关联线索池",
@@ -61,7 +61,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = customer_info.create_by",
       "type": "many_to_one",
-      "description": "多个客户可由同一个后台用户创建"
+      "description": ""
     },
     {
       "name": "关联线索标签",
@@ -82,7 +82,7 @@
       "target_table": "customer_auto_assign_result",
       "join_condition": "customer_auto_assign_result.customer_code = customer_info.code AND customer_auto_assign_result.deleted = 0",
       "type": "one_to_many",
-      "description": "1个客户可有多条自动分配结果记录"
+      "description": ""
     }
   ],
   "calculated_fields": {},

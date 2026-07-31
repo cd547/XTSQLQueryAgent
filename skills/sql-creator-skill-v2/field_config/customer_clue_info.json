@@ -258,7 +258,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = customer_clue_info.tmk_user_id",
       "type": "many_to_one",
-      "description": "多条线索可由同一TMK跟进"
+      "description": ""
     },
     {
       "name": "关联当前销售",
@@ -279,7 +279,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = customer_clue_info.submitter_id",
       "type": "many_to_one",
-      "description": "多条线索可由同一TMK递交"
+      "description": ""
     },
     {
       "name": "关联预负责人",
@@ -316,7 +316,7 @@
       "target_table": "admin_department_children",
       "join_condition": "admin_department_children.id = customer_clue_info.create_by_dept_id",
       "type": "many_to_one",
-      "description": "多条线索的录入人可属于同一子部门",
+      "description": "",
       "business_rule": "admin_department_children可进一步关联admin_department（一级部门）"
     }
   ],
