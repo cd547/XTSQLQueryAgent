@@ -814,6 +814,20 @@ router.post('/explain-analyze', async (req, res) => {
     return res.status(400).json({ error: '请提供 SQL 语句和 EXPLAIN 结果', rowCount: 0 });
   }
 
+  // ★ 必须把 try 与 catch 共享的所有可变状态声明在 try 之外（路由函数级作用域）。
+  //   原因：try / catch 在 ES2015+ 是不同块作用域，try 内的 `let` 在 catch 块里
+  //   处于 TDZ（暂时性死区），访问会抛 ReferenceError → 同步 throw 出 async 路由
+  //   → Express 4 不接 → unhandledRejection → 进程可能崩溃（Node 15+ 默认行为）。
+  //   历史上至少踩过两次坑（F4 之前 / F4 之后），必须一次把所有共享变量搬出来：
+  //   - overallTimer: catch 用 clearTimeout 清理
+  //   - fullContent: catch 打日志需要知道中断时已收到多少字符
+  //   - abortController: catch 在非 abort 错误时需要主动 abort + res.write 错误帧
+  //   - streamCompleted: setTimeout 回调和 res.on('close') 都会读它
+  let streamCompleted = false;
+  let overallTimer = null;
+  let abortController = null;
+  let fullContent = '';
+
   try {
     const config = getLlmConfig();
     if (!config || !config.apiKey) {
@@ -840,12 +854,6 @@ ${JSON.stringify(explainResults, null, 2)}
 
 请用中文回复，结构化输出分析结果。`;
 
-    let streamCompleted = false;
-    // ★ 提升到 try 之外：与 /generate 路由的 `if (schemaMode === 'stream')` 块作用域模式一致
-    // 原因：try 块内的 const 在 catch 块中不可见（catch 是不同块作用域），
-    //      之前直接写在 try 里会导致 catch 中的 `clearTimeout(overallTimer)` 抛 ReferenceError
-    //      → Express 4 不接住 async 异常 → unhandledRejection → 进程崩溃
-    let overallTimer = null;
     // 共享函数：同步校验 LLM provider，避免在 flushHeaders() 之后 res.json 触发 ERR_HTTP_HEADERS_SENT
     const validateLlmProvider = (p) => {
       if (p === 'deepseek' || p === 'openai') return { valid: true, provider: p };
@@ -868,7 +876,7 @@ ${JSON.stringify(explainResults, null, 2)}
     req.socket.setNoDelay(true);
 
     // 客户端断连保护（NEW-2）：复用 /generate 的 abort 模式
-    const abortController = new AbortController();
+    abortController = new AbortController();
     res.on('close', () => {
       if (!streamCompleted) {
         logger.info('EXPLAIN analyze: client disconnected, aborting LLM request');
@@ -878,7 +886,6 @@ ${JSON.stringify(explainResults, null, 2)}
 
     // 整体 SSE 超时（5min）—— 防御 LLM 流异常长时间挂起（与 /generate 路由一致）
     const OVERALL_TIMEOUT_MS = 5 * 60_000;
-    // ★ 去掉 const：外层已 let 声明，这里只赋值；这样 catch 块也能访问到
     overallTimer = setTimeout(() => {
       if (!streamCompleted) {
         logger.warn('EXPLAIN analyze overall timeout, aborting LLM request', { OVERALL_TIMEOUT_MS });
@@ -925,7 +932,6 @@ ${JSON.stringify(explainResults, null, 2)}
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    let fullContent = '';
 
     while (true) {
       if (abortController.signal.aborted) {
@@ -968,7 +974,7 @@ ${JSON.stringify(explainResults, null, 2)}
       res.end();
     }
   } catch (error) {
-    // ★ 守卫：overallTimer 可能在 setTimeout 之前就抛错（此时仍是 null），clearTimeout(null) 是 no-op 但保险起见显式判断
+    // catch 块访问的所有变量都已在 try 之外声明，TDZ 安全
     if (overallTimer) clearTimeout(overallTimer);
     if (error.name === 'AbortError') {
       // 2026-07-29 顺手加诊断日志：/explain-analyze 不落库（分析结果仅通过 SSE 返回给客户端），
@@ -976,8 +982,8 @@ ${JSON.stringify(explainResults, null, 2)}
       logger.info('EXPLAIN analyze: aborted by client', { partialLength: fullContent.length });
     } else {
       logger.error('EXPLAIN analyze failed', { error: error.message });
-      // abortController / overallTimer 可能在 abortController 声明前抛错，用 typeof 守卫
-      if (typeof abortController !== 'undefined' && !abortController.signal.aborted && !res.writableEnded) {
+      // abortController 在某些早抛错路径下可能仍未赋值（null），用 truthy 守卫
+      if (abortController && !abortController.signal.aborted && !res.writableEnded) {
         try {
           res.write(`data: ${JSON.stringify({ type: 'error', content: error.message })}\n\n`);
           res.end();

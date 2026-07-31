@@ -142,6 +142,11 @@ function AuthenticatedApp({ user, logout }) {
   const resizerRef = useRef(null);
   const initialLoadRef = useRef(false);
   const abortControllerRef = useRef(null);
+  // ★ F4 修复：handleExplainAnalyze 专用的 AbortController ref。
+  //   不能复用 abortControllerRef —— handleSend 在用户点"停止"时会 abort 它，
+  //   但 explain-analyze 是 Modal 关闭触发的，混用会让用户点错按钮互相影响。
+  //   独立 ref 也让"切会话只 abort handleSend，不影响 modal 内正在跑的 analysis"成为可能。
+  const explainAbortControllerRef = useRef(null);
   const chatContentRef = useRef(null);
   // Monaco hover 隐藏定时器 ref：跨 render 持久化 timer id，
   // 避免 React 重新挂载时旧 setInterval 残留（导致内存泄漏 + 多次 hide 调用）
@@ -1221,26 +1226,35 @@ const handleExplain = async (sql) => {
 
   const handleExplainAnalyze = async () => {
     if (!sqlInput || explainResults.length === 0) return;
-    
+
     setExplainAnalyzeModalOpen(true);
     contentRef.current = '';
     setExplainAnalysisContent('');
     setExplainAnalysisLoading(true);
-    
+
+    // ★ F4 修复：建独立 AbortController，存到 explainAbortControllerRef。
+    //   onClose / 卸载 / auth-expired 都会 abort 这个 ref。
+    //   复用 handleSend 的 abortControllerRef 不可行：用户点"停止"会误关掉分析流。
+    const abortController = new AbortController();
+    explainAbortControllerRef.current = abortController;
+
     try {
-      const response = await api.explainAnalyze(getSelectedSql(), explainResults);
-      
+      const response = await api.explainAnalyze(getSelectedSql(), explainResults, abortController.signal);
+
       if (!response.ok) {
         message.error('请求失败');
         setExplainAnalysisLoading(false);
         return;
       }
-      
+
       const reader = response.body.getReader();
 
       // ★ 2026-07-29 修复 F1：与 handleSend 共用 readSSEStream，
       //   解决 ① UTF-8 跨 chunk 切乱码 ② SSE 行跨 chunk parse 抛错 ③ 异常静默吞
       await readSSEStream(reader, (data) => {
+        // ★ F4 修复：abort 之后 reader 仍可能吐出几帧迟到 chunk（race window），
+        //   顶部守卫丢弃，避免对已卸载的 modal 组件 setState
+        if (abortController.signal.aborted) return;
         if (data.type === 'chunk' && data.content) {
           contentRef.current += data.content;
           setExplainAnalysisContent(contentRef.current);
@@ -1252,9 +1266,25 @@ const handleExplain = async (sql) => {
         }
       });
     } catch (error) {
+      // ★ F4 修复：用户主动中断（modal 关闭/卸载/auth-expired）时不弹错误 toast
+      if (error.name === 'AbortError') return;
       message.error(error.message);
       setExplainAnalysisLoading(false);
+    } finally {
+      // 只有"自己仍是最新流"才清空 ref，防止新流被旧流覆盖
+      if (explainAbortControllerRef.current === abortController) {
+        explainAbortControllerRef.current = null;
+      }
     }
+  };
+
+  // ★ F4 修复：handleExplainAnalyze 的中断入口，绑给 modal 的 onClose + 卸载 + auth-expired
+  const handleStopExplainAnalyze = () => {
+    if (explainAbortControllerRef.current) {
+      explainAbortControllerRef.current.abort();
+      explainAbortControllerRef.current = null;
+    }
+    setExplainAnalysisLoading(false);
   };
   
 // 中文字符按 2 个宽度计算，英文/数字按 1 个
@@ -1435,6 +1465,32 @@ const explainColumns = useMemo(() => explainResults.length > 0
         hoverIntervalRef.current = null;
       }
     };
+  }, []);
+
+  // ★ F4 修复：组件卸载时 abort in-flight explain-analyze SSE 流。
+  //   场景：用户在 modal 打开期间通过路由切换或父组件卸载触发本组件卸载，
+  //   若不显式 abort，reader + 后端 LLM 仍在跑 → 浪费 token + React "state update on unmounted" 警告
+  useEffect(() => {
+    return () => {
+      if (explainAbortControllerRef.current) {
+        explainAbortControllerRef.current.abort();
+        explainAbortControllerRef.current = null;
+      }
+    };
+  }, []);
+
+  // ★ F4 修复：登录态失效（401）时也 abort 正在进行的分析流。
+  //   auth-expired 通常意味着即将被踢回登录页，未 abort 的流会持有过期 cookie 继续请求，
+  //   也会被 setStoredUser(null) 触发的组件重渲染打断
+  useEffect(() => {
+    const onAuthExpired = () => {
+      if (explainAbortControllerRef.current) {
+        explainAbortControllerRef.current.abort();
+        explainAbortControllerRef.current = null;
+      }
+    };
+    window.addEventListener('xtsql:auth-expired', onAuthExpired);
+    return () => window.removeEventListener('xtsql:auth-expired', onAuthExpired);
   }, []);
 
   return (
@@ -2237,7 +2293,12 @@ children: currentResults.length > 0 ? (
         
         <ExplainAnalyzeModal
           open={explainAnalyzeModalOpen}
-          onClose={() => setExplainAnalyzeModalOpen(false)}
+          // ★ F4 修复：关闭弹窗时先 abort in-flight SSE 流，再关 visible。
+          //   旧逻辑只关弹窗，reader 仍在后台读 + setState（浪费 token + React 警告）
+          onClose={() => {
+            handleStopExplainAnalyze();
+            setExplainAnalyzeModalOpen(false);
+          }}
           content={explainAnalysisContent}
           loading={explainAnalysisLoading}
           isDarkTheme={theme === 'dark'}

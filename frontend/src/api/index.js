@@ -116,12 +116,13 @@ export function explainQuery(data) {
   return api.post('/query/explain', data).then(r => r.data);
 }
 
-export function explainAnalyze(sql, explainResults) {
+export function explainAnalyze(sql, explainResults, signal) {
   return fetch(baseURL + '/query/explain-analyze', {
     method: 'POST',
     credentials: 'include',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ sql, explainResults })
+    body: JSON.stringify({ sql, explainResults }),
+    signal: signal
   }).then((resp) => {
     if (resp.status === 401) {
       setStoredUser(null);
