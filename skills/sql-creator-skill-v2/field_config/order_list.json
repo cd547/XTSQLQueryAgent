@@ -41,7 +41,7 @@
     },
     {
       "name": "pay_time",
-      "description": "格式：YYYYMMDDHHmmss 例20220308221605，表示2022年3月8日22点16分05秒"
+      "description": "格式：YYYYMMDDHHmmss"
     }
   ]
 }

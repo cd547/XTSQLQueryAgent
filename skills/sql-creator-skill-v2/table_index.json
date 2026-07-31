@@ -287,7 +287,10 @@
     },
     {
       "name": "cms_article_event",
-      "description": "活动专场表"
+      "description": "活动专场表",
+       "related_tables": [
+        "cms_article"
+      ]
     },
     {
       "name": "cms_section",
@@ -295,11 +298,20 @@
     },
     {
       "name": "cms_session_records",
-      "description": "活动场次报名记录表"
+      "description": "活动场次报名记录表",
+       "related_tables": [
+        "cms_article",
+        "cms_article_sessions",
+        "cms_apply",
+        "my_user"
+      ]
     },
     {
       "name": "cms_article_sessions",
-      "description": "活动场次表"
+      "description": "活动场次表",
+       "related_tables": [
+        "cms_article"
+      ]
     },
     {
       "name": "order_student",
@@ -512,7 +524,7 @@
     {
       "name": "order_student_received_settlement",
       "description": "回款计划-佣金结算表",
-      "tags": [],
+      "tags": ["渠道佣金结算"],
       "related_tables": [
         "order_student_received",
         "admin_user",
@@ -1603,6 +1615,14 @@
     {
       "name": "keqiao_grade",
       "description": "年级",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_goods_section",
+      "description": "产品分类表",
       "tags": [],
       "related_tables": [],
       "business_constraints": [],

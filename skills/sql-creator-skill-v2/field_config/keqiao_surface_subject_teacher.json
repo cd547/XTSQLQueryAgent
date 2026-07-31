@@ -8,7 +8,7 @@
       "target_table": "keqiao_surface_subject",
       "join_condition": "keqiao_surface_subject.id = keqiao_surface_subject_teacher.keqiao_surface_subject_id",
       "type": "many_to_one",
-      "description": "多个老师记录可对应同一课表科目",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -16,7 +16,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = keqiao_surface_subject_teacher.admin_user_id",
       "type": "many_to_one",
-      "description": "多个授课记录可对应同一老师",
+      "description": "",
       "business_rule": ""
     }
   ],

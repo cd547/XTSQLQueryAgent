@@ -1,0 +1,22 @@
+﻿[01-quick-start] Generating...
+  URL length: 1016
+  OK: 176626 bytes -> d:\Ai_Program_Files\XTSQLQueryAgent\docs\images\01-quick-start.jpg
+[02-three-phase-execution] Generating...
+  URL length: 2006
+  OK: 176626 bytes -> d:\Ai_Program_Files\XTSQLQueryAgent\docs\images\02-three-phase-execution.jpg
+[03-state-machine] Generating...
+  URL length: 1916
+  OK: 176626 bytes -> d:\Ai_Program_Files\XTSQLQueryAgent\docs\images\03-state-machine.jpg
+[04-registry-readwrite] Generating...
+  URL length: 1551
+  OK: 176626 bytes -> d:\Ai_Program_Files\XTSQLQueryAgent\docs\images\04-registry-readwrite.jpg
+[05-persistence-dualtrack] Generating...
+  URL length: 1681
+  OK: 176626 bytes -> d:\Ai_Program_Files\XTSQLQueryAgent\docs\images\05-persistence-dualtrack.jpg
+
+=== Summary ===
+  01-quick-start: 176626 bytes
+  02-three-phase-execution: 176626 bytes
+  03-state-machine: 176626 bytes
+  04-registry-readwrite: 176626 bytes
+  05-persistence-dualtrack: 176626 bytes

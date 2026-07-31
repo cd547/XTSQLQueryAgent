@@ -11,4 +11,4 @@ CREATE TABLE `cms_article_sessions` (
   PRIMARY KEY (`id`),
   KEY `idx_create_time` (`create_time`),
   KEY `idx_update_time` (`update_time`)
-) ENGINE=InnoDB AUTO_INCREMENT=91 DEFAULT CHARSET=utf8mb4 COMMENT='活动场次表'
+) ENGINE=InnoDB AUTO_INCREMENT=55 DEFAULT CHARSET=utf8mb4 COMMENT='活动场次表'

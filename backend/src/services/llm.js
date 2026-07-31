@@ -361,9 +361,40 @@ function getOrCreateRegistry(sessionId) {
       // request_user_choice 注册表：key = id (uc_xxx) —— 记录已问过哪些问题
       // 用于 checklist 显示 + 拦截完全相同 (question, options) 组合的重复调用（Q-09 = B）
       userChoiceAsked: new Map(), // id -> {question, options, multiSelect, header, signature}
+      // validate_sql_fields 注册表：追踪 LLM 是否调用 + 通过状态
+      // 状态显示器（buildToolCallChecklistMessage）展示给 LLM 让其"看到"自己已调/未调/通过/失败
+      // 注意：仅用于 LLM 上下文提示，**不强制拦截**——LLM 可自由跳过（参见 plan D-12 仅 LLM 自检）
+      //
+      // === 问题级独立状态（per-question）===
+      // validateSqlFields* 是"本问题独立"的状态：每次新 user 消息到来时由
+      // resetPerQuestionRegistryFlags 重置。理由：checklist 里的"✓passed"是
+      // 上一问题的 SQL 校验结果，跟当前问题无关，残留会误导 LLM 误判"已通过，
+      // 不要再调"，进而漏掉对新 SQL 的校验。
+      // 同一问题内的 Round 1+ 不重置（校验失败重写场景需要这些状态来提示 LLM）。
+      validateSqlFieldsCalled: false,
+      validateSqlFieldsPassed: false,
+      validateSqlFieldsErrorCount: 0,
     });
   }
   return sessionToolRegistries.get(sessionId);
+}
+
+/**
+ * 重置注册表里的"问题级独立"标志。
+ *
+ * 调用时机：每次新 user 消息到来时（即 generateSQLWithLangChainStreamGen_BAK 入口）。
+ * 不重置会话级持久状态（getDomainIndexCalled / slicedDomains / tableSchema /
+ * tableDdl / termConfirmed / userChoiceAsked / getTablesCalled），因为这些
+ * 跟踪的是"已加载到 history 的数据"，数据本身跨问题仍然有效，重取会浪费 token。
+ *
+ * 历史 Bug 2026-07-28：未做此重置时，Q1 校验通过的"✓passed"会残留在 Q2/Q3 的
+ * checklist 里，误导 LLM 跳过本轮 SQL 校验。
+ */
+function resetPerQuestionRegistryFlags(reg) {
+  if (!reg) return;
+  reg.validateSqlFieldsCalled = false;
+  reg.validateSqlFieldsPassed = false;
+  reg.validateSqlFieldsErrorCount = 0;
 }
 
 function normalizeTableNames(arr) {
@@ -425,6 +456,19 @@ function buildToolCallChecklistMessage(reg) {
       return `${id}:"${q}"`;
     });
     parts.push(`request_user_choice:[${items.join("|")}]`);
+  }
+  // validate_sql_fields：显示 LLM 自检状态（可重复调用，不受"禁止重复调用"约束）
+  //   passed=true: LLM 至少一次校验通过 → 可输出 SQL
+  //   passed=false: 上次校验有 N 个 errors → LLM 应重写 SQL 后再次调用直到通过
+  //   called=false: LLM 还没调用 → 应在输出 SQL 前调用
+  //   注：本工具**不被剪枝**也不被"重复调用"拦截，是稳定工具（不剪枝，可反复调用）
+  //   状态范围：per-question（由 resetPerQuestionRegistryFlags 在每次新 user
+  //   消息时重置），与上面的会话级持久状态（getDomainIndexCalled 等）不同。
+  if (reg.validateSqlFieldsCalled) {
+    const status = reg.validateSqlFieldsPassed
+      ? "✓passed"
+      : `✗failed(${reg.validateSqlFieldsErrorCount} errors)`;
+    parts.push(`validate_sql_fields:${status}`);
   }
   if (parts.length === 0) return null;
   return {
@@ -931,8 +975,16 @@ export function loadMessagesFromDb(sessionId) {
       )
       .get(sessionId);
     if (record && record.messages) {
+      const rawMessages = JSON.parse(record.messages);
+      // ★ 2026-07-29: 修复"继续"时报 tool_calls 契约错误
+      //   根因：saveMessagesToDb 在 line 1483 时机太早（assistant push 后、tool 响应入栈前），
+      //         用户在工具执行过程中点停止时，DB 中最后一条 assistant 消息可能含未完整响应的 tool_calls。
+      //         喂给 LLM 时 DeepSeek 拒绝：
+      //         "An assistant message with 'tool_calls' must be followed by tool messages responding to each 'tool_call_id'"
+      //   修复：load 时 sanitize —— 给缺失响应的 tool_call_id 补 synthetic tool 响应，
+      //         内容标记为"用户中断,工具未完成"，让 LLM 看到完整契约又不丢失上下文。
       return {
-        messages: JSON.parse(record.messages),
+        messages: sanitizeMessagesForLLM(rawMessages),
         messageTokens: record.message_tokens || 0,
       };
     }
@@ -941,6 +993,104 @@ export function loadMessagesFromDb(sessionId) {
     logger.error("Failed to load messages from database", { error: e.message });
     return null;
   }
+}
+
+/**
+ * 修复"中断导致 messages 含未完成 tool_calls"问题
+ *
+ * 场景：用户在 LLM 工具执行过程中点停止时，由于 saveMessagesToDb 时机太早
+ *   （line 1483: assistant push 后立刻 save,tool 响应在 line 1722/1743/1770 才入栈），
+ *   DB 中的 messages 数组可能含：
+ *     [..., assistant(tool_calls=[A,B]), tool(A)]   ← B 缺响应
+ *   这种状态喂给 LLM 会报 tool_calls 契约错误。
+ *
+ * 修复策略：给缺失响应的 tool_call_id 补 synthetic tool 响应
+ *   - 位置：紧跟所有已有的 tool 响应之后（按 tool_calls 顺序）
+ *   - 内容：'[用户中断,工具未完成,调用未返回结果]'
+ *   - 为什么是补响应而不是删 tool_calls：
+ *       删 tool_calls 会让 LLM 失去"我做过这个工具调用"的信息；
+ *       补响应让 LLM 明确知道中断状态，可基于已有信息继续或重新调用。
+ *
+ * @param {Array} messages 原始 messages 数组
+ * @returns {Array} 补全后的 messages 数组（如果原数组已合法，原样返回）
+ */
+function sanitizeMessagesForLLM(messages) {
+  if (!Array.isArray(messages) || messages.length === 0) return messages;
+
+  // 从后往前找最后一个含 tool_calls 的 assistant 消息
+  let lastAssistantIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (
+      m?.role === "assistant" &&
+      Array.isArray(m.tool_calls) &&
+      m.tool_calls.length > 0
+    ) {
+      lastAssistantIdx = i;
+      break;
+    }
+  }
+
+  // 没有含 tool_calls 的 assistant 消息,无需处理
+  if (lastAssistantIdx === -1) return messages;
+
+  const lastAssistant = messages[lastAssistantIdx];
+  const toolCalls = lastAssistant.tool_calls;
+
+  // 收集所有 tool_call_id 和已有响应的 tool_call_id
+  const respondedIds = new Set();
+  for (let i = lastAssistantIdx + 1; i < messages.length; i++) {
+    const m = messages[i];
+    if (m?.role === "tool" && m.tool_call_id) {
+      respondedIds.add(m.tool_call_id);
+    }
+  }
+
+  // 找出未响应的 tool_call
+  const unresponded = toolCalls.filter(
+    (tc) => tc.id && !respondedIds.has(tc.id),
+  );
+
+  if (unresponded.length === 0) {
+    return messages; // 全部有响应,消息数组合法,直接返回
+  }
+
+  logger.warn(
+    "Sanitizing incomplete assistant tool_calls (interrupted mid-execution)",
+    {
+      lastAssistantIdx,
+      unrespondedToolCallIds: unresponded.map((tc) => tc.id),
+      respondedCount: respondedIds.size,
+      totalCount: toolCalls.length,
+    },
+  );
+
+  // 构造补全后的 messages 数组
+  // 1) 复制到最后一个 assistant 之前的所有消息
+  // 2) 复制最后一个 assistant 消息本身
+  // 3) 复制 assistant 之后的所有 tool 响应（保持原顺序）
+  // 4) 给未响应的 tool_call_id 补 synthetic 响应（按 tool_calls 顺序）
+  const sanitized = [];
+  for (let i = 0; i <= lastAssistantIdx; i++) {
+    sanitized.push(messages[i]);
+  }
+  for (let i = lastAssistantIdx + 1; i < messages.length; i++) {
+    if (messages[i]?.role === "tool") {
+      sanitized.push(messages[i]);
+    } else {
+      // 遇到非 tool 消息,停止（防御性：正常情况不会有）
+      break;
+    }
+  }
+  for (const tc of unresponded) {
+    sanitized.push({
+      role: "tool",
+      tool_call_id: tc.id,
+      content: "[用户中断,工具未完成,调用未返回结果]",
+    });
+  }
+
+  return sanitized;
 }
 
 // 备份原有函数
@@ -966,6 +1116,13 @@ export async function* generateSQLWithLangChainStreamGen_BAK(
     sessionId,
     username,
   });
+
+  // ★ 每次新 user 消息（= 一次 invoke）重置"问题级独立"标志。
+  //   validateSqlFields* 属于此范畴：避免上一问题的"✓passed"残留在本问题
+  //   的 checklist 里误导 LLM。会话级持久状态（getDomainIndexCalled /
+  //   slicedDomains / tableSchema / tableDdl / termConfirmed / userChoiceAsked）
+  //   保持不变，因为 history 已包含其结果。
+  resetPerQuestionRegistryFlags(getOrCreateRegistry(sessionId));
 
   let config;
   try {
@@ -1055,6 +1212,10 @@ ${skillMd}`;
   const foldedCache = new Map();
 
   while (maxToolCalls > 0) {
+    // ★ 本轮 round 编号（前端用于"数轴式"轮次展示）
+    //   从 0 开始递增；maxToolCallsInitial 是入口处记录的初始值
+    //   每轮 LLM 入口处计算一次，整轮内复用
+    const currentRound = maxToolCallsInitial - maxToolCalls;
     // 每轮 LLM 请求前，临时向 messages 追加"已调用工具清单"消息（仅用于本轮请求，不持久化）。
     // 目的：让 LLM 在生成 tool_call 决策前明确看到本会话已调用的工具 + 参数，
     //       避免因长上下文注意力衰减造成的重复调用（详见 project_memory.md）。
@@ -1117,6 +1278,14 @@ ${skillMd}`;
     // - get_domain_index：调用后业务域列表已在 history 中，后续不需要
     // - get_sliced_index：调用后已加载的域在 history 中，后续不需要
     // 注意：toolsMap（用于执行工具的查找）保持不变，仅影响 LLM 看到哪些工具可选
+    //
+    // ★ validate_sql_fields：不再剪枝（含 Round 0）
+    //   历史 Bug 2026-07-28：Round 0 剪枝导致 LLM 在跨问题场景（Q3）跳过早轮工具调用、
+    //   直接调 validate_sql_fields 时被误拦，错误返回'已剪枝'，且错误信息误导 LLM
+    //   放弃后续校验 → 最终 SQL 未经验证直接输出。
+    //   修复：始终携带 validate_sql_fields，让 LLM 在任何轮次可自由调用。token 代价
+    //   ~600 字符（工具定义），相对正确性收益可接受。
+    // 关联：项目记忆 project_memory.md 'Engineering Conventions' 需要更新。
     const pruneReg = sessionId ? getOrCreateRegistry(sessionId) : null;
     const prunedTools = pruneReg
       ? toolsDefinition.filter((t) => {
@@ -1156,7 +1325,7 @@ ${skillMd}`;
     };
 
     if (signal?.aborted) {
-      yield { type: "error", content: "请求已被用户中断" };
+      yield { type: "error", content: "请求已被用户中断", round: currentRound };
       return;
     }
 
@@ -1241,7 +1410,7 @@ ${skillMd}`;
         }
 
         for (const line of lines) {
-          if (line.startsWith("data: ") && !line.includes("[DONE]")) {
+          if (line.startsWith("data: ") && line !== "data: [DONE]") {
             try {
               const data = JSON.parse(line.slice(6));
               const usage = data.usage;
@@ -1271,12 +1440,13 @@ ${skillMd}`;
                     completion_tokens: usage.completion_tokens || 0,
                     total_tokens: usage.total_tokens || 0,
                   },
+                  round: currentRound,
                 };
               }
               const content = data.choices?.[0]?.delta?.content || "";
               if (content) {
                 responseText += content;
-                yield { type: "chunk", content: content };
+                yield { type: "chunk", content: content, round: currentRound };
               }
               // 提取 reasoning_content（DeepSeek API 要求）
               const reasoning =
@@ -1284,7 +1454,7 @@ ${skillMd}`;
               if (reasoning) {
                 reasoningContent += reasoning;
                 // 实时 yield 思考过程 delta，避免长思考阶段前端长时间无输出
-                yield { type: "reasoning_chunk", content: reasoning };
+                yield { type: "reasoning_chunk", content: reasoning, round: currentRound };
               }
 
               // 检查工具调用
@@ -1349,6 +1519,7 @@ ${skillMd}`;
           type: "message_final",
           content: finalResponseText,
           extraThinking,
+          round: currentRound,
         };
       }
 
@@ -1358,6 +1529,7 @@ ${skillMd}`;
         yield {
           type: "reasoning_done",
           content: `💭 LLM思考过程:\n${finalReasoningContent.slice(0, 10000)}`,
+          round: currentRound,
         };
       }
 
@@ -1382,7 +1554,7 @@ ${skillMd}`;
         } catch (e) {
           logger.debug("JSON parse/split failed", { error: e.message });
         }
-        yield { type: "tool", log: logMsg };
+        yield { type: "tool", log: logMsg, round: currentRound };
       }
 
       // 保存 assistant 消息，需要包含 tool_calls
@@ -1572,6 +1744,22 @@ ${skillMd}`;
                   toolMessageContent = rawResult.content;
                 }
               }
+              // ★ validate_sql_fields 特殊处理：tool.func 返 {content, valid, errors, summary}
+              //   - content：JSON 序列化的字符串，给 LLM 看的（messages.content 必须是 string/list）
+              //   - valid / errors：结构化数据，给下面的 registry 写入用
+              //   若 func 错误返回 {error, content:"⚠️..."}：toolMessageContent = content
+              if (
+                p.toolName === "validate_sql_fields" &&
+                rawResult &&
+                typeof rawResult === "object"
+              ) {
+                if (typeof rawResult.content === "string") {
+                  toolMessageContent = rawResult.content;
+                } else {
+                  // 防御：万一 content 字段缺失或类型错
+                  toolMessageContent = JSON.stringify(rawResult);
+                }
+              }
 
               recordToolCall(
                 p.toolName,
@@ -1579,6 +1767,25 @@ ${skillMd}`;
                 sessionId,
                 userChoiceId,
               );
+              // ★ validate_sql_fields: 记录 LLM 是否调用 + 通过状态
+              //   用于 buildToolCallChecklistMessage 展示给 LLM，让其"看到"自己已调/未调/通过/失败
+              //   注意：仅用于提示，不强制拦截（plan D-12：工具仅 LLM 自检，路由层不兑底）
+              if (
+                p.toolName === "validate_sql_fields" &&
+                rawResult &&
+                typeof rawResult === "object"
+              ) {
+                const reg = getOrCreateRegistry(sessionId);
+                if (reg) {
+                  reg.validateSqlFieldsCalled = true;
+                  reg.validateSqlFieldsPassed = rawResult.valid === true;
+                  reg.validateSqlFieldsErrorCount = Array.isArray(
+                    rawResult.errors,
+                  )
+                    ? rawResult.errors.length
+                    : 0;
+                }
+              }
               return {
                 ...p,
                 rawResult,
@@ -1617,6 +1824,7 @@ ${skillMd}`;
             yield {
               type: "tool_return",
               log: `🚫 拦截重复调用: ${toolName}\n参数: ${toolArgs}\n${p.dupCheck.message}`,
+              round: currentRound,
             };
             messages.push({
               role: "tool",
@@ -1636,6 +1844,7 @@ ${skillMd}`;
             yield {
               type: "tool_return",
               log: `🚫 ${errLabel}: ${p.toolName}\n${p.execError.message}`,
+              round: currentRound,
             };
             messages.push({
               role: "tool",
@@ -1656,11 +1865,13 @@ ${skillMd}`;
             yield {
               type: "tool_return",
               log: `✅ ${toolName} 参数已自动修复（裸 ASCII 双引号 → 中文右引号）。后续请直接使用中文引号 \`""\` 或 \`「」\`，或反斜杠转义 \`\\"\`；禁止裸 ASCII 双引号。`,
+              round: currentRound,
             };
           }
           yield {
             type: "tool_return",
             log: `📋 工具 ${toolName} 返回:\n${typeof resultContent === "string" ? resultContent : JSON.stringify(resultContent)}`,
+            round: currentRound,
           };
           messages.push({
             role: "tool",
@@ -1759,9 +1970,9 @@ ${skillMd}`;
       break;
     } catch (e) {
       if (e.name === "AbortError") {
-        yield { type: "error", content: "请求已被用户中断" };
+        yield { type: "error", content: "请求已被用户中断", round: currentRound };
       } else {
-        yield { type: "error", content: e.message };
+        yield { type: "error", content: e.message, round: currentRound };
       }
       return;
     }

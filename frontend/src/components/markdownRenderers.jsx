@@ -146,3 +146,35 @@ export function createMarkdownRenderers(isDark, opts = {}) {
   };
   return { pre: Pre, code: Code };
 }
+
+// ★ F7 修复：模块级缓存，让 createMarkdownRenderers 返回的组件引用稳定。
+//   旧实现每个组件 render 都调一次工厂 → 工厂内 const Pre = () => ... / const Code = () => ...
+//   每次创建新函数引用 → 父组件 re-render 时 components.pre/code 类型变化 → React 对
+//   已渲染的 SyntaxHighlighter 子树 unmount + remount → 流式 chunk 期间每来一个 chunk
+//   整页代码块全重建（闪烁 + 滚动跳动 + Prism 高亮重算几 ms，叠加 FPS 跌到个位数）。
+//
+//   修复：用 Map 缓存 (isDark + fontSize + fontFamily) → renderers 引用。
+//   - 首次调用：build + 缓存 → 后续相同参数返回同一引用
+//   - 调用方传不同 opts（ExplainAnalyzeModal 传 fontSize: 11）→ 不同 cache key → 独立引用
+//   - 主题切换 → isDark 变化 → 不同 cache key → 引用变化（这是预期的，主题切换会重建）
+//
+//   注意：直接调用 createMarkdownRenderers 仍可用（兼容旧 API），但新代码统一用
+//   getMarkdownRenderers。返回的 renderers 引用在 (isDark, opts) 稳定时绝对稳定。
+const rendererCache = new Map();
+
+function buildCacheKey(isDark, opts) {
+  // 用 | 分隔避免冲突；fontFamily 可能含 | 但实际调用方都没传，用稳定 key 即可
+  const fs = opts.fontSize ?? 12;
+  const ff = opts.fontFamily || '<default>';
+  return `${isDark ? 'd' : 'l'}|${fs}|${ff}`;
+}
+
+export function getMarkdownRenderers(isDark, opts = {}) {
+  const key = buildCacheKey(isDark, opts);
+  let cached = rendererCache.get(key);
+  if (!cached) {
+    cached = createMarkdownRenderers(isDark, opts);
+    rendererCache.set(key, cached);
+  }
+  return cached;
+}

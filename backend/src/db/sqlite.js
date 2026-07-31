@@ -29,31 +29,6 @@ export function getDb() {
   return db;
 }
 
-/**
- * Schema 迁移工具：仅当列不存在时添加
- *
- * 改进点（替代旧 try/catch 模式）：
- *   - 旧代码用 try { ALTER TABLE } catch { logger.debug('already exists') }，
- *     会把"磁盘满/权限错/SQL 错"等真错误也吞掉，启动看似正常但表结构已损坏。
- *   - 现在先 PRAGMA 检查列是否存在；存在则静默，不存在才 ALTER；ALTER 失败则抛错。
- *
- * 注意：table/column 参数是开发者硬编码，禁止拼接用户输入。
- */
-function addColumnIfMissing(db, table, column, definition) {
-  const cols = db.prepare(`PRAGMA table_info(${table})`).all();
-  if (cols.some(c => c.name === column)) {
-    logger.debug(`Column ${table}.${column} already exists`);
-    return;
-  }
-  try {
-    db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
-    logger.info(`Schema upgrade: added column ${table}.${column}`);
-  } catch (e) {
-    logger.error(`Schema upgrade FAILED: ${table}.${column}`, { error: e.message });
-    throw e;
-  }
-}
-
 export async function initDatabase() {
   // 幂等保护：重复调用直接返回，避免重复建连
   if (initialized) return;
@@ -83,9 +58,6 @@ export async function initDatabase() {
     )
   `);
 
-  // 老库兼容：补 token_version 列
-  addColumnIfMissing(db, 'users', 'token_version', 'INTEGER DEFAULT 0');
-
   // 初始化默认 admin 用户（仅当用户表为空时）
   // 安全护栏：仅在非生产环境或显式开启时才自动创建，避免生产部署后留下默认弱口令
   const allowDefaultAdmin = process.env.ALLOW_DEFAULT_ADMIN === 'true' || process.env.NODE_ENV !== 'production';
@@ -113,15 +85,12 @@ export async function initDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT,
       sort_order INTEGER DEFAULT 0,
+      total_tokens INTEGER DEFAULT 0,
+      summary TEXT,
+      user_id INTEGER,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP
     )
   `);
-
-  // 老库兼容：补 sessions 表的几个列
-  addColumnIfMissing(db, 'sessions', 'sort_order', 'INTEGER DEFAULT 0');
-  addColumnIfMissing(db, 'sessions', 'total_tokens', 'INTEGER DEFAULT 0');
-  addColumnIfMissing(db, 'sessions', 'summary', 'TEXT');
-  addColumnIfMissing(db, 'sessions', 'user_id', 'INTEGER');
 
   // 给历史未分配 user_id 的会话分配给首个用户（admin）
   // 数据迁移（非 schema 迁移）：仅是 UPDATE，失败应抛错
@@ -141,18 +110,24 @@ export async function initDatabase() {
       content TEXT,
       sql TEXT,
       results TEXT,
+      prompt_tokens INTEGER DEFAULT 0,
+      completion_tokens INTEGER DEFAULT 0,
+      total_tokens INTEGER DEFAULT 0,
+      elapsed_ms INTEGER DEFAULT 0,
+      round INTEGER DEFAULT 0,
+      interrupted INTEGER DEFAULT 0,
       created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (session_id) REFERENCES sessions(id)
     )
   `);
 
-  // 添加 token 字段
-  addColumnIfMissing(db, 'messages', 'prompt_tokens', 'INTEGER DEFAULT 0');
-  addColumnIfMissing(db, 'messages', 'completion_tokens', 'INTEGER DEFAULT 0');
-  addColumnIfMissing(db, 'messages', 'total_tokens', 'INTEGER DEFAULT 0');
-  // 添加 assistant 消息耗时（毫秒）字段：流式 done 时由后端写入，
-  // 历史回显用此字段显示"耗时 Xs"；老数据无值，loadMessages 用 created_at 差值兜底
-  addColumnIfMissing(db, 'messages', 'elapsed_ms', 'INTEGER DEFAULT 0');
+  // elapsed_ms: assistant 消息耗时（毫秒），流式 done 时由后端写入；
+  //   历史回显用此字段显示"耗时 Xs"，老数据无值时由 loadMessages 用 created_at 差值兜底
+  // round: LLM 工具调用轮次编号（从 0 开始），流式每条 log 落库时写入；
+  //   历史回显时前端用此字段把同一轮的 log 包成一组；老数据为 0，loadMessages 不展示 round 轴
+  // interrupted: 标记 assistant 消息是否因客户端断连 / 超时 / abort 未正常完成；
+  //   2026-07-29 修复流中断时 partial 不落库的 bug：catch 块会写入 interrupted=1 + partial content；
+  //   前端可据此显示"已中断"标记；老数据为 0，行为兼容
 
   db.exec(`
     CREATE TABLE IF NOT EXISTS configs (
@@ -200,15 +175,13 @@ export async function initDatabase() {
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       session_id INTEGER,
       messages TEXT,
+      message_tokens INTEGER DEFAULT 0,
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (session_id) REFERENCES sessions(id)
     )
   `);
-  
-  db.exec(`CREATE INDEX IF NOT EXISTS idx_llm_messages_session_id ON llm_messages(session_id)`);
 
-  // 添加 message_tokens 字段（用于存储消息上下文的 token 数量）
-  addColumnIfMissing(db, 'llm_messages', 'message_tokens', 'INTEGER DEFAULT 0');
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_llm_messages_session_id ON llm_messages(session_id)`);
 
   // 我的查询（常用 SQL 收藏）：user_id + sql_output 唯一约束，重复收藏时更新
   db.exec(`

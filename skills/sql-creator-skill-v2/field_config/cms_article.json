@@ -8,7 +8,7 @@
       "target_table": "cms_section",
       "join_condition": "cms_section.id = cms_article.cms_section_id",
       "type": "many_to_one",
-      "description": "文章所属栏目",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -16,7 +16,7 @@
       "target_table": "cms_type",
       "join_condition": "cms_type.id = cms_article.cms_type_id",
       "type": "many_to_one",
-      "description": "文章所属媒体类型",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -24,7 +24,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = cms_article.admin_user_id",
       "type": "many_to_one",
-      "description": "创建文章的后台用户",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -32,7 +32,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = cms_article.update_admin_user_id",
       "type": "many_to_one",
-      "description": "最后修改文章的后台用户",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -40,7 +40,7 @@
       "target_table": "edu_goods",
       "join_condition": "edu_goods.id = cms_article.goods_id",
       "type": "many_to_one",
-      "description": "文章关联的商品（产品）",
+      "description": "",
       "business_rule": ""
     }
   ],

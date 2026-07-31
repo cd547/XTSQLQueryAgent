@@ -14,28 +14,28 @@
       "target_table": "study_abroad_proofread_book",
       "join_condition": "study_abroad_proofread_book.id = study_abroad_document_materials.book_id",
       "type": "many_to_one",
-      "description": "多条文书材料可关联同一本定校书"
+      "description": ""
     },
     {
       "name": "关联学生规划信息",
       "target_table": "study_abroad_planning_info",
       "join_condition": "study_abroad_planning_info.student_id = study_abroad_document_materials.student_id",
       "type": "many_to_one",
-      "description": "多条文书材料可属于同一学生"
+      "description": ""
     },
     {
       "name": "关联文书主表",
       "target_table": "study_abroad_document",
       "join_condition": "study_abroad_document.id = study_abroad_document_materials.relevancy_id",
       "type": "many_to_one",
-      "description": "多条文书材料可关联同一文书主记录"
+      "description": ""
     },
     {
       "name": "关联文书附表",
       "target_table": "study_abroad_document_attachment",
       "join_condition": "study_abroad_document_attachment.id = study_abroad_document_materials.relevancy_attach_id",
       "type": "many_to_one",
-      "description": "多条文书材料可关联同一文书附件记录"
+      "description": ""
     }
   ],
   "calculated_fields": {},

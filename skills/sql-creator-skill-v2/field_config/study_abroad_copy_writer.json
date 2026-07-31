@@ -33,35 +33,35 @@
       "target_table": "study_abroad_planning_info",
       "join_condition": "study_abroad_planning_info.student_id = study_abroad_copy_writer.student_id",
       "type": "one_to_one",
-      "description": "1个学生对应1条文案分配记录"
+      "description": ""
     },
     {
       "name": "关联规划师",
       "target_table": "admin_user",
       "join_condition": "admin_user.id = study_abroad_copy_writer.planner_id",
       "type": "many_to_one",
-      "description": "多条文案记录可由同一规划师负责"
+      "description": ""
     },
     {
       "name": "关联转案老师",
       "target_table": "admin_user",
       "join_condition": "admin_user.id = study_abroad_copy_writer.transfer_teacher_id",
       "type": "many_to_one",
-      "description": "多条文案记录可由同一转案老师操作"
+      "description": ""
     },
     {
       "name": "关联文案老师",
       "target_table": "admin_user",
       "join_condition": "admin_user.id = study_abroad_copy_writer.copywriting_teacher_id",
       "type": "many_to_one",
-      "description": "多条文案记录可分配给同一文案老师"
+      "description": ""
     },
     {
       "name": "关联专业方向",
       "target_table": "study_abroad_major",
       "join_condition": "study_abroad_major.id = study_abroad_copy_writer.study_abroad_major_id",
       "type": "many_to_one",
-      "description": "多条文案记录可属于同一专业方向"
+      "description": ""
     }
   ],
   "calculated_fields": {},

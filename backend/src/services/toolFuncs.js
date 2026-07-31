@@ -4,6 +4,7 @@ import path from 'path';
 import { fileURLToPath } from 'url';
 import { logger } from '../logger.js';
 import { config } from '../config.js';
+import { validateSqlFields } from './validators.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = config.projectRoot;
@@ -644,6 +645,53 @@ export const tools = [
         return '指定域下未找到任何表';
       }
       return formatTableInfo(sliced.tables);
+    }
+  }),
+  // ===== 稳定工具（不剪枝，可多次调用）=====
+  // validate_sql_fields：LLM 输出 SQL 前的自检工具（不剪枝，LLM 可反复调用直到通过）
+  // 详见 docs/superpowers/plans/2026-07-23-validate-sql-fields-tool-final.md
+  new DynamicTool({
+    name: "validate_sql_fields",
+    description: "【SQL 质量自检】最终输出 SQL 前必调，校验规则：\n" +
+      "  R1 字段-表归属\n" +
+      "  R2 字段别名反引号\n" +
+      "  R3 MySQL 5.7 限制\n" +
+      "  R5 LIMIT 子句：SELECT 必须含 LIMIT\n" +
+      "返回 {valid, errors, summary}——valid=true 才可输出 SQL，拿到 errors 必须重写后再次校验。" ,
+    params: {
+      type: 'object',
+      properties: {
+        sql: { type: 'string', description: '待校验的 SQL 语句' }
+      },
+      required: ['sql']
+    },
+    func: async (input) => {
+      // 解析（string/object 双兼容，与其他工具一致）
+      let sql = '';
+      try {
+        if (typeof input === 'object' && input !== null) {
+          sql = String(input.sql || '');
+        } else if (typeof input === 'string') {
+          const parsed = JSON.parse(input);
+          sql = String(parsed.sql || '');
+        }
+      } catch (e) {
+        logger.debug('Parse validate_sql_fields params failed', { error: e.message });
+        return { error: '参数解析失败', content: '⚠️ validate_sql_fields 参数解析失败，请传入合法 JSON（{sql: "..."}）。' };
+      }
+      if (!sql.trim()) {
+        return { error: 'sql 必填', content: '⚠️ validate_sql_fields 需要 sql 参数。' };
+      }
+      // 返回结构化对象（caller 从 rawResult 读 valid / errors 写入 registry）
+      //   - content 字段：序列化后的字符串，给 LLM 看的（content 必须是 string/list）
+      //   - valid / errors / summary 字段：结构化数据，给 llm.js 写 registry 用
+      const result = await validateSqlFields({ sql });
+      return {
+        content: JSON.stringify(result, null, 2),
+        valid: result.valid,
+        errors: result.errors,
+        summary: result.summary,
+      };
     }
   })
 ];

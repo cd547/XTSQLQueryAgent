@@ -8,6 +8,7 @@ import ConfirmDialog from './components/ConfirmDialog';
 import UserChoiceDialog from './components/UserChoiceDialog';
 import ResizableTitle from './components/ResizableTitle';
 import ChatMessage from './components/ChatMessage';
+import RoundGroup from './components/RoundGroup';
 import ConfigPanel from './components/ConfigPanel';
 import LoginPage from './components/LoginPage';
 import AppIcon from './components/AppIcon.jsx';
@@ -23,7 +24,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
 import './utils/monacoEnv';
-import { createMarkdownRenderers } from './components/markdownRenderers.jsx';
+import { readSSEStream } from './utils/sseStream';
 import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages, saveFavoriteQuery, checkFavorites, unfavoriteQuery, getFavoriteSuggestions } from './api';
 
 const { TextArea } = Input;
@@ -140,6 +141,11 @@ function AuthenticatedApp({ user, logout }) {
   const resizerRef = useRef(null);
   const initialLoadRef = useRef(false);
   const abortControllerRef = useRef(null);
+  // ★ F4 修复：handleExplainAnalyze 专用的 AbortController ref。
+  //   不能复用 abortControllerRef —— handleSend 在用户点"停止"时会 abort 它，
+  //   但 explain-analyze 是 Modal 关闭触发的，混用会让用户点错按钮互相影响。
+  //   独立 ref 也让"切会话只 abort handleSend，不影响 modal 内正在跑的 analysis"成为可能。
+  const explainAbortControllerRef = useRef(null);
   const chatContentRef = useRef(null);
   // Monaco hover 隐藏定时器 ref：跨 render 持久化 timer id，
   // 避免 React 重新挂载时旧 setInterval 残留（导致内存泄漏 + 多次 hide 调用）
@@ -155,7 +161,11 @@ function AuthenticatedApp({ user, logout }) {
   // - sessions: 首次加载会话列表（boolean）
   // - sessionsMore: 滚动加载更多会话（boolean）
   // - messagesId: 加载某 sessionId 的消息（sessionId 或 null）
-  const loadingRef = useRef({ model: false, sessions: false, sessionsMore: false, messagesId: null });
+  // - messagesVersion: F2 修复，每次 loadMessages 入口自增，用于丢弃过期响应
+  const loadingRef = useRef({ model: false, sessions: false, sessionsMore: false, messagesId: null, messagesVersion: 0 });
+  // ★ F2 修复：SSE 流式请求版本号。handleSessionClick 切会话时 abort 并自增，
+  //   in-flight 的 readSSEStream onEvent 回调顶部比对，失效则丢弃写入。
+  const streamRequestIdRef = useRef(0);
   const siderListRef = useRef(null);
   
   const handleTabChange = (key) => {
@@ -289,21 +299,103 @@ function AuthenticatedApp({ user, logout }) {
       loadMoreSessions();
     }
   }, [hasMoreSessions, sessions.length]);
-  
+
+  /**
+   * 把扁平 messages 列表按 round 分组，输出渲染层直接消费的"组"列表。
+   * 输出元素有两种类型：
+   *   - { type: 'single', msg, userQuestion? }  单条消息（user / assistant / 单条 log）
+   *   - { type: 'roundGroup', id, round, logs, userQuestion? }  同一 round 内的多条 log
+   * 同时预算好 userQuestion（供"收藏为常用SQL"按钮 / 收藏态显示用）：
+   *   - 顺序向前找最近一条 user 消息即为本组的 userQuestion
+   *   - 遇到 assistant 时停止（同会话内上一个 assistant 之前属于不同问题）
+   *
+   * 用 useMemo 包裹避免每次 render 都重算（流式期间 setMessages 频繁触发 render）
+   */
+  const groupedMessages = useMemo(() => {
+    const groups = [];
+    let currentRound = null;
+    let currentLogs = null;
+    let currentRoundId = null;
+    let lastUserQ = null;  // 当前 assistant 周期内最近一条 user 提问
+    for (let i = 0; i < messages.length; i++) {
+      const m = messages[i];
+      if (m.role === 'log') {
+        const round = typeof m.round === 'number' ? m.round : 0;
+        if (round !== currentRound || currentLogs === null) {
+          // 收尾上一轮
+          if (currentLogs !== null) {
+            groups.push({
+              type: 'roundGroup',
+              id: currentRoundId,
+              round: currentRound,
+              logs: currentLogs,
+              userQuestion: lastUserQ,
+            });
+          }
+          currentRound = round;
+          currentLogs = [m];
+          currentRoundId = `rg-${m.id}`;
+        } else {
+          currentLogs.push(m);
+        }
+      } else {
+        // 收尾上一轮
+        if (currentLogs !== null) {
+          groups.push({
+            type: 'roundGroup',
+            id: currentRoundId,
+            round: currentRound,
+            logs: currentLogs,
+            userQuestion: lastUserQ,
+          });
+          currentLogs = null;
+          currentRound = null;
+          currentRoundId = null;
+        }
+        if (m.role === 'user') {
+          lastUserQ = m.content;
+        } else if (m.role === 'assistant') {
+          // 切到下一轮前，lastUserQ 保留（同一 user 问题可能触发多 assistant
+          // 但实际架构里 assistant 之后就是新 user 或 done）
+        }
+        groups.push({ type: 'single', msg: m, userQuestion: lastUserQ });
+      }
+    }
+    // 收尾最后一轮
+    if (currentLogs !== null) {
+      groups.push({
+        type: 'roundGroup',
+        id: currentRoundId,
+        round: currentRound,
+        logs: currentLogs,
+        userQuestion: lastUserQ,
+      });
+    }
+    return groups;
+  }, [messages]);
+
   const loadMessages = async (sessionId) => {
     if (loadingRef.current.messagesId === sessionId) return;
+    // ★ F2 修复：每次加载登记一个版本号。await 之后若已被新加载覆盖，
+    //   过期响应直接丢弃，避免"先点 A 再点 B，A 慢回包覆盖 B 界面"
+    const myVersion = ++loadingRef.current.messagesVersion;
     loadingRef.current.messagesId = sessionId;
     try {
       const data = await getSessionMessages(sessionId);
+      if (loadingRef.current.messagesVersion !== myVersion) return; // 已被新请求覆盖，丢弃
       if (data.messages) {
         const filtered = data.messages.filter(m => m.role !== 'usage');
         // 老数据兜底：没有 elapsed_ms 时按 user/assistant 成对消息的 created_at 差值补算
         // 一次性扫描，按"相邻 user/assistant 配对"得到回显耗时
         const loaded = filtered.map(m => {
           let elapsedMs = m.elapsed_ms || null;
+          // 历史 DB 行的 role 是 LLM/tool/tool_return，与流式 SSE 实时态的 'log' role 不同
+          // 这里统一归一化为 'log'，否则 groupMessagesByRound 不会把它们当 log 分组
+          // → 历史会话回看时无法渲染轮次轴
+          const normalizedRole = ['LLM', 'tool', 'tool_return'].includes(m.role) ? 'log' : m.role;
           return {
             id: `db-${m.id}`,
-            role: m.role,
+            role: normalizedRole,
             content: m.content || m.sql || '',
             sql: m.sql || '',
             timestamp: m.created_at,
@@ -311,7 +403,15 @@ function AuthenticatedApp({ user, logout }) {
             // 历史回看：所有日志类型（LLM思考 / 工具调用 / 工具返回）默认折叠，
             // 与流式实时态（collapsed: true）保持一致，避免历史消息全展开
             collapsed: ['LLM', 'tool', 'tool_return'].includes(m.role),
-            elapsedMs
+            elapsedMs,
+            // ★ LLM 工具调用轮次编号（用于历史回显的"轮次轴"展示）
+            //   后端 messages 表新增的 round 列，老数据默认 0
+            //   老数据（无 round 信息）会全归到 round 0 组里，仍然会显示 round 轴（数字 0）
+            //   如果想老数据不显示 round 轴，可加判断：只有 round > 0 时才走 roundGroup
+            round: typeof m.round === 'number' ? m.round : 0,
+            // ★ 2026-07-29：透传 interrupted 字段，用于渲染"已中断" badge
+            //   老数据（无 interrupted 列）默认 0/false，行为兼容
+            interrupted: m.interrupted === 1 || m.interrupted === true,
           };
         });
         // 老数据回填：相邻 user → assistant 配对，差值作为 elapsedMs
@@ -337,9 +437,14 @@ function AuthenticatedApp({ user, logout }) {
         hydrateFavoriteStates(loaded);
       }
     } catch (e) {
+      // 过期请求的报错不刷控制台（避免误报当前会话有问题）
+      if (loadingRef.current.messagesVersion !== myVersion) return;
       console.error('加载消息失败:', e);
     } finally {
-      loadingRef.current.messagesId = null;
+      // 只有"自己仍是最新"才清空 messagesId，避免误清覆盖中的新请求
+      if (loadingRef.current.messagesVersion === myVersion) {
+        loadingRef.current.messagesId = null;
+      }
     }
   };
   
@@ -397,6 +502,18 @@ function AuthenticatedApp({ user, logout }) {
   };
   
   const handleSessionClick = async (session) => {
+    // ★ F2 修复：切会话前先 abort 进行中的 SSE 流 + 提版本号，
+    //   防止旧会话的 chunk/log 继续被写进新会话消息数组，
+    //   并防止 catch 块把"已中断"文案写到新会话里。
+    // 注意：handleStop（用户主动中断）走的是 abort 但不 bump，
+    //   让"已中断"消息照常写进当前会话；只有切会话才 bump。
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    streamRequestIdRef.current++;
+    loadingRef.current.messagesVersion++;
+
     setCurrentSessionId(session.id);
     setActiveTabKey('chat');
     const newName = session.name ? `${session.name}#${session.id}` : '聊天';
@@ -674,236 +791,256 @@ function AuthenticatedApp({ user, logout }) {
 
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
+    // ★ F2 修复：本轮 SSE 流的"版本号"。handleSessionClick 切会话时会自增 streamRequestIdRef
+    //   并 abort 旧流；in-flight 的 readSSEStream 回调顶部比对，失效则丢弃写入
+    const myStreamVersion = ++streamRequestIdRef.current;
 
     try {
       const response = await api.queryGenerateStream({ question: userMessage, schemaMode: 'stream', sessionId: currentSessionId }, abortController.signal);
-      
+
       if (!response.ok) {
         throw new Error('请求失败');
       }
-      
+
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
       let fullContent = '';
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        const text = decoder.decode(value);
-        const lines = text.split('\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (data.type === 'chunk') {
-                fullContent += data.content;
-                setMessages(prev => {
-                  const newMsgs = [...prev];
-                  const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
-                  if (lastAssistantIdx !== -1) {
-                    newMsgs[lastAssistantIdx] = { ...newMsgs[lastAssistantIdx], content: fullContent };
-                  }
-                  return newMsgs;
-                });
-                // 流式 chunk 不改变 messages.length，原 useEffect 不会触发滚动；
-                // 这里用 rAF 节流：同一帧多次 chunk 只滚动一次
-                if (!streamingScrollRafRef.current) {
-                  streamingScrollRafRef.current = requestAnimationFrame(() => {
-                    streamingScrollRafRef.current = 0;
-                    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-                  });
-                }
-              } else if (data.type === 'LLM' || data.type === 'tool' || data.type === 'tool_return') {
-                const logContent = data.log || '';
-                
-                // 检测 request_tag_confirmation 工具调用
-                if (data.type === 'tool' && logContent.includes('request_tag_confirmation')) {
-                  const paramMatch = logContent.match(/参数:\s*(\{[^}]+\})/);
-                  if (paramMatch) {
-                    try {
-                      const params = JSON.parse(paramMatch[1]);
-                      const term = Array.isArray(params.term) ? params.term : [params.term || ''];
-                      setConfirmTagAdd({
-                        visible: true,
-                        term: term.filter(t => t),
-                        table: params.table || '',
-                        description: params.description || ''
-                      });
-                    } catch (e) {
-                      console.warn('Parse tool params failed:', e);
-                    }
-                  }
-                }
-                
-                let logType = 'call';
-                if (data.type === 'LLM') logType = 'llm';
-                else if (data.type === 'tool_return') logType = 'return';
-                
-                setMessages(prev => {
-                  const newMsgs = [...prev];
-                  const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
-                  if (lastAssistantIdx !== -1) {
-                    const logMsg = {
-                      id: `c-${++clientMsgIdRef.current}`,
-                      role: 'log',
-                      content: logContent,
-                      timestamp: new Date().toISOString(),
-                      collapsed: true,
-                      logType: logType
-                    };
-                    newMsgs.splice(lastAssistantIdx, 0, logMsg);
-                  }
-                  return newMsgs;
-                });
-              } else if (data.type === 'reasoning_chunk') {
-                // 实时流式思考过程：找到/创建 llm log 消息，累加 content
-                setMessages(prev => {
-                  const newMsgs = [...prev];
-                  const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
-                  if (lastAssistantIdx === -1) return newMsgs;
 
-                  // 当前轮 = 最后一个 user 消息之后的所有消息
-                  // 关键：必须按"轮"隔离 llm log 查找范围，
-                  // 否则上一轮的 llm log 会被错误复用，导致第二轮的思考被追加到第一轮
-                  const lastUserIdx = newMsgs.findLastIndex(m => m.role === 'user');
-                  const currentRoundStart = lastUserIdx === -1 ? 0 : lastUserIdx + 1;
+      // ★ 2026-07-29 修复 F1：抽到 utils/sseStream.js 处理
+      //   ① TextDecoder.decode(value, { stream: true }) 避免中文多字节跨 chunk 切 U+FFFD
+      //   ② buf 半截行缓冲，避免 SSE 行跨 chunk 时 JSON.parse 抛错
+      //   ③ 流结束 flush decoder + 处理 buf 末尾（覆盖"最后一帧无 \n 结尾"场景）
+      await readSSEStream(reader, (data) => {
+        // ★ F2 修复：会话切换后版本号已自增，过期回调直接丢弃
+        //   否则旧会话的 chunk/log 会继续被写进新会话消息数组
+        if (streamRequestIdRef.current !== myStreamVersion) return;
+        if (data.type === 'chunk') {
+          fullContent += data.content;
+          setMessages(prev => {
+            const newMsgs = [...prev];
+            const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+            if (lastAssistantIdx !== -1) {
+              newMsgs[lastAssistantIdx] = { ...newMsgs[lastAssistantIdx], content: fullContent };
+            }
+            return newMsgs;
+          });
+          // 流式 chunk 不改变 messages.length，原 useEffect 不会触发滚动；
+          // 这里用 rAF 节流：同一帧多次 chunk 只滚动一次
+          if (!streamingScrollRafRef.current) {
+            streamingScrollRafRef.current = requestAnimationFrame(() => {
+              streamingScrollRafRef.current = 0;
+              messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            });
+          }
+        } else if (data.type === 'LLM' || data.type === 'tool' || data.type === 'tool_return') {
+          const logContent = data.log || '';
 
-                  let lastLlmLogIdx = -1;
-                  let lastLogIdx = -1;
-                  for (let i = newMsgs.length - 1; i >= currentRoundStart; i--) {
-                    const m = newMsgs[i];
-                    if (m.role === 'log') {
-                      if (lastLogIdx === -1) lastLogIdx = i;
-                      if (m.logType === 'llm' && lastLlmLogIdx === -1) lastLlmLogIdx = i;
-                    }
-                  }
-                  const isCurrentRound = lastLlmLogIdx !== -1 && lastLlmLogIdx === lastLogIdx;
-
-                  if (isCurrentRound) {
-                    // ★ 累加内容时保留用户已选的 collapsed 状态（不再强制 true）
-                    //   背景：之前每 chunk 都重置 collapsed=true，导致用户无法在流式期间展开查看
-                    newMsgs[lastLlmLogIdx] = {
-                      ...newMsgs[lastLlmLogIdx],
-                      content: (newMsgs[lastLlmLogIdx].content || '') + data.content,
-                    };
-                  } else {
-                    const logMsg = {
-                      id: `c-${++clientMsgIdRef.current}`,
-                      role: 'log',
-                      content: '💭 LLM思考过程:\n' + data.content,
-                      timestamp: new Date().toISOString(),
-                      collapsed: true,  // ★ 仅新建时设默认折叠
-                      logType: 'llm',
-                    };
-                    newMsgs.splice(lastAssistantIdx, 0, logMsg);
-                  }
-                  return newMsgs;
+          // 检测 request_tag_confirmation 工具调用
+          if (data.type === 'tool' && logContent.includes('request_tag_confirmation')) {
+            const paramMatch = logContent.match(/参数:\s*(\{[^}]+\})/);
+            if (paramMatch) {
+              try {
+                const params = JSON.parse(paramMatch[1]);
+                const term = Array.isArray(params.term) ? params.term : [params.term || ''];
+                setConfirmTagAdd({
+                  visible: true,
+                  term: term.filter(t => t),
+                  table: params.table || '',
+                  description: params.description || ''
                 });
-                // 流式 chunk 滚动到底部（rAF 节流）
-                if (!streamingScrollRafRef.current) {
-                  streamingScrollRafRef.current = requestAnimationFrame(() => {
-                    streamingScrollRafRef.current = 0;
-                    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-                  });
-                }
-              } else if (data.type === 'reasoning_done') {
-                // ★ 思考过程结束：保留用户已选的 collapsed 状态（之前强制 true 会把用户展开的内容又折叠回去）
-                setMessages(prev => prev);
-                return;
-              } else if (data.type === 'message_final') {
-                // 后处理：剥离 LLM 误倒进 content 的 thinking 后，用清理后的 content 替换 assistant 消息
-                setMessages(prev => {
-                  const newMsgs = [...prev];
-                  const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
-                  if (lastAssistantIdx !== -1) {
-                    newMsgs[lastAssistantIdx] = { ...newMsgs[lastAssistantIdx], content: data.content };
-                  }
-                  return newMsgs;
-                });
-              } else if (data.type === 'error') {
-                if (data.content !== '请求已被用户中断') {
-                  message.error(data.content);
-                }
-                setMessages(prev => {
-                  const newMsgs = [...prev];
-                  const lastIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
-                  if (lastIdx !== -1) {
-                    const startTime = newMsgs[lastIdx].startTime || Date.now();
-                    const elapsedMs = Date.now() - startTime;
-                    newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: data.content === '请求已被用户中断' ? (newMsgs[lastIdx].content || '') + '\n\n*[已中断]*' : '错误: ' + data.content, isStreaming: false, elapsedMs };
-                  }
-                  return newMsgs;
-                });
-              } else if (data.type === 'done') {
-                setMessages(prev => {
-                  const newMsgs = [...prev];
-                  const lastIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
-                  if (lastIdx !== -1) {
-                    const startTime = newMsgs[lastIdx].startTime || Date.now();
-                    // 优先用后端权威耗时（含网络/工具调用），fallback 到前端本地计时
-                    const elapsedMs = (typeof data.elapsedMs === 'number' && data.elapsedMs >= 0)
-                      ? data.elapsedMs
-                      : Date.now() - startTime;
-                    newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: data.message || '', sql: data.sql || '', isStreaming: false, elapsedMs };
-                  }
-                  return newMsgs;
-                });
-                // 更新 token 显示
-                if (data.totalTokens) {
-                  setCurrentTokens(prev => prev + data.totalTokens);
-                }
-                // ★ 关键修复：后端 SSE done 事件返回的 sessionId 是权威值。
-                //   场景：用户清空日志后第一次问时前端 currentSessionId=null，
-                //   后端会 auto-create 一个 session；若前端不捕获并回写，
-                //   下次（user_choice 答案/重发）handleSend 还会以 null 调 /generate，
-                //   后端又会 auto-create 一个新 session → 上下文丢失、registry 重置、
-                //   LLM 重新调 get_domain_index/get_sliced_index。
-                if (data.sessionId && data.sessionId !== currentSessionId) {
-                  const newId = data.sessionId;
-                  setCurrentSessionId(newId);
-                  // 把新 session 插到左侧列表（避免下次刷新才看到）
-                  setSessions(prev => {
-                    if (prev.some(s => s.id === newId)) return prev;
-                    return [{
-                      id: newId,
-                      name: '新对话',
-                      created_at: new Date().toISOString(),
-                      total_tokens: data.totalTokens || 0
-                    }, ...prev];
-                  });
-                  setSessionsTotal(prev => prev + 1);
-                }
-                // ★ 检测 user_choice_request 弹窗（来自 llm.js 终止分支）
-                // v2 链式弹窗：后端 yield 的是数组（1-3 个问题）；兼容旧版单值 fallback
-                if (data.user_choice_request) {
-                  const rawReqs = Array.isArray(data.user_choice_request)
-                    ? data.user_choice_request
-                    : [data.user_choice_request];
-                  // 归一化每个元素为 {id, question, options, multiSelect, header}
-                  const reqs = rawReqs.map(r => ({
-                    id: r.id || '',
-                    question: r.question || '',
-                    options: Array.isArray(r.options) ? r.options : [],
-                    multiSelect: !!r.multi_select,
-                    header: r.header || ''
-                  }));
-                  setUserChoiceRequest({
-                    visible: true,
-                    requests: reqs,
-                    currentIndex: 0,
-                    answers: reqs.map(() => ({ selected: [], text: '' }))
-                  });
-                }
+              } catch (e) {
+                console.warn('Parse tool params failed:', e);
               }
-            } catch (e) {
-              console.warn('Parse SSE error:', e);
             }
           }
+
+          let logType = 'call';
+          if (data.type === 'LLM') logType = 'llm';
+          else if (data.type === 'tool_return') logType = 'return';
+
+          setMessages(prev => {
+            const newMsgs = [...prev];
+            const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+            if (lastAssistantIdx !== -1) {
+              const logMsg = {
+                id: `c-${++clientMsgIdRef.current}`,
+                role: 'log',
+                content: logContent,
+                timestamp: new Date().toISOString(),
+                collapsed: true,
+                logType: logType,
+                // ★ LLM 工具调用轮次编号（用于前端"数轴式"轮次展示）
+                //   后端 llm.js 在每个 yield 时附带 round 字段
+                //   同 assistant 消息内多条 log 可能共享同一 round（思考→调用→返回属于同一轮）
+                round: typeof data.round === 'number' ? data.round : 0,
+              };
+              newMsgs.splice(lastAssistantIdx, 0, logMsg);
+            }
+            return newMsgs;
+          });
+        } else if (data.type === 'reasoning_chunk') {
+          // 实时流式思考过程：找到/创建 llm log 消息，累加 content
+          setMessages(prev => {
+            const newMsgs = [...prev];
+            const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+            if (lastAssistantIdx === -1) return newMsgs;
+
+            // 当前轮 = 最后一个 user 消息之后的所有消息
+            // 关键：必须按"轮"隔离 llm log 查找范围，
+            // 否则上一轮的 llm log 会被错误复用，导致第二轮的思考被追加到第一轮
+            const lastUserIdx = newMsgs.findLastIndex(m => m.role === 'user');
+            const currentRoundStart = lastUserIdx === -1 ? 0 : lastUserIdx + 1;
+
+            let lastLlmLogIdx = -1;
+            let lastLogIdx = -1;
+            for (let i = newMsgs.length - 1; i >= currentRoundStart; i--) {
+              const m = newMsgs[i];
+              if (m.role === 'log') {
+                if (lastLogIdx === -1) lastLogIdx = i;
+                if (m.logType === 'llm' && lastLlmLogIdx === -1) lastLlmLogIdx = i;
+              }
+            }
+            const isCurrentRound = lastLlmLogIdx !== -1 && lastLlmLogIdx === lastLogIdx;
+
+            if (isCurrentRound) {
+              // ★ 累加内容时保留用户已选的 collapsed 状态（不再强制 true）
+              //   背景：之前每 chunk 都重置 collapsed=true，导致用户无法在流式期间展开查看
+              newMsgs[lastLlmLogIdx] = {
+                ...newMsgs[lastLlmLogIdx],
+                content: (newMsgs[lastLlmLogIdx].content || '') + data.content,
+                // ★ 同步 round（防止 round 边界判断异常时遗漏）
+                round: typeof data.round === 'number' ? data.round : (newMsgs[lastLlmLogIdx].round ?? 0),
+              };
+            } else {
+              const logMsg = {
+                id: `c-${++clientMsgIdRef.current}`,
+                role: 'log',
+                content: '💭 LLM思考过程:\n' + data.content,
+                timestamp: new Date().toISOString(),
+                collapsed: true,  // ★ 仅新建时设默认折叠
+                logType: 'llm',
+                // ★ LLM 工具调用轮次编号（用于前端"数轴式"轮次展示）
+                round: typeof data.round === 'number' ? data.round : 0,
+              };
+              newMsgs.splice(lastAssistantIdx, 0, logMsg);
+            }
+            return newMsgs;
+          });
+          // 流式 chunk 滚动到底部（rAF 节流）
+          if (!streamingScrollRafRef.current) {
+            streamingScrollRafRef.current = requestAnimationFrame(() => {
+              streamingScrollRafRef.current = 0;
+              messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+            });
+          }
+        } else if (data.type === 'reasoning_done') {
+          // ★ 思考过程结束：保留用户已选的 collapsed 状态（之前强制 true 会把用户展开的内容又折叠回去）
+          setMessages(prev => prev);
+          return;
+        } else if (data.type === 'message_final') {
+          // 后处理：剥离 LLM 误倒进 content 的 thinking 后，用清理后的 content 替换 assistant 消息
+          setMessages(prev => {
+            const newMsgs = [...prev];
+            const lastAssistantIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+            if (lastAssistantIdx !== -1) {
+              newMsgs[lastAssistantIdx] = { ...newMsgs[lastAssistantIdx], content: data.content };
+            }
+            return newMsgs;
+          });
+        } else if (data.type === 'error') {
+          // ★ 2026-07-29：用后端透传的 interrupted 字段代替硬编码字符串"请求已被用户中断"
+          //   - interrupted=true → 用户主动中断 / 网络断连 / 超时 → 不弹红框 + 追加"已中断"标记
+          //   - interrupted=false(缺失) → 真实错误 → 弹红框 + 显示错误内容
+          // 优势：后端多场景(overll timeout / fetch abort / 用户主动 stop)统一走 interrupted 字段
+          //   不再依赖 llm.js:1867 那个特定 yield 文案(原硬编码检查其实很少匹配上)
+          const isInterrupted = data.interrupted === true;
+          if (!isInterrupted) {
+            message.error(data.content);
+          }
+          setMessages(prev => {
+            const newMsgs = [...prev];
+            const lastIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+            if (lastIdx !== -1) {
+              const startTime = newMsgs[lastIdx].startTime || Date.now();
+              const elapsedMs = Date.now() - startTime;
+              newMsgs[lastIdx] = {
+                ...newMsgs[lastIdx],
+                content: isInterrupted
+                  ? (newMsgs[lastIdx].content || '')
+                  : '错误: ' + data.content,
+                isStreaming: false,
+                elapsedMs,
+                interrupted: isInterrupted  // ★ 在消息对象上记一下，ChatMessage 据此渲染 badge
+              };
+            }
+            return newMsgs;
+          });
+        } else if (data.type === 'done') {
+          setMessages(prev => {
+            const newMsgs = [...prev];
+            const lastIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+            if (lastIdx !== -1) {
+              const startTime = newMsgs[lastIdx].startTime || Date.now();
+              // 优先用后端权威耗时（含网络/工具调用），fallback 到前端本地计时
+              const elapsedMs = (typeof data.elapsedMs === 'number' && data.elapsedMs >= 0)
+                ? data.elapsedMs
+                : Date.now() - startTime;
+              newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: data.message || '', sql: data.sql || '', isStreaming: false, elapsedMs };
+            }
+            return newMsgs;
+          });
+          // 更新 token 显示
+          if (data.totalTokens) {
+            setCurrentTokens(prev => prev + data.totalTokens);
+          }
+          // ★ 关键修复：后端 SSE done 事件返回的 sessionId 是权威值。
+          //   场景：用户清空日志后第一次问时前端 currentSessionId=null，
+          //   后端会 auto-create 一个 session；若前端不捕获并回写，
+          //   下次（user_choice 答案/重发）handleSend 还会以 null 调 /generate，
+          //   后端又会 auto-create 一个新 session → 上下文丢失、registry 重置、
+          //   LLM 重新调 get_domain_index/get_sliced_index。
+          if (data.sessionId && data.sessionId !== currentSessionId) {
+            const newId = data.sessionId;
+            setCurrentSessionId(newId);
+            // 把新 session 插到左侧列表（避免下次刷新才看到）
+            setSessions(prev => {
+              if (prev.some(s => s.id === newId)) return prev;
+              return [{
+                id: newId,
+                name: '新对话',
+                created_at: new Date().toISOString(),
+                total_tokens: data.totalTokens || 0
+              }, ...prev];
+            });
+            setSessionsTotal(prev => prev + 1);
+          }
+          // ★ 检测 user_choice_request 弹窗（来自 llm.js 终止分支）
+          // v2 链式弹窗：后端 yield 的是数组（1-3 个问题）；兼容旧版单值 fallback
+          if (data.user_choice_request) {
+            const rawReqs = Array.isArray(data.user_choice_request)
+              ? data.user_choice_request
+              : [data.user_choice_request];
+            // 归一化每个元素为 {id, question, options, multiSelect, header}
+            const reqs = rawReqs.map(r => ({
+              id: r.id || '',
+              question: r.question || '',
+              options: Array.isArray(r.options) ? r.options : [],
+              multiSelect: !!r.multi_select,
+              header: r.header || ''
+            }));
+            setUserChoiceRequest({
+              visible: true,
+              requests: reqs,
+              currentIndex: 0,
+              answers: reqs.map(() => ({ selected: [], text: '' }))
+            });
+          }
         }
-      }
+      });
     } catch (error) {
+      // ★ F2 修复：会话切换触发的 abort 不应污染新会话消息
+      //   - handleStop（用户主动中断）走 abort 但不 bump → 版本号一致，catch 照常追加"已中断"到当前会话
+      //   - handleSessionClick（切会话）abort + bump → 版本号不一致，catch 直接 bail，新会话消息保持干净
+      if (streamRequestIdRef.current !== myStreamVersion) return;
       if (error.name !== 'AbortError') {
         message.error(error.message);
       }
@@ -920,7 +1057,10 @@ function AuthenticatedApp({ user, logout }) {
     } finally {
       setLoading(false);
       setIsStreaming(false);
-      abortControllerRef.current = null;
+      // 只有"自己仍是最新流"才清空 abortControllerRef，避免误清覆盖中的新流
+      if (streamRequestIdRef.current === myStreamVersion) {
+        abortControllerRef.current = null;
+      }
     }
   };
 
@@ -962,14 +1102,29 @@ function AuthenticatedApp({ user, logout }) {
         return { ...prev, currentIndex: prev.currentIndex + 1, answers: newAnswers };
       }
       // 最后一个：合成综合 user 消息
-      const combined = newAnswers.map((a, i) => {
+      // ★ v2 改进（2026-07-27）：跳过的问题不再用 `（无）` 占位（LLM 易把"无"理解为 SQL 关键字）
+      //   改为：分两部分 —— 已答的进 "label=answer; ..."；跳过的额外追加一行明确标记
+      //   优点：LLM 一眼区分"已答"vs"跳过"，不会被"无"误判为 NULL / 不加 WHERE
+      const answeredParts = [];
+      const skippedLabels = [];
+      newAnswers.forEach((a, i) => {
         const req = prev.requests[i] || {};
         const label = (req.header && String(req.header).trim()) || `问题${i + 1}`;
         const sel = Array.isArray(a.selected) && a.selected.length > 0 ? a.selected.join(', ') : '';
         const txt = (a.text || '').trim();
-        const ans = [sel, txt].filter(Boolean).join(' + ');
-        return `${label}=${ans || '（无）'}`;
-      }).join('; ');
+        const isAnswered = sel !== '' || txt !== '';
+        if (isAnswered) {
+          const ans = [sel, txt].filter(Boolean).join(' + ');
+          answeredParts.push(`${label}=${ans}`);
+        } else {
+          skippedLabels.push(label);
+        }
+      });
+      let combined = answeredParts.join('; ');
+      if (skippedLabels.length > 0) {
+        const skipNote = `（用户跳过了 ${skippedLabels.length} 个问题：${skippedLabels.join('、')}）`;
+        combined = combined ? `${combined}\n${skipNote}` : skipNote;
+      }
       // 关闭弹窗 + 触发新一轮（setTimeout 0 避免在 reducer 中嵌套 setState）
       setTimeout(() => {
         handleSend(combined || '用户未回答');
@@ -1070,54 +1225,65 @@ const handleExplain = async (sql) => {
 
   const handleExplainAnalyze = async () => {
     if (!sqlInput || explainResults.length === 0) return;
-    
+
     setExplainAnalyzeModalOpen(true);
     contentRef.current = '';
     setExplainAnalysisContent('');
     setExplainAnalysisLoading(true);
-    
+
+    // ★ F4 修复：建独立 AbortController，存到 explainAbortControllerRef。
+    //   onClose / 卸载 / auth-expired 都会 abort 这个 ref。
+    //   复用 handleSend 的 abortControllerRef 不可行：用户点"停止"会误关掉分析流。
+    const abortController = new AbortController();
+    explainAbortControllerRef.current = abortController;
+
     try {
-      const response = await api.explainAnalyze(getSelectedSql(), explainResults);
-      
+      const response = await api.explainAnalyze(getSelectedSql(), explainResults, abortController.signal);
+
       if (!response.ok) {
         message.error('请求失败');
         setExplainAnalysisLoading(false);
         return;
       }
-      
+
       const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        
-        const text = decoder.decode(value);
-        const lines = text.split('\n');
-        
-        for (const line of lines) {
-          if (line.startsWith('data: ')) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (data.type === 'chunk' && data.content) {
-                contentRef.current += data.content;
-                setExplainAnalysisContent(contentRef.current);
-              } else if (data.type === 'error') {
-                message.error(data.content);
-                setExplainAnalysisLoading(false);
-              } else if (data.type === 'done') {
-                setExplainAnalysisLoading(false);
-              }
-            } catch (e) {
-              console.warn('Parse SSE error:', e);
-            }
-          }
+
+      // ★ 2026-07-29 修复 F1：与 handleSend 共用 readSSEStream，
+      //   解决 ① UTF-8 跨 chunk 切乱码 ② SSE 行跨 chunk parse 抛错 ③ 异常静默吞
+      await readSSEStream(reader, (data) => {
+        // ★ F4 修复：abort 之后 reader 仍可能吐出几帧迟到 chunk（race window），
+        //   顶部守卫丢弃，避免对已卸载的 modal 组件 setState
+        if (abortController.signal.aborted) return;
+        if (data.type === 'chunk' && data.content) {
+          contentRef.current += data.content;
+          setExplainAnalysisContent(contentRef.current);
+        } else if (data.type === 'error') {
+          message.error(data.content);
+          setExplainAnalysisLoading(false);
+        } else if (data.type === 'done') {
+          setExplainAnalysisLoading(false);
         }
-      }
+      });
     } catch (error) {
+      // ★ F4 修复：用户主动中断（modal 关闭/卸载/auth-expired）时不弹错误 toast
+      if (error.name === 'AbortError') return;
       message.error(error.message);
       setExplainAnalysisLoading(false);
+    } finally {
+      // 只有"自己仍是最新流"才清空 ref，防止新流被旧流覆盖
+      if (explainAbortControllerRef.current === abortController) {
+        explainAbortControllerRef.current = null;
+      }
     }
+  };
+
+  // ★ F4 修复：handleExplainAnalyze 的中断入口，绑给 modal 的 onClose + 卸载 + auth-expired
+  const handleStopExplainAnalyze = () => {
+    if (explainAbortControllerRef.current) {
+      explainAbortControllerRef.current.abort();
+      explainAbortControllerRef.current = null;
+    }
+    setExplainAnalysisLoading(false);
   };
   
 // 中文字符按 2 个宽度计算，英文/数字按 1 个
@@ -1298,6 +1464,32 @@ const explainColumns = useMemo(() => explainResults.length > 0
         hoverIntervalRef.current = null;
       }
     };
+  }, []);
+
+  // ★ F4 修复：组件卸载时 abort in-flight explain-analyze SSE 流。
+  //   场景：用户在 modal 打开期间通过路由切换或父组件卸载触发本组件卸载，
+  //   若不显式 abort，reader + 后端 LLM 仍在跑 → 浪费 token + React "state update on unmounted" 警告
+  useEffect(() => {
+    return () => {
+      if (explainAbortControllerRef.current) {
+        explainAbortControllerRef.current.abort();
+        explainAbortControllerRef.current = null;
+      }
+    };
+  }, []);
+
+  // ★ F4 修复：登录态失效（401）时也 abort 正在进行的分析流。
+  //   auth-expired 通常意味着即将被踢回登录页，未 abort 的流会持有过期 cookie 继续请求，
+  //   也会被 setStoredUser(null) 触发的组件重渲染打断
+  useEffect(() => {
+    const onAuthExpired = () => {
+      if (explainAbortControllerRef.current) {
+        explainAbortControllerRef.current.abort();
+        explainAbortControllerRef.current = null;
+      }
+    };
+    window.addEventListener('xtsql:auth-expired', onAuthExpired);
+    return () => window.removeEventListener('xtsql:auth-expired', onAuthExpired);
   }, []);
 
   return (
@@ -1490,16 +1682,24 @@ const explainColumns = useMemo(() => explainResults.length > 0
                   </div>
                 ) : (
                   <div className="xtsql-chat-inner">
-                    {messages.map((msg, idx) => {
-                      // 找到本条 assistant 消息前最近一条 user 提问（中间可有 log）
-                      let userQuestion = null;
-                      if (msg.role === 'assistant') {
-                        for (let i = idx - 1; i >= 0; i--) {
-                          const m = messages[i];
-                          if (m.role === 'user') { userQuestion = m.content; break; }
-                          if (m.role === 'assistant') break; // 遇到上一轮 assistant 终止
-                        }
+                    {groupedMessages.map((group, idx) => {
+                      const userQuestion = group.userQuestion;
+                      if (group.type === 'roundGroup') {
+                        return (
+                          <RoundGroup
+                            key={group.id}
+                            round={group.round}
+                            logs={group.logs}
+                            onToggleCollapse={handleToggleCollapse}
+                            onFavorite={handleFavorite}
+                            userQuestion={userQuestion}
+                            userAvatar={(user?.display_name || user?.username || 'U').slice(0, 1).toUpperCase()}
+                            favoriteStates={favoriteStates}
+                          />
+                        );
                       }
+                      // single message (user / assistant / 单条 log)
+                      const msg = group.msg;
                       return (
                         <ChatMessage
                           key={msg.id}
@@ -1520,6 +1720,7 @@ const explainColumns = useMemo(() => explainResults.length > 0
                           favoriteState={favoriteStates[msg.id]}
                           onFavorite={userQuestion ? ({ userQuestion: uq, sqlOutput }) => handleFavorite({ msgId: msg.id, userQuestion: uq, sqlOutput }) : undefined}
                           userAvatar={(user?.display_name || user?.username || 'U').slice(0, 1).toUpperCase()}
+                          interrupted={msg.interrupted}  // ★ 2026-07-29：从 DB 或 SSE error 传入，渲染"已中断" badge
                         />
                       );
                     })}
@@ -2091,7 +2292,12 @@ children: currentResults.length > 0 ? (
         
         <ExplainAnalyzeModal
           open={explainAnalyzeModalOpen}
-          onClose={() => setExplainAnalyzeModalOpen(false)}
+          // ★ F4 修复：关闭弹窗时先 abort in-flight SSE 流，再关 visible。
+          //   旧逻辑只关弹窗，reader 仍在后台读 + setState（浪费 token + React 警告）
+          onClose={() => {
+            handleStopExplainAnalyze();
+            setExplainAnalyzeModalOpen(false);
+          }}
           content={explainAnalysisContent}
           loading={explainAnalysisLoading}
           isDarkTheme={theme === 'dark'}

@@ -325,7 +325,10 @@ async function startBackend() {
     env.SKILL_PATH = path.join(projectRoot, 'skills');
     env.LOG_PATH = path.join(projectRoot, 'logs');
 
-    let backendProcess;
+    // ★ 删除原 line 328 的 `let backendProcess;`（局部声明）—— 之前的局部变量
+    //   会遮蔽 line 9 的全局声明，导致 L330 的 spawn 赋值只写到局部、
+    //   全局 backendProcess 永远 undefined、L590 的 kill 永远走不到
+    //   （关窗时后端进程成为孤儿，靠下次启动时 killProcessOnPort 兜底强杀）
     try {
       backendProcess = spawn(nodePath, [backendPath], {
         cwd: backendCwd,
@@ -522,12 +525,16 @@ function createWindow() {
 
   installAuthCookieCompat();
 
-  const startUrl = app.isPackaged
-    ? `file://${path.join(__dirname, '../frontend/dist/index.html')}`
-    : 'http://localhost:5173';
-    
-  console.log('Loading URL:', startUrl);
-  mainWindow.loadURL(startUrl);
+  if (app.isPackaged) {
+    // ★ 修复 E4：用 loadFile 替代 `file://${path}` 字符串拼接，
+    //   避免安装路径含空格/中文/#/% 时页面加载失败或资源路径解析错误。
+    const indexFile = path.join(__dirname, '../frontend/dist/index.html');
+    console.log('Loading file:', indexFile);
+    mainWindow.loadFile(indexFile);
+  } else {
+    console.log('Loading URL:', 'http://localhost:5173');
+    mainWindow.loadURL('http://localhost:5173');
+  }
 
   mainWindow.on('closed', () => (mainWindow = null));
 }
@@ -596,4 +603,18 @@ app.on('window-all-closed', () => {
     }
   }
   if (process.platform !== 'darwin') app.quit();
+});
+
+// ★ 兑底（2026-07-29）：macOS 上 window-all-closed 不会触发 quit，
+//   只有 before-quit 会 —— 所以仅靠 window-all-closed 在 macOS 上会泄漏后端进程。
+//   同时覆盖“用户从菜单 Quit / app.quit() 被调用 / 系统信号”等其他退出路径。
+app.on('before-quit', () => {
+  if (backendProcess) {
+    try {
+      backendProcess.kill();
+      console.log('Backend process killed (before-quit)');
+    } catch (e) {
+      console.error('Failed to kill backend process (before-quit):', e);
+    }
+  }
 });

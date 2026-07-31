@@ -1,6 +1,8 @@
 {
   "table_name": "edu_student",
-  "field_aliases": {},
+  "field_aliases": {
+    "edu_student_type_project_id":["课程体系"]
+  },
   "field_enums": {
     "type":{
       "1":"学通学生",
@@ -73,7 +75,7 @@
       "business_rule": ""
     },
     {
-      "name": "关联报读项目",
+      "name": "关联报读项目(课程体系)",
       "target_table": "edu_student_type_project",
       "join_condition": "edu_student_type_project.id = edu_student.edu_student_type_project_id",
       "type": "many_to_one",

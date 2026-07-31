@@ -5,9 +5,9 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import AppIcon from './AppIcon.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
-import { createMarkdownRenderers } from './markdownRenderers.jsx';
+import { getMarkdownRenderers } from './markdownRenderers.jsx';
 
-const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, onOpenSqlTab, onCopyAndExecute, onFavorite, favoriteState, userQuestion, userAvatar }) {
+const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, onOpenSqlTab, onCopyAndExecute, onFavorite, favoriteState, userQuestion, userAvatar, interrupted }) {
   const { theme: themeMode } = useTheme();
   const isUser = role === 'user';
   const isLog = role === 'log' || role === 'LLM' || role === 'tool' || role === 'tool_return';
@@ -70,7 +70,12 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
     messageText = content;
   }
 
-  const { pre: PreRender, code: CodeRender } = createMarkdownRenderers(themeMode === 'dark');
+  // ★ F7 修复：用 getMarkdownRenderers 替换 createMarkdownRenderers。
+  //   getMarkdownRenderers 内部用 Map 缓存 (isDark, opts) → renderers 引用，
+  //   同主题同 opts 下返回稳定引用 → ReactMarkdown components.pre/code 类型不变 →
+  //   流式 chunk 期间不 unmount/remount SyntaxHighlighter 子树（无闪烁 + 无滚动跳动 + 无高亮重算）。
+  const isDarkTheme = themeMode === 'dark';
+  const { pre: PreRender, code: CodeRender } = getMarkdownRenderers(isDarkTheme);
   const markdownComponents = {
     pre: PreRender,
     code: CodeRender,
@@ -95,6 +100,13 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
           <span>{isUser ? '我' : 'AI 助手'}</span>
           <span>·</span>
           <span>{timeStr}</span>
+          {/* ★ 2026-07-29：interrupted=1 时显示"已中断" badge
+              来源：① SSE error 事件（实时中断）② 历史回显（DB.interrupted=1） */}
+          {!isUser && interrupted && (
+            <Tooltip title="本次回答因客户端断连或超时未正常完成,部分内容已保存">
+              <span className="xtsql-msg-interrupted-tag">⚠ 已中断</span>
+            </Tooltip>
+          )}
         </div>
         <div className="xtsql-msg-bubble">
           {isUser ? (

@@ -16,14 +16,14 @@
       "target_table": "study_abroad_planning_info",
       "join_condition": "study_abroad_planning_info.student_id = study_abroad_document.student_id",
       "type": "many_to_one",
-      "description": "多条文书记录可属于同一学生"
+      "description": ""
     },
     {
       "name": "关联专业方向",
       "target_table": "study_abroad_major",
       "join_condition": "study_abroad_major.id = study_abroad_document.study_abroad_major_id",
       "type": "many_to_one",
-      "description": "多条文书记录可属于同一专业方向"
+      "description": ""
     }
   ],
   "calculated_fields": {},

@@ -1,21 +1,11 @@
 {
   "table_name": "study_abroad_apply_online_account_info",
   "field_aliases": {
-    "id": [
-      "自增ID",
-      "主键ID"
-    ],
-    "student_id": [
-      "学生ID",
-      "学员ID"
-    ],
     "email": [
       "网申邮箱",
-      "申请邮箱",
-      "邮箱账号"
+      "申请邮箱"
     ],
     "email_pwd": [
-      "邮箱密码",
       "网申邮箱密码"
     ],
     "ucas_account": [
@@ -25,16 +15,6 @@
     "ucas_pwd": [
       "UCAS密码",
       "UCAS账户密码"
-    ],
-    "del": [
-      "是否删除",
-      "删除状态"
-    ],
-    "create_time": [
-      "录入时间"
-    ],
-    "update_time": [
-      "修改时间"
     ]
   },
   "field_enums": {},
@@ -44,7 +24,7 @@
       "target_table": "study_abroad_planning_info",
       "join_condition": "study_abroad_apply_online_account_info.student_id = study_abroad_planning_info.student_id AND study_abroad_planning_info.del = 0",
       "type": "many_to_one",
-      "description": "多个网申账户信息记录可关联同一个学生的留学规划信息，通常通过 student_id 关联",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -52,7 +32,7 @@
       "target_table": "edu_student",
       "join_condition": "study_abroad_apply_online_account_info.student_id = edu_student.id",
       "type": "many_to_one",
-      "description": "多个留学网申账户信息可关联同一个学生基础信息",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -60,7 +40,7 @@
       "target_table": "study_abroad_apply_online_info",
       "join_condition": "study_abroad_apply_online_account_info.student_id = study_abroad_apply_online_info.student_id AND study_abroad_apply_online_info.del = 0",
       "type": "one_to_many",
-      "description": "一个学生的网申账户信息可对应多条网申记录",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -68,7 +48,7 @@
       "target_table": "study_abroad_apply_online_person_info",
       "join_condition": "study_abroad_apply_online_account_info.student_id = study_abroad_apply_online_person_info.student_id AND study_abroad_apply_online_person_info.del = 0",
       "type": "one_to_one",
-      "description": "一个学生的网申账户信息可关联一条网申个人信息",
+      "description": "",
       "business_rule": ""
     }
   ],

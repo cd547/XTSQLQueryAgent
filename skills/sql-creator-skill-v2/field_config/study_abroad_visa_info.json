@@ -23,7 +23,7 @@
       "target_table": "study_abroad_planning_info",
       "join_condition": "study_abroad_planning_info.student_id = study_abroad_visa_info.student_id",
       "type": "many_to_one",
-      "description": "多条签证信息可属于同一学生"
+      "description": ""
     }
   ],
   "calculated_fields": {},

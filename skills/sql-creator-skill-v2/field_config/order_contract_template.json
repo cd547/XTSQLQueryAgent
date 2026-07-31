@@ -1,7 +1,12 @@
 {
   "table_name": "order_contract_template",
   "field_aliases": {},
-  "field_enums": {},
+  "field_enums": {
+    "type":{
+      "1": "普通",
+      "2": "补充协议"
+    }
+  },
   "virtual_associations": [
     {
       "name": "关联行政事业部",

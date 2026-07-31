@@ -8,7 +8,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = admin_campus_rel.admin_user_id",
       "type": "one_to_one",
-      "description": "1条员工-业务校区关系表信息对应一个用户",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -16,7 +16,7 @@
       "target_table": "edu_campus",
       "join_condition": "edu_campus.simple = admin_campus_rel.campus_value",
       "type": "one_to_one",
-      "description": "1条员工-业务校区关系表信息对应一个业务校区",
+      "description": "",
       "business_rule": ""
     }
   ],

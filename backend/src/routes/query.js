@@ -5,11 +5,11 @@ import { fileURLToPath } from 'url';
 import crypto from 'crypto';
 import { getDb } from '../db/sqlite.js';
 import { getConfig, getLlmConfig } from '../services/config.js';
-import { authRequired, sessionBelongsToUser } from '../services/auth.js';
+import { authRequired, adminRequired, sessionBelongsToUser } from '../services/auth.js';
 import { logger } from '../logger.js';
 import { generateSQLWithLangChainStreamGen_BAK, loadSkillMd, getLastMessages, loadMessagesFromDb, clearSessionRegistry } from '../services/llm.js';
 import { validateReadOnlySql } from '../services/sqlValidator.js';
-import { getPool } from '../services/mysqlPool.js';
+import { poolQuery } from '../services/mysqlPool.js';
 import { config } from '../config.js';
 
 // /execute 端点：只允许查询，不允许 EXPLAIN
@@ -210,8 +210,15 @@ router.get('/version', async (req, res) => {
 
 // 注意：此接口前端未调用（前端统一通过 /query/messages/:sessionId 获取消息历史）。
 // 保留仅作开发调试用途；返回的是 getLastMessages() 的进程级全局缓存，
-// 任何登录用户调用都可能拿到最后一个提问者的消息内容，请勿在生产环境对外开放。
-router.get('/messages', async (req, res) => {
+// 任何登录用户调用都可能拿到最后一个提问者的消息内容。
+// 双闸门保护：生产环境直接 404 屏蔽；非生产环境额外要求 admin 角色。
+const debugMessagesGate = (req, res, next) => {
+  if (process.env.NODE_ENV === 'production') {
+    return res.status(404).json({ success: false, message: 'Not Found' });
+  }
+  next();
+};
+router.get('/messages', debugMessagesGate, adminRequired, async (req, res) => {
   const messages = getLastMessages();
   if (messages) {
     res.json({
@@ -376,6 +383,11 @@ router.post('/generate', async (req, res) => {
         let totalPromptTokens = 0;
         let totalCompletionTokens = 0;
         let totalTokens = 0;
+        // ★ 防止 happy path 落库后 catch 块重复插入 partial（流中断 partial 保存时会检查此标志）
+        let messageSaved = false;
+        // ★ 跟踪当前 chunk 的 round，中断时 partial 落库需要正确的 round 用于前端轮次轴分组
+        //   2026-07-29 修复：之前漏写 round 字段，partial 消息 round=0 与第一轮日志混淆
+        let lastRound = 0;
         // ★ request_user_choice 弹窗请求：捕获 llm.js yield done 中的事件字段
         // 用于穿透到 SSE doneData，驱动前端 UserChoiceDialog
         let userChoiceRequestFromStream = null;
@@ -383,19 +395,25 @@ router.post('/generate', async (req, res) => {
         for await (const chunk of generator) {
           if (abortController.signal.aborted) break;
 
+          // 统一更新 lastRound：所有 chunk 都来自 llm.js:1112 计算的 currentRound
+          // 在这里集中处理一次，避免每个 chunk 类型分支都漏写
+          if (typeof chunk.round === 'number') {
+            lastRound = chunk.round;
+          }
+
           if (chunk.type === 'chunk') {
             fullContent += chunk.content;
-            res.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk.content })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk.content, round: chunk.round || 0 })}\n\n`);
           } else if (chunk.type === 'usage') {
             totalPromptTokens += chunk.usage.prompt_tokens;
             totalCompletionTokens += chunk.usage.completion_tokens;
             totalTokens += chunk.usage.total_tokens;
-            // 每轮API调用都保存token记录
+            // 每轮API调用都保存token记录（带 round 字段）
             if (sessionId) {
               try {
                 const db = getDb();
-                db.prepare('INSERT INTO messages (session_id, role, content, prompt_tokens, completion_tokens, total_tokens) VALUES (?, ?, ?, ?, ?, ?)')
-                  .run(sessionId, 'usage', `Round token: ${chunk.usage.total_tokens} (prompt: ${chunk.usage.prompt_tokens}, completion: ${chunk.usage.completion_tokens})`, chunk.usage.prompt_tokens, chunk.usage.completion_tokens, chunk.usage.total_tokens);
+                db.prepare('INSERT INTO messages (session_id, role, content, prompt_tokens, completion_tokens, total_tokens, round) VALUES (?, ?, ?, ?, ?, ?, ?)')
+                  .run(sessionId, 'usage', `Round token: ${chunk.usage.total_tokens} (prompt: ${chunk.usage.prompt_tokens}, completion: ${chunk.usage.completion_tokens})`, chunk.usage.prompt_tokens, chunk.usage.completion_tokens, chunk.usage.total_tokens, chunk.round || 0);
               } catch (e) {
                 logger.error('保存usage失败', { error: e.message });
               }
@@ -403,37 +421,37 @@ router.post('/generate', async (req, res) => {
           } else if (chunk.type === 'LLM' || chunk.type === 'tool' || chunk.type === 'tool_return') {
             const logContent = chunk.log || '';
             allLogs.push(logContent);
-            res.write(`data: ${JSON.stringify({ type: chunk.type, log: logContent })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: chunk.type, log: logContent, round: chunk.round || 0 })}\n\n`);
 
-            // 实时保存每条日志到数据库
+            // 实时保存每条日志到数据库（带 round 字段，用于历史回显的"轮次轴"展示）
             if (sessionId && logContent) {
               try {
                 const db = getDb();
-                db.prepare('INSERT INTO messages (session_id, role, content, sql, results) VALUES (?, ?, ?, ?, ?)')
-                  .run(sessionId, chunk.type, logContent, '', '');
+                db.prepare('INSERT INTO messages (session_id, role, content, sql, results, round) VALUES (?, ?, ?, ?, ?, ?)')
+                  .run(sessionId, chunk.type, logContent, '', '', chunk.round || 0);
               } catch (e) {
                 logger.error('保存单条日志失败', { error: e.message });
               }
             }
           } else if (chunk.type === 'reasoning_chunk') {
             // 实时流式思考过程：只透传给前端，不入 DB，不累计到 fullContent
-            res.write(`data: ${JSON.stringify({ type: 'reasoning_chunk', content: chunk.content })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: 'reasoning_chunk', content: chunk.content, round: chunk.round || 0 })}\n\n`);
           } else if (chunk.type === 'message_final') {
             // 后处理：剥离 LLM 误倒进 content 的 thinking 后，更新前端 assistant 消息
-            res.write(`data: ${JSON.stringify({ type: 'message_final', content: chunk.content, extraThinking: chunk.extraThinking })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: 'message_final', content: chunk.content, extraThinking: chunk.extraThinking, round: chunk.round || 0 })}\n\n`);
           } else if (chunk.type === 'reasoning_done') {
             // 思考过程结束：单条入 DB（历史回显用），不传给 UI（UI 已通过 reasoning_chunk 实时显示）
             if (sessionId && chunk.content) {
               try {
                 const db = getDb();
-                db.prepare('INSERT INTO messages (session_id, role, content, sql, results) VALUES (?, ?, ?, ?, ?)')
-                  .run(sessionId, 'LLM', chunk.content, '', '');
+                db.prepare('INSERT INTO messages (session_id, role, content, sql, results, round) VALUES (?, ?, ?, ?, ?, ?)')
+                  .run(sessionId, 'LLM', chunk.content, '', '', chunk.round || 0);
               } catch (e) {
                 logger.error('保存reasoning失败', { error: e.message });
               }
             }
           } else if (chunk.type === 'error') {
-            res.write(`data: ${JSON.stringify({ type: 'error', content: chunk.content })}\n\n`);
+            res.write(`data: ${JSON.stringify({ type: 'error', content: chunk.content, round: chunk.round || 0 })}\n\n`);
           } else if (chunk.type === 'done') {
             sql = chunk.sql || '';
             message = chunk.message || '';
@@ -471,12 +489,23 @@ logger.info('Stream done, sending final result', { sql: sql?.substring(0, 50), m
         const elapsedMs = Date.now() - requestStartTime;
 
         // 保存最终消息到数据库（包含token统计与耗时）
-        const contentForDb = fullContent || message;
+        // ★ Bug A 修复（2026-07-29）：abort 场景下允许空内容落库
+        //   之前 fullContent='' 且 message='' 时整段 INSERT 被跳过（line 484 原条件 `if (sessionId && contentForDb)`），
+        //   导致"LLM 还在 thinking 阶段就被用户中断"的消息彻底丢失——既无记录也无 interrupted 标记。
+        //   现在：正常完成保持原行为（空内容不存，避免噪音）；中断场景补占位符 '(已中断)' 让消息入库。
+        const wasInterrupted = abortController.signal.aborted ? 1 : 0;
+        let contentForDb = fullContent || message;
+        if (wasInterrupted && !contentForDb) {
+          contentForDb = '(已中断)';  // 占位符；前端 ChatMessage badge 已显示"⚠ 已中断"
+        }
         if (sessionId && contentForDb) {
           try {
             const db = getDb();
-            db.prepare('INSERT INTO messages (session_id, role, content, sql, results, prompt_tokens, completion_tokens, total_tokens, elapsed_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)')
-              .run(sessionId, 'assistant', contentForDb, sql || '', '', totalPromptTokens, totalCompletionTokens, totalTokens, elapsedMs);
+            // ★ 如果 abortController 已触发（客户端断连 / 超时），happy path 也会走到这里（for 循环 break 后自然退出 try）
+            //   此时把 interrupted 标为 1，前端可显示"已中断"
+            db.prepare('INSERT INTO messages (session_id, role, content, sql, results, prompt_tokens, completion_tokens, total_tokens, elapsed_ms, round, interrupted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+              .run(sessionId, 'assistant', contentForDb, sql || '', '', totalPromptTokens, totalCompletionTokens, totalTokens, elapsedMs, lastRound, wasInterrupted);
+            messageSaved = true;  // ★ 标记 happy path 已落库,catch 块不再重复插入
           } catch (e) {
             logger.error('保存最终消息失败', { error: e.message });
           }
@@ -526,8 +555,45 @@ logger.info('Stream done, sending final result', { sql: sql?.substring(0, 50), m
       } catch (error) {
         streamCompleted = true; clearTimeout(overallTimer);
         logger.error('Stream query failed', { error: error.message, stack: error.stack });
+
+        // ★ 修复流中断时 partial 不落库的 bug（2026-07-29）：
+        //   原代码只写 error 事件，已生成的 fullContent / 已消耗的 token 全部丢失。
+        //   现在在 catch 块里补一次 partial 落库（仅中断/超时场景；LLM 真实错误不保存 partial）。
+        //   三个条件：① 客户端主动中断或超时（abortController.signal.aborted）
+        //             ② happy path 还没成功落库（!messageSaved）
+        //             ③ 有 sessionId
+        //   ★ Bug A 修复：去掉 fullContent 非空要求；中断场景即使 LLM 一字未吐也落库（用占位符）
+        const isAbort = abortController.signal.aborted
+          || error.name === 'AbortError'
+          || /aborted|abort|timeout/i.test(error.message || '');
+        if (isAbort && !messageSaved && sessionId) {
+          try {
+            const db = getDb();
+            const elapsedMs = Date.now() - requestStartTime;
+            // ★ Bug A：空内容也落库，用占位符让前端能识别"已中断但无内容"
+            const contentForDb = fullContent || message || '(已中断)';
+            // 1) 写入 partial 消息，标记 interrupted=1，round=lastRound（前端按 round 分组）
+            db.prepare('INSERT INTO messages (session_id, role, content, sql, results, prompt_tokens, completion_tokens, total_tokens, elapsed_ms, round, interrupted) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)')
+              .run(sessionId, 'assistant', contentForDb, sql || '', '', totalPromptTokens, totalCompletionTokens, totalTokens, elapsedMs, lastRound, 1);
+            messageSaved = true;
+            // 2) 累计 token 到 session（不管中断与否，LLM token 已消耗）
+            if (totalTokens > 0) {
+              const current = db.prepare('SELECT total_tokens FROM sessions WHERE id = ?').get(sessionId);
+              const newTotal = (current?.total_tokens || 0) + totalTokens;
+              db.prepare('UPDATE sessions SET total_tokens = ? WHERE id = ?').run(newTotal, sessionId);
+            }
+            logger.info('Partial assistant message saved (interrupted)', {
+              sessionId, contentLength: fullContent.length, totalTokens, elapsedMs, round: lastRound,
+              isEmptyContent: !fullContent && !message  // ★ 标记空内容场景,便于排错
+            });
+          } catch (saveErr) {
+            logger.error('保存中断 partial 消息失败', { error: saveErr.message });
+          }
+        }
+
         if (!res.writableEnded) {
-          res.write(`data: ${JSON.stringify({ type: 'error', content: error.message })}\n\n`);
+          // 把 interrupted 标记也透传给前端，前端可选择性显示"已中断"提示
+          res.write(`data: ${JSON.stringify({ type: 'error', content: error.message, interrupted: isAbort })}\n\n`);
         }
       }
 
@@ -654,7 +720,7 @@ router.post('/execute', async (req, res) => {
     // 不再静默追加 LIMIT 1000：会破坏含 LIMIT 的复杂查询、UNION 也不会被正确处理。
     // 改为在应用层做显示上限，超过则截断并标记 truncated。
     const execSql = sqlCheck.cleaned;
-    const [allRows] = await (await getPool()).query(execSql);
+    const [allRows] = await poolQuery(execSql);
 
     // 应用层显示上限：默认 1000 行（保留与旧实现一致的默认值）
     const MAX_DISPLAY_ROWS = 1000;
@@ -670,10 +736,18 @@ router.post('/execute', async (req, res) => {
 
     if (sessionId) {
       const db = getDb();
+      // ★ results 改为 NULL（防御性修复，2026-07-29）
+      // 原代码:JSON.stringify(allRows) 把全量结果集塞进 messages.results
+      //   → 单次大查询(SELECT * FROM huge_table)可能写数百 MB 到 SQLite
+      //   → SELECT * FROM messages 会把这些巨型 JSON 全量回读(session.js:83 无 LIMIT)
+      //   → 前端仅做 JSON 原样展示(App.jsx:525),不解析 results 字段
+      //   → 当前前端从不传 sessionId(仅"复制并执行/查询"按钮触发 /execute)
+      //     所以此分支目前为死代码,但保留它作为未来 chat 流调 /execute 的安全兜底
+      // 存 NULL 的收益:保留 SQL 历史(用户能查看历史查询) + 彻底杜绝 DB 体积爆炸
       db.prepare(`
         INSERT INTO messages (session_id, role, sql, results)
-        VALUES (?, 'user', ?, ?)
-      `).run(sessionId, sql, JSON.stringify(allRows));
+        VALUES (?, 'user', ?, NULL)
+      `).run(sessionId, sql);
       db.prepare(`
         INSERT INTO messages (session_id, role, results)
         VALUES (?, 'assistant', ?)
@@ -722,7 +796,7 @@ router.post('/explain', async (req, res) => {
         ? `EXPLAIN ${cleanSql}`  // 使用标准表格格式
         : `EXPLAIN ${cleanSql}`;
     logger.info('EXPLAIN executing', { cleanSql, explainSql });
-    const [rows] = await (await getPool()).query(explainSql);
+    const [rows] = await poolQuery(explainSql);
 
     res.json({ results: rows, rowCount: rows.length });
   } catch (error) {
@@ -739,6 +813,20 @@ router.post('/explain-analyze', async (req, res) => {
   if (!sql || !explainResults || !Array.isArray(explainResults)) {
     return res.status(400).json({ error: '请提供 SQL 语句和 EXPLAIN 结果', rowCount: 0 });
   }
+
+  // ★ 必须把 try 与 catch 共享的所有可变状态声明在 try 之外（路由函数级作用域）。
+  //   原因：try / catch 在 ES2015+ 是不同块作用域，try 内的 `let` 在 catch 块里
+  //   处于 TDZ（暂时性死区），访问会抛 ReferenceError → 同步 throw 出 async 路由
+  //   → Express 4 不接 → unhandledRejection → 进程可能崩溃（Node 15+ 默认行为）。
+  //   历史上至少踩过两次坑（F4 之前 / F4 之后），必须一次把所有共享变量搬出来：
+  //   - overallTimer: catch 用 clearTimeout 清理
+  //   - fullContent: catch 打日志需要知道中断时已收到多少字符
+  //   - abortController: catch 在非 abort 错误时需要主动 abort + res.write 错误帧
+  //   - streamCompleted: setTimeout 回调和 res.on('close') 都会读它
+  let streamCompleted = false;
+  let overallTimer = null;
+  let abortController = null;
+  let fullContent = '';
 
   try {
     const config = getLlmConfig();
@@ -766,7 +854,6 @@ ${JSON.stringify(explainResults, null, 2)}
 
 请用中文回复，结构化输出分析结果。`;
 
-    let streamCompleted = false;
     // 共享函数：同步校验 LLM provider，避免在 flushHeaders() 之后 res.json 触发 ERR_HTTP_HEADERS_SENT
     const validateLlmProvider = (p) => {
       if (p === 'deepseek' || p === 'openai') return { valid: true, provider: p };
@@ -789,7 +876,7 @@ ${JSON.stringify(explainResults, null, 2)}
     req.socket.setNoDelay(true);
 
     // 客户端断连保护（NEW-2）：复用 /generate 的 abort 模式
-    const abortController = new AbortController();
+    abortController = new AbortController();
     res.on('close', () => {
       if (!streamCompleted) {
         logger.info('EXPLAIN analyze: client disconnected, aborting LLM request');
@@ -799,7 +886,7 @@ ${JSON.stringify(explainResults, null, 2)}
 
     // 整体 SSE 超时（5min）—— 防御 LLM 流异常长时间挂起（与 /generate 路由一致）
     const OVERALL_TIMEOUT_MS = 5 * 60_000;
-    const overallTimer = setTimeout(() => {
+    overallTimer = setTimeout(() => {
       if (!streamCompleted) {
         logger.warn('EXPLAIN analyze overall timeout, aborting LLM request', { OVERALL_TIMEOUT_MS });
         abortController.abort(new Error(`Overall timeout after ${OVERALL_TIMEOUT_MS}ms`));
@@ -845,7 +932,6 @@ ${JSON.stringify(explainResults, null, 2)}
 
     const reader = response.body.getReader();
     const decoder = new TextDecoder();
-    let fullContent = '';
 
     while (true) {
       if (abortController.signal.aborted) {
@@ -888,13 +974,16 @@ ${JSON.stringify(explainResults, null, 2)}
       res.end();
     }
   } catch (error) {
-    clearTimeout(overallTimer);
+    // catch 块访问的所有变量都已在 try 之外声明，TDZ 安全
+    if (overallTimer) clearTimeout(overallTimer);
     if (error.name === 'AbortError') {
-      logger.info('EXPLAIN analyze: aborted by client');
+      // 2026-07-29 顺手加诊断日志：/explain-analyze 不落库（分析结果仅通过 SSE 返回给客户端），
+      //   但记录下中断时已收到多少字符，方便排查"分析结果不完整"类工单
+      logger.info('EXPLAIN analyze: aborted by client', { partialLength: fullContent.length });
     } else {
       logger.error('EXPLAIN analyze failed', { error: error.message });
-      // abortController / overallTimer 可能在 abortController 声明前抛错，用 typeof 守卫
-      if (typeof abortController !== 'undefined' && !abortController.signal.aborted && !res.writableEnded) {
+      // abortController 在某些早抛错路径下可能仍未赋值（null），用 truthy 守卫
+      if (abortController && !abortController.signal.aborted && !res.writableEnded) {
         try {
           res.write(`data: ${JSON.stringify({ type: 'error', content: error.message })}\n\n`);
           res.end();

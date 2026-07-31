@@ -83,17 +83,14 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = admin_user_channel.admin_user_id",
       "type": "many_to_one",
-      "description": "",
-      "business_rule": "DDL中存在真实外键: FOREIGN KEY (admin_user_id) REFERENCES admin_user(id)"
+      "description": ""    
     },
     {
       "name": "关联协作人",
       "target_table": "admin_user",
       "join_condition": "admin_user.id = admin_user_channel.responsible_admin_user_id",
       "type": "many_to_one",
-      "description": "",
-      "business_rule": "DDL中存在真实外键: FOREIGN KEY (responsible_admin_user_id) REFERENCES admin_user(id)"
-    },
+      "description": ""    },
     {
       "name": "关联维护人",
       "target_table": "admin_user",

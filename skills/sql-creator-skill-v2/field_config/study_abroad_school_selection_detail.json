@@ -16,14 +16,14 @@
       "target_table": "study_abroad_school_selection",
       "join_condition": "study_abroad_school_selection.id = study_abroad_school_selection_detail.school_selection_id",
       "type": "many_to_one",
-      "description": "多条明细记录属于同一份定校书PDF"
+      "description": ""
     },
     {
       "name": "关联定校书",
       "target_table": "study_abroad_proofread_book",
       "join_condition": "study_abroad_proofread_book.id = study_abroad_school_selection_detail.book_id",
       "type": "many_to_one",
-      "description": "每条明细关联一条定校书"
+      "description": ""
     },
     {
       "name": "留学生成定校书pdf明细表",

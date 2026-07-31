@@ -24,7 +24,16 @@ function ConfigPanel() {
       if (data.provider) {
         setLlmConfig({
           provider: data.provider,
-          apiKey: data.apiKey || '',
+          // ★ F3 修复：用后端返回的掩码占位，绝不把明文 key 写进 React state
+          //   旧的 apiKey: data.apiKey || '' 写法把明文放在 JS 内存里，
+          //   React DevTools / 浏览器扩展 / XSS 都能读到 → 等于把鉴权升级
+          //   后的 LLM 密钥白白下发给前端，前功尽弃。
+          apiKey: data.maskedKey || '',
+          // ★ 新增：apiKeyTouched 标记用户是否真实改动过。
+          //   saveLlm 仅在 touched=true 时才把 apiKey 提交给后端，
+          //   这样既支持"不改 key 也保存 model"的场景，又防止"保存未改动表单"
+          //   误传空字符串（虽然后端已兜底保留旧值，但前端不该发脏数据）。
+          apiKeyTouched: false,
           model: data.model || ''
         });
         if (data.hasApiKey) {
@@ -52,7 +61,7 @@ function ConfigPanel() {
 
   const handleApiKeyChange = (e) => {
     const apiKey = e.target.value;
-    setLlmConfig({ ...llmConfig, apiKey, model: '' });
+    setLlmConfig({ ...llmConfig, apiKey, apiKeyTouched: true, model: '' });
   };
   
   const testDb = async () => {
@@ -76,10 +85,28 @@ function ConfigPanel() {
   const saveLlm = async () => {
     setTestingLlm(true);
     try {
-      const data = await api.saveLlMConfig({ ...llmConfig, provider: 'deepseek' });
+      // ★ F3 修复：仅在用户真实改动过 apiKey 时才提交。
+      //   旧逻辑把 llmConfig.apiKey（可能为空字符串）无条件提交，
+      //   会导致"打开页面 → 不动任何东西 → 点保存"反而把 DB 里的 key 覆盖成空。
+      //   现在前端过滤 + 后端兜底（POST /config/llm 收到空也保留旧值）双保险。
+      const payload = { provider: 'deepseek', model: llmConfig.model };
+      if (llmConfig.apiKeyTouched && llmConfig.apiKey) {
+        payload.apiKey = llmConfig.apiKey;
+      }
+      const data = await api.saveLlMConfig(payload);
       if (data.success) {
         message.success('保存成功');
-        if (llmConfig.apiKey) {
+        // 重新拉取最新掩码，更新 UI；user 即使输入了新 key 也会被掩码覆盖
+        const fresh = await api.getLlMConfig();
+        if (fresh.provider) {
+          setLlmConfig({
+            provider: fresh.provider,
+            apiKey: fresh.maskedKey || '',
+            apiKeyTouched: false,
+            model: fresh.model || ''
+          });
+        }
+        if (fresh.hasApiKey) {
           fetchModels();
         }
       } else {

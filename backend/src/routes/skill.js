@@ -1,12 +1,13 @@
 import { Router } from 'express';
 import fs from 'fs';
+import crypto from 'crypto';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import { getDb } from '../db/sqlite.js';
 import { getConfig } from '../services/config.js';
-import { authRequired } from '../services/auth.js';
+import { authRequired, adminRequired } from '../services/auth.js';
 import { logger } from '../logger.js';
-import { getPool } from '../services/mysqlPool.js';
+import { poolQuery } from '../services/mysqlPool.js';
 import { config } from '../config.js';
 import { createSkillTreeCache } from '../services/skillCache.js';
 import { addTableToDomains as addTableToDomainsImpl } from '../services/skillDomains.js';
@@ -94,7 +95,7 @@ function buildTree(dirPath, relativePath = '') {
   });
 }
 
-router.get('/debug', (req, res) => {
+router.get('/debug', adminRequired, (req, res) => {
   res.json({
     __dirname,
     projectRoot,
@@ -157,7 +158,7 @@ router.get('/domains', (req, res) => {
   }
 });
 
-router.post('/add-tag', (req, res) => {
+router.post('/add-tag', adminRequired, (req, res) => {
   const { tableName, tag } = req.body;
   
   if (!tableName) {
@@ -224,7 +225,7 @@ router.post('/add-tag', (req, res) => {
   }
 });
 
-router.post('/save', (req, res) => {
+router.post('/save', adminRequired, (req, res) => {
   const { path: filePath, content } = req.body;
   if (!filePath || content === undefined) {
     return res.status(400).json({ success: false, message: 'Missing path or content parameter' });
@@ -312,22 +313,47 @@ router.post('/save', (req, res) => {
   }
 });
 
-// 缓存机制
+// 缓存机制（md5 感知版，2026-07-29 修复）
+// 历史问题：旧版 loadTableIndex 用"永不过期"的进程级缓存，但 /add-tag 和 /save 路由
+//   直接 fs.writeFileSync 写文件、不触碰 tableIndexCache → 任何后续 loadTableIndex
+//   仍返回旧缓存 → /create-table-files 用旧缓存整体回写时，会把别人刚加的 tag 静默抹掉。
+// 修复策略：每次 load 都读盘 + 算 md5，与缓存 md5 对比；不同则重载。
+//   → 任何写路径（/add-tag、/save、外部手动编辑）都自动失效，无需路由层手动 invalidate。
+// 参考 query.js:39-81 loadSkillV2 的同款实现，保持两套缓存行为一致。
 let tableIndexCache = null;
+let tableIndexCacheMd5 = '';
 
 function loadTableIndex() {
-  if (tableIndexCache) return tableIndexCache;
   const tableIndexPath = path.join(SKILL_V2_PATH, 'table_index.json');
-  if (fs.existsSync(tableIndexPath)) {
-    tableIndexCache = JSON.parse(fs.readFileSync(tableIndexPath, 'utf-8'));
+  if (!fs.existsSync(tableIndexPath)) {
+    return tableIndexCache; // 文件不存在时返回上次缓存（保持旧行为兼容）
   }
-  return tableIndexCache;
+
+  const content = fs.readFileSync(tableIndexPath, 'utf-8');
+  const md5 = crypto.createHash('md5').update(content).digest('hex');
+
+  // md5 未变 → 直接返回缓存（性能路径，常见情况）
+  if (tableIndexCache && tableIndexCacheMd5 === md5) {
+    return tableIndexCache;
+  }
+
+  // md5 变了（或首次加载）→ 重新解析
+  try {
+    tableIndexCache = JSON.parse(content);
+    tableIndexCacheMd5 = md5;
+    return tableIndexCache;
+  } catch (e) {
+    logger.error('loadTableIndex: JSON.parse failed', { error: e.message });
+    return tableIndexCache; // 解析失败时返回旧缓存，宁可用旧数据也不让路由崩
+  }
 }
 
 function saveTableIndex(data) {
   const tableIndexPath = path.join(SKILL_V2_PATH, 'table_index.json');
   fs.writeFileSync(tableIndexPath, JSON.stringify(data, null, 2), 'utf-8');
-  tableIndexCache = data; // 更新缓存
+  // ★ 不再赋 tableIndexCache —— 旧版这里会写"data"对象到缓存，但 data 可能已被调用方
+  //   改过、且与磁盘上最新内容（被其他路由/进程修改过）不一致。让下次 loadTableIndex
+  //   通过 md5 对比自动感知，行为更稳健。
 }
 
 function extractRelatedTables(ddl) {
@@ -393,7 +419,7 @@ router.post('/fetch-ddl', async (req, res) => {
     }
 
     // 复用连接池，不再每次新建 TCP 连接
-    const [rows] = await (await getPool()).query(
+    const [rows] = await poolQuery(
       `SHOW CREATE TABLE \`${safeTableName}\``
     );
 
@@ -422,7 +448,7 @@ function addTableToDomains(tableName, domainIds) {
   return addTableToDomainsImpl(tableName, domainIds, SKILL_V2_PATH, isPathSafe, getDb);
 }
 
-router.post('/create-table-files', (req, res) => {
+router.post('/create-table-files', adminRequired, (req, res) => {
   const { tableName, ddl, description, domains } = req.body;
   if (!tableName || !ddl) {
     return res.status(400).json({ success: false, message: 'Missing tableName or ddl' });

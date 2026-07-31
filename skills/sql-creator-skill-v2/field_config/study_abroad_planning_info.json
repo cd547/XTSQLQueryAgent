@@ -46,28 +46,28 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = study_abroad_planning_info.course_consultant_id",
       "type": "many_to_one",
-      "description": "多条规划信息可由同一课程顾问负责"
+      "description": ""
     },
     {
       "name": "关联规划师",
       "target_table": "admin_user",
       "join_condition": "admin_user.id = study_abroad_planning_info.planner_id",
       "type": "many_to_one",
-      "description": "多条规划信息可分配给同一规划师"
+      "description": ""
     },
     {
       "name": "关联转案老师",
       "target_table": "admin_user",
       "join_condition": "admin_user.id = study_abroad_planning_info.transfer_teacher_id",
       "type": "many_to_one",
-      "description": "多条规划信息可由同一转案老师操作"
+      "description": ""
     },
     {
       "name": "关联专业方向",
       "target_table": "study_abroad_major",
       "join_condition": "study_abroad_major.id = study_abroad_planning_info.study_abroad_major_id",
       "type": "many_to_one",
-      "description": "多条规划信息可属于同一专业方向"
+      "description": ""
     },
     {
       "name": "关联订单",
