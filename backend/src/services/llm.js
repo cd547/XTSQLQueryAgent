@@ -354,9 +354,9 @@ function getOrCreateRegistry(sessionId) {
       getDomainIndexCalled: false,
       slicedDomains: new Set(), // 已通过 get_sliced_index 加载过的域 ID
       tableSchema: new Set(),
-      // get_table_ddl 注册表：v4 起改为 Set<tableName>,只按表名去重
-      // 关联/外键信息应通过 get_table_schema (virtual_associations) 获取,不应重复查 ddl 补充
-      tableDdl: new Set(),
+      // F10: get_table_ddl 已合并到 get_table_schema（v4 起 DDL 物理结构 +
+      //   索引/外键 全部并入 schema 的 fields 子结构），工具本身从 registry
+      //   中移除。LLM 只需调用一次 get_table_schema 即可获得物理+语义全量信息。
       termConfirmed: new Set(),
       // request_user_choice 注册表：key = id (uc_xxx) —— 记录已问过哪些问题
       // 用于 checklist 显示 + 拦截完全相同 (question, options) 组合的重复调用（Q-09 = B）
@@ -384,7 +384,7 @@ function getOrCreateRegistry(sessionId) {
  *
  * 调用时机：每次新 user 消息到来时（即 generateSQLWithLangChainStreamGen_BAK 入口）。
  * 不重置会话级持久状态（getDomainIndexCalled / slicedDomains / tableSchema /
- * tableDdl / termConfirmed / userChoiceAsked / getTablesCalled），因为这些
+ * termConfirmed / userChoiceAsked / getTablesCalled），因为这些
  * 跟踪的是"已加载到 history 的数据"，数据本身跨问题仍然有效，重取会浪费 token。
  *
  * 历史 Bug 2026-07-28：未做此重置时，Q1 校验通过的"✓passed"会残留在 Q2/Q3 的
@@ -409,14 +409,12 @@ function buildChecklist(reg) {
   const domainIndexFlag = reg.getDomainIndexCalled ? "已调用" : "未调用";
   const slicedDomainsList = [...reg.slicedDomains].sort().join(", ") || "无";
   const schemaList = [...reg.tableSchema].sort().join(", ") || "无";
-  const ddlList = [...reg.tableDdl].sort().join(", ") || "无";
   const tablesFlag = reg.getTablesCalled ? "已调用" : "未调用";
   return [
     `- get_domain_index: ${domainIndexFlag}`,
     `- get_sliced_index 已覆盖的域: ${slicedDomainsList}`,
     `- get_tables: ${tablesFlag}`,
-    `- 已获取 field_config 的表: ${schemaList}`,
-    `- 已获取 DDL 的表: ${ddlList}`,
+    `- 已获取 schema（含 DDL/索引/外键）的表: ${schemaList}`,
   ].join("\n");
 }
 
@@ -438,10 +436,6 @@ function buildToolCallChecklistMessage(reg) {
     parts.push(`get_sliced_index:[${[...reg.slicedDomains].sort().join(",")}]`);
   if (reg.tableSchema.size > 0)
     parts.push(`get_table_schema:[${[...reg.tableSchema].sort().join(",")}]`);
-  if (reg.tableDdl.size > 0) {
-    // v4: 不再区分 short,只列已查询表名
-    parts.push(`get_table_ddl:[${[...reg.tableDdl].sort().join(",")}]`);
-  }
   if (reg.termConfirmed.size > 0) {
     const items = [...reg.termConfirmed].map((s) => s.replace("::", "@"));
     parts.push(`request_tag_confirmation:[${items.join(",")}]`);
@@ -576,37 +570,6 @@ function checkAndFilterDuplicateCall(toolName, args, sessionId) {
     return { block: false, args };
   }
 
-  if (toolName === "get_table_ddl") {
-    // v4: 去掉 short 维度,只按表名去重
-    // 关联/外键信息应通过 get_table_schema (virtual_associations) 获取,
-    // 不应通过重复 get_table_ddl 来补充
-    const requested = normalizeTableNames(args.table_names);
-    if (requested.length === 0) return { block: false, args };
-    const dupes = requested.filter((n) => reg.tableDdl.has(n));
-    const fresh = requested.filter((n) => !reg.tableDdl.has(n));
-
-    if (dupes.length === requested.length) {
-      return {
-        block: true,
-        message:
-          `⚠️ 【重复调用已被程序拦截】工具 get_table_ddl 中所有表在本会话中都已被获取过: ${dupes.join(", ")}。\n\n` +
-          `📋 已有信息清单:\n${buildChecklist(reg)}\n\n` +
-          `请直接复用已有信息，禁止重复调用 get_table_ddl。\n` +
-          `如需关联/外键信息，请使用 get_table_schema（其返回的 virtual_associations 含 join_condition）。`,
-      };
-    }
-    if (dupes.length > 0) {
-      return {
-        block: false,
-        args: { ...args, table_names: fresh },
-        notice:
-          `ℹ️ 自动过滤重复表（已在清单中）: ${dupes.join(", ")}。仅对 [${fresh.join(", ")}] 执行 get_table_ddl。\n` +
-          `📋 已有信息清单:\n${buildChecklist(reg)}`,
-      };
-    }
-    return { block: false, args };
-  }
-
   if (toolName === "request_tag_confirmation") {
     const termsRaw = args.term;
     const terms = Array.isArray(termsRaw)
@@ -686,9 +649,6 @@ function recordToolCall(toolName, args, sessionId, overrideId = null) {
     normalizeTableNames(args.table_names).forEach((n) =>
       reg.tableSchema.add(n),
     );
-  } else if (toolName === "get_table_ddl") {
-    // v4: 改为只存表名,不再区分 short
-    normalizeTableNames(args.table_names).forEach((n) => reg.tableDdl.add(n));
   } else if (toolName === "request_tag_confirmation") {
     const termsRaw = args.term;
     const terms = Array.isArray(termsRaw)
@@ -1120,7 +1080,7 @@ export async function* generateSQLWithLangChainStreamGen_BAK(
   // ★ 每次新 user 消息（= 一次 invoke）重置"问题级独立"标志。
   //   validateSqlFields* 属于此范畴：避免上一问题的"✓passed"残留在本问题
   //   的 checklist 里误导 LLM。会话级持久状态（getDomainIndexCalled /
-  //   slicedDomains / tableSchema / tableDdl / termConfirmed / userChoiceAsked）
+  //   slicedDomains / tableSchema / termConfirmed / userChoiceAsked）
   //   保持不变，因为 history 已包含其结果。
   resetPerQuestionRegistryFlags(getOrCreateRegistry(sessionId));
 

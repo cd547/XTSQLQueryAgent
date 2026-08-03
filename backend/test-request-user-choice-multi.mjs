@@ -116,16 +116,18 @@ console.log('=== IT-11  连续 3 轮 user_choice（3 次独立调用）===');
 // ======================================================================
 console.log('\n=== IT-12  user_choice + 业务工具混合（tools 数组位置）===');
 {
-  // request_user_choice 应在 tools[4]（request_tag_confirmation 之后、get_domain_index 之前）
+  // F10: get_table_ddl 已合并到 get_table_schema，索引全部前移 1 位
+  // （get_tables 已被注释，所以数组从 get_table_schema 开始）
   const idx = tools.findIndex(t => t.name === 'request_user_choice');
-  eq('request_user_choice 的 tools 索引', idx, 4);
-  eq('request_user_choice 前面是 request_tag_confirmation', tools[3]?.name, 'request_tag_confirmation');
-  eq('request_user_choice 后面是 get_domain_index', tools[5]?.name, 'get_domain_index');
+  eq('request_user_choice 的 tools 索引', idx, 2);
+  eq('request_user_choice 前面是 request_tag_confirmation', tools[1]?.name, 'request_tag_confirmation');
+  eq('request_user_choice 后面是 get_domain_index', tools[3]?.name, 'get_domain_index');
 
-  // 稳定工具组（index 0-4）顺序应符合 prefix cache 设计
-  const stableGroup = tools.slice(0, 5).map(t => t.name);
-  eq('稳定工具组顺序', stableGroup.join(','),
-    'get_tables,get_table_schema,get_table_ddl,request_tag_confirmation,request_user_choice');
+  // 稳定工具组（index 0-3）顺序应符合 prefix cache 设计
+  // F10: get_table_ddl 已合并到 get_table_schema，工具数量从 7 减为 6
+  const stableGroup = tools.slice(0, 4).map(t => t.name);
+  eq('稳定工具组顺序（合并 DDL 后）', stableGroup.join(','),
+    'get_table_schema,request_tag_confirmation,request_user_choice,get_domain_index');
 }
 
 // ======================================================================
@@ -153,9 +155,10 @@ console.log('\n=== IT-14  同一轮 user_choice + 业务工具 ===');
   truthy('user_choice 返回 markers[0] 是 marker 字符串', uc.markers[0].startsWith('<!--user_choice:'));
   truthy('user_choice 返回 payloads[0].id 与 ids[0] 一致', uc.payloads[0].id === uc.ids[0]);
 
-  // 业务工具（get_table_ddl）不返回结构化对象
+  // 业务工具（get_table_schema 合并 DDL 后）不返回结构化对象
   const allToolNames = tools.map(t => t.name);
-  truthy('get_table_ddl 工具存在', allToolNames.includes('get_table_ddl'));
+  truthy('get_table_schema 工具存在', allToolNames.includes('get_table_schema'));
+  truthy('get_table_ddl 工具已移除', !allToolNames.includes('get_table_ddl'));
   truthy('request_user_choice 工具存在', allToolNames.includes('request_user_choice'));
 }
 

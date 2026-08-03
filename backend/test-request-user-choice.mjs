@@ -135,7 +135,9 @@ console.log('\n=== IT-05  业务工具跨轮持久 ===');
 
   // 同一会话内，调业务工具
   const allTools = tools.map(t => t.name);
-  truthy('get_table_ddl 工具在 tools 中', allTools.includes('get_table_ddl'));
+  // F10: get_table_ddl 已合并到 get_table_schema，不再独立注册
+  truthy('get_table_schema 工具在 tools 中', allTools.includes('get_table_schema'));
+  truthy('get_table_ddl 工具已移除', !allTools.includes('get_table_ddl'));
   truthy('request_user_choice 工具在 tools 中', allTools.includes('request_user_choice'));
 
   // registry.userChoiceAsked 与业务工具独立 —— 通过 id 唯一性验证
@@ -195,9 +197,10 @@ console.log('\n=== IT-08  TURN 1 LLM 流式输出后调工具 ===');
 // ======================================================================
 console.log('\n=== IT-09  工具调用链：user_choice + 业务工具 ===');
 {
-  // LLM 一次调 get_table_ddl + request_user_choice
+  // LLM 一次调 get_table_schema + request_user_choice
   const toolNames = tools.map(t => t.name);
-  ok('get_table_ddl 在 tools 中', toolNames.includes('get_table_ddl'));
+  ok('get_table_schema 在 tools 中', toolNames.includes('get_table_schema'));
+  ok('get_table_ddl 已移除', !toolNames.includes('get_table_ddl'));
   ok('request_user_choice 在 tools 中', toolNames.includes('request_user_choice'));
 
   // 验证：业务工具和 user_choice 工具的 func 返回结构不同
