@@ -16,7 +16,7 @@
       "target_table": "my_user",
       "join_condition": "my_user.id = edu_student_parent.my_user_id",
       "type": "many_to_one",
-      "description": "通过注册用户ID关联用户信息",
+      "description": "",
       "business_rule": ""
     }
   ],

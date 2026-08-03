@@ -2,8 +2,7 @@
   "table_name": "admin_department_children",
   "field_aliases": {
     "department_id": [
-      "一级部门ID",
-      "一级部门id"
+      "一级部门ID"
     ]
   },
   "field_enums": {},
