@@ -813,6 +813,31 @@ function AuthenticatedApp({ user, logout }) {
         // ★ F2 修复：会话切换后版本号已自增，过期回调直接丢弃
         //   否则旧会话的 chunk/log 会继续被写进新会话消息数组
         if (streamRequestIdRef.current !== myStreamVersion) return;
+        // ★ F9 修复：流首事件 meta 携带后端权威 sessionId。
+        //   之前只在 done 事件里取 → 用户主动 stop / 5min OVERALL_TIMEOUT /
+        //   网络断连 三个路径下 done 永远不到达，currentSessionId 持续为 null，
+        //   下一条消息又以 null 调 /generate，后端再建一个新 session → 上下文断裂
+        //   + 数据库多个孤儿 session（每条带一条孤儿 user message）。
+        //   meta 是后端在 flushHeaders 后立即 res.write 的第一个事件，时序可预期。
+        if (data.type === 'meta') {
+          if (data.sessionId && data.sessionId !== currentSessionId) {
+            const newId = data.sessionId;
+            setCurrentSessionId(newId);
+            // 把新 session 插到左侧列表（避免下次刷新才看到）。
+            // 幂等：若已存在（同会话切回/重复 meta）则直接跳过。
+            setSessions(prev => {
+              if (prev.some(s => s.id === newId)) return prev;
+              return [{
+                id: newId,
+                name: '新对话',
+                created_at: new Date().toISOString(),
+                total_tokens: 0
+              }, ...prev];
+            });
+            setSessionsTotal(prev => prev + 1);
+          }
+          return;  // meta 不参与消息体渲染
+        }
         if (data.type === 'chunk') {
           fullContent += data.content;
           setMessages(prev => {
@@ -992,26 +1017,15 @@ function AuthenticatedApp({ user, logout }) {
           if (data.totalTokens) {
             setCurrentTokens(prev => prev + data.totalTokens);
           }
-          // ★ 关键修复：后端 SSE done 事件返回的 sessionId 是权威值。
-          //   场景：用户清空日志后第一次问时前端 currentSessionId=null，
-          //   后端会 auto-create 一个 session；若前端不捕获并回写，
-          //   下次（user_choice 答案/重发）handleSend 还会以 null 调 /generate，
-          //   后端又会 auto-create 一个新 session → 上下文丢失、registry 重置、
-          //   LLM 重新调 get_domain_index/get_sliced_index。
+          // ★ 兜底：done 事件也带 sessionId，做最后一层防御。
+          //   正常路径 meta 已先到，currentSessionId 已被回写，
+          //   这里的 if 短路为 false（React 闭包拿到的是 meta 之前的旧值，
+          //   但 setCurrentSessionId 同值不重渲，setSessions 幂等跳过）。
+          //   唯一会真正生效的场景：后端协议回退到不带 meta 的老版本（不会发生）。
+          // ★ F9 修复：sessions 插列表 + sessionsTotal 自增已搬到 meta 事件，
+          //   done 这里只做 currentSessionId 兜底回写，避免双计。
           if (data.sessionId && data.sessionId !== currentSessionId) {
-            const newId = data.sessionId;
-            setCurrentSessionId(newId);
-            // 把新 session 插到左侧列表（避免下次刷新才看到）
-            setSessions(prev => {
-              if (prev.some(s => s.id === newId)) return prev;
-              return [{
-                id: newId,
-                name: '新对话',
-                created_at: new Date().toISOString(),
-                total_tokens: data.totalTokens || 0
-              }, ...prev];
-            });
-            setSessionsTotal(prev => prev + 1);
+            setCurrentSessionId(data.sessionId);
           }
           // ★ 检测 user_choice_request 弹窗（来自 llm.js 终止分支）
           // v2 链式弹窗：后端 yield 的是数组（1-3 个问题）；兼容旧版单值 fallback

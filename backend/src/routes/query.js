@@ -374,6 +374,13 @@ router.post('/generate', async (req, res) => {
 
       res.flushHeaders();
 
+      // ★ F9 修复：流开始即下发权威 sessionId，避免中断/异常路径下
+      //   前端永远拿不到后端 auto-create 的 sessionId → 下次提问又以 null
+      //   调 /generate → 后端再建一个新 session → 上下文断裂 + 孤儿会话。
+      //   三个失败场景：用户主动 stop / 5min OVERALL_TIMEOUT / 网络断连。
+      //   必须放在 flushHeaders 之后、for-await 之前：保证是流首事件、时序可预期。
+      res.write(`data: ${JSON.stringify({ type: 'meta', sessionId })}\n\n`);
+
       try {
         const generator = generateSQLWithLangChainStreamGen_BAK(question, historyText, abortController.signal, sessionId, req.user.username);
         let fullContent = '';
