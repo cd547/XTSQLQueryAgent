@@ -1680,7 +1680,7 @@ const explainColumns = useMemo(() => explainResults.length > 0
               {activeTabKey === 'chat' ? (
                 messages.length === 0 ? (
                   <div className="xtsql-empty">
-                    <div className="xtsql-empty-icon"><AppIcon size={64} circle /></div>
+                    <div className="xtsql-empty-icon"><AppIcon size={64} style={{ borderRadius: 0 }} /></div>
                     <div className="xtsql-empty-title">开始新对话</div>
                     <div className="xtsql-empty-desc">用自然语言描述你想要的查询，AI 会自动生成 SQL 并执行</div>
                     <div className="xtsql-suggestion-list">

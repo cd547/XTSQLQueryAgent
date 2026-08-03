@@ -17,8 +17,10 @@ function pickSize(size) {
   return SIZES[SIZES.length - 1];
 }
 
-// 用 background-image 而非 <img>，配合 background-size: contain + 110% 缩放
-// 让图片在容器内最大化显示，抵消 PNG 自身的透明 padding
+// 用 background-image 而非 <img>，配合 background-size: 100% 自然尺寸
+// 注意：100% 不放大，PNG 自带的透明 padding 会显示为容器的内边距；
+// 之前 120% 是为了"抵消 padding"强行填满，但在 48px 对话框头像里会溢出圆角容器，
+// 视觉上反而显得不居中。100% 是更稳的默认值，按需通过 prop 临时放大。
 const AppIcon = ({ size = 18, circle = false, className = '', style = {} }) => {
   const srcSize = pickSize(size);
   const radius = circle ? '50%' : '20%';
@@ -33,7 +35,7 @@ const AppIcon = ({ size = 18, circle = false, className = '', style = {} }) => {
         height: size,
         borderRadius: radius,
         backgroundImage: `url(${ICON_MAP[srcSize]})`,
-        backgroundSize: '120%',           // 略微放大抵消 PNG 透明 padding
+        backgroundSize: '100%',            // 改为 100% 自然显示，不强行放大
         backgroundRepeat: 'no-repeat',
         backgroundPosition: 'center',
         verticalAlign: 'middle',
