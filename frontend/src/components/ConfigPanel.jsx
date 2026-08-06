@@ -4,7 +4,7 @@ import * as api from '../api';
 
 function ConfigPanel() {
   const [dbConfig, setDbConfig] = useState({ host: 'localhost', port: 3306, user: 'root', password: '', database: '' });
-  const [llmConfig, setLlmConfig] = useState({ provider: 'deepseek', apiKey: '', model: 'deepseek-chat' });
+  const [llmConfig, setLlmConfig] = useState({ provider: 'deepseek', apiKey: '', model: 'deepseek-chat', apiMode: 'chat_completions' });
   const [agentConfig, setAgentConfig] = useState({ max_tool_calls: '30', timeout_ms: '60000', token_warning_level: '30000' });
   const [testing, setTesting] = useState(false);
   const [testingLlm, setTestingLlm] = useState(false);
@@ -34,7 +34,9 @@ function ConfigPanel() {
           //   这样既支持"不改 key 也保存 model"的场景，又防止"保存未改动表单"
           //   误传空字符串（虽然后端已兜底保留旧值，但前端不该发脏数据）。
           apiKeyTouched: false,
-          model: data.model || ''
+          model: data.model || '',
+          // ★ apiMode：后端 GET 兜底 chat_completions（旧配置兼容）
+          apiMode: data.apiMode || 'chat_completions'
         });
         if (data.hasApiKey) {
           fetchModels();
@@ -89,7 +91,7 @@ function ConfigPanel() {
       //   旧逻辑把 llmConfig.apiKey（可能为空字符串）无条件提交，
       //   会导致"打开页面 → 不动任何东西 → 点保存"反而把 DB 里的 key 覆盖成空。
       //   现在前端过滤 + 后端兜底（POST /config/llm 收到空也保留旧值）双保险。
-      const payload = { provider: 'deepseek', model: llmConfig.model };
+      const payload = { provider: 'deepseek', model: llmConfig.model, apiMode: llmConfig.apiMode };
       if (llmConfig.apiKeyTouched && llmConfig.apiKey) {
         payload.apiKey = llmConfig.apiKey;
       }
@@ -103,7 +105,9 @@ function ConfigPanel() {
             provider: fresh.provider,
             apiKey: fresh.maskedKey || '',
             apiKeyTouched: false,
-            model: fresh.model || ''
+            model: fresh.model || '',
+            // ★ apiMode：保存后用后端归一化后的值（防御非法值被前端自动修成默认）
+            apiMode: fresh.apiMode || 'chat_completions'
           });
         }
         if (fresh.hasApiKey) {
@@ -178,6 +182,18 @@ function ConfigPanel() {
             style={{ fontSize: 12, flex: 1, minWidth: 200 }}
             showSearch
             allowClear
+          />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 70, fontSize: 12 }}>API 名称</span>
+          <Select
+            value={llmConfig.apiMode}
+            onChange={v => setLlmConfig({ ...llmConfig, apiMode: v })}
+            style={{ fontSize: 12, flex: 1, minWidth: 200 }}
+            options={[
+              { value: 'chat_completions', label: 'Chat Completions API（推荐）' },
+              { value: 'responses_api', label: 'Responses API（Beta，暂未启用）' }
+            ]}
           />
         </div>
         <Button onClick={saveLlm} loading={testingLlm} style={{ fontSize: 12 }}>保存LLM配置</Button>
