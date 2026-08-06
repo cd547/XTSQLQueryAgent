@@ -93,7 +93,7 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL SQL
 - `request_user_choice` 的选项结果只是用户选择，不代表术语映射，切勿自动转为 `request_tag_confirmation`。
 
 ## 用户交互
-任务缺信息时调 `request_user_choice(questions: [...])`，传入 1-3 个完整问题。
+如有疑问或缺信息时调 `request_user_choice(questions: [...])`，传入 1-3 个完整问题。
 - 调用前在 content 中自然语言描述问题
 - 调用后程序自动结束本轮并弹出对话框
 
@@ -101,5 +101,3 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL SQL
 - 互斥（必选其一）→ false，例：`"时间范围：近7天 / 近30天"`
 - 可叠加（可选多个）→ true，例：`"业务域：用户 / 订单 / 财务"`
 - 不确定 → false
-
-**用户答案**：简洁（如"近7天, 华东"），直接基于此继续生成 SQL

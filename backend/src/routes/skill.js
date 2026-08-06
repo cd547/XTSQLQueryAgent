@@ -211,7 +211,9 @@ router.post('/add-tag', adminRequired, (req, res) => {
     if (addedTags.length === 0) {
       return res.json({ success: true, message: '所有标签已存在，无需添加', addedTags: [] });
     }
-    
+
+    // 确保备份目录存在（recursive:true 幂等，目录已存在不报错；修复 addTag 首次触发 ENOENT）
+    fs.mkdirSync(skillBackPath, { recursive: true });
     const backupPath = path.join(skillBackPath, `table_index_${Date.now()}.json`);
     fs.copyFileSync(tableIndexPath, backupPath);
     fs.writeFileSync(tableIndexPath, JSON.stringify(tableIndex, null, 2), 'utf-8');
@@ -249,10 +251,8 @@ router.post('/save', adminRequired, (req, res) => {
   let oldContent = '';
 
   try {
-    // 确保备份目录存在
-    if (!fs.existsSync(skillBackPath)) {
-      fs.mkdirSync(skillBackPath, { recursive: true });
-    }
+    // recursive:true 幂等，已存在不报错；同时保证 skillBackPath 和 子目录（backupFilePath 的父目录）都在
+    fs.mkdirSync(skillBackPath, { recursive: true });
     fs.mkdirSync(path.dirname(backupFilePath), { recursive: true });
 
     // 读取原始文件内容（如果存在）
