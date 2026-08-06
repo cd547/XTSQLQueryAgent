@@ -1,0 +1,18 @@
+{
+  "table_name": "crm_target_school",
+  "field_aliases": {},
+  "field_enums": {},
+  "virtual_associations": [
+    {
+      "name": "国家/地区编码 关联字典表",
+      "target_table": "sys_dict_item",
+      "join_condition": "sys_dict_item.key = crm_target_school.country_region and sys_dict_item.dict_type = 'SCHOOL_LIBRARY_TARGET_COUNTRY_REGION'",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}

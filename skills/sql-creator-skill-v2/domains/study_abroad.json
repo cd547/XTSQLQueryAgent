@@ -23,6 +23,10 @@
     "study_abroad_school",
     "study_abroad_school_selection",
     "study_abroad_school_selection_detail",
-    "study_abroad_visa_info"
+    "study_abroad_visa_info",
+    "crm_tag_definition",
+    "crm_target_school",
+    "crm_current_school",
+    "sys_dict_item"
   ]
 }

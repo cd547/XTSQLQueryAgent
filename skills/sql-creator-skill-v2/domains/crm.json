@@ -19,6 +19,10 @@
     "customer_label",
     "effective_customers",
     "customers_new_sign_returned_info",
-    "customer_people"
+    "customer_people",
+    "crm_tag_definition",
+    "crm_target_school",
+    "crm_current_school",
+    "sys_dict_item"
   ]
 }

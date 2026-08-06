@@ -89,9 +89,46 @@
       "type": "many_to_one",
       "description": "",
       "business_rule": ""
+    },
+    {
+      "name": "关联学校库-在读学校主表",
+      "target_table": "crm_current_school",
+      "join_condition": "crm_current_school.id = edu_student.inschool_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联学校库-目标学校主表",
+      "target_table": "crm_target_school",
+      "join_condition": "crm_target_school.id = edu_student.institutions_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联专业方向",
+      "target_table": "crm_tag_definition",
+      "join_condition": "crm_tag_definition.id = edu_student.direction_id and crm_tag_definition.tag_scope = 'MAJOR_DIRECTION'",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
     }
   ],
   "calculated_fields": {},
   "business_constraints": {},
-  "business_rules": []
+  "business_rules": [
+    {
+      "name": "在读学校（inschool）",
+      "description": "如果inschool_id为空，则读inschool。否则读inschool_id对应的学校名称。（inschool_id为0时，显示“其他”。）"
+    },
+    {
+      "name": "目标学校（institutions）",
+      "description": "如果institutions_id为空，则读institutions。否则读institutions_id对应的学校名称。（institutions_id为0时，显示“其他”。）"
+    },
+    {
+      "name": "专业方向（direction）",
+      "description": "如果direction_id为空，则读direction。否则读direction_id对应的专业方向名称。（direction_id为0时，显示“其他”。）"
+    }
+  ]
 }

@@ -14,6 +14,10 @@
     "edu_student_certificates_type",
     "edu_teacher",
     "my_user_openid",
-    "edu_teacher_work"
+    "edu_teacher_work",
+    "crm_tag_definition",
+    "crm_target_school",
+    "crm_current_school",
+    "sys_dict_item"
   ]
 }

@@ -288,7 +288,7 @@
     {
       "name": "cms_article_event",
       "description": "活动专场表",
-       "related_tables": [
+      "related_tables": [
         "cms_article"
       ]
     },
@@ -299,7 +299,7 @@
     {
       "name": "cms_session_records",
       "description": "活动场次报名记录表",
-       "related_tables": [
+      "related_tables": [
         "cms_article",
         "cms_article_sessions",
         "cms_apply",
@@ -309,7 +309,7 @@
     {
       "name": "cms_article_sessions",
       "description": "活动场次表",
-       "related_tables": [
+      "related_tables": [
         "cms_article"
       ]
     },
@@ -524,7 +524,9 @@
     {
       "name": "order_student_received_settlement",
       "description": "回款计划-佣金结算表",
-      "tags": ["渠道佣金结算"],
+      "tags": [
+        "渠道佣金结算"
+      ],
       "related_tables": [
         "order_student_received",
         "admin_user",
@@ -1623,6 +1625,38 @@
     {
       "name": "edu_goods_section",
       "description": "产品分类表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "crm_tag_definition",
+      "description": "可复用标签定义表，与存量crm_tags表相互独立",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "crm_target_school",
+      "description": "学校库-目标学校主表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "crm_current_school",
+      "description": "学校库-在读学校主表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "sys_dict_item",
+      "description": "字典表",
       "tags": [],
       "related_tables": [],
       "business_constraints": [],
