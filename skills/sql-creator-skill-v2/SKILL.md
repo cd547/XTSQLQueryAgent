@@ -22,7 +22,7 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL SQL
      或 `business_rules` 显式声明"该关联需过滤 del=0"。
    - 业务上确实要"过滤掉 B 已删除的关联行"时，统一用 WHERE 子句
      `WHERE t_b.id IS NULL OR t_b.del = 0`，不要塞进 ON 末尾。
-   - 无法判定（既无特殊说明，业务意图也不清晰）→ 必须调用 `request_user_choice` 询问用户，**禁止自行决定**。
+   - 无法判定（既无特殊说明，业务意图也不清晰）→ 必须询问用户，**禁止自行决定**。
 
 5. **字段**：
    - **唯一来源**：`get_table_schema(table_names)` 一次返回该表**全部**信息——物理结构
@@ -58,9 +58,8 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL SQL
 ## 系统约定
 以下为系统字段语义，生成 SQL 时必须遵循。如 field_config 有特殊定义则以 field_config 为准：
 - **当前日期**： 时间过滤必须使用 MySQL 日期函数（`CURDATE()` 等），禁止硬编码年份。
-- `del` / `deleted`：0=未删除，1=已删除。
-     WHERE 子句默认过滤 `= 0`（如 `WHERE t_main.del = 0`）。
-     连表 JOIN 子句默认不过滤——见核心规则 4.2。 
+- 逻辑删除字段：`del`/`deleted`（0=未删除, 1=已删除）。
+     规则：WHERE 子句默认追加 `= 0`；JOIN ON 中默认不过滤（详见核心规则 4.2）。
 - 时间字段（字段名含时间含义）：
   - `timestamp`/`datetime` → `DATE_FORMAT(字段, '%Y-%m-%d %H:%i:%s')`
   - BIGINT 毫秒 (`BIGINT(11/13)`) → `FROM_UNIXTIME(字段/1000, '%Y-%m-%d %H:%i:%s')`

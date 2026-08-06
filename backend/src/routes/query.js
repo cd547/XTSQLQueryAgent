@@ -834,6 +834,10 @@ router.post('/explain-analyze', async (req, res) => {
   let overallTimer = null;
   let abortController = null;
   let fullContent = '';
+  // ★ 修复 UTF-8 跨 chunk 截断（"AI 分析 EXPLAIN"字丢失 bug）：
+  //   - buffer 保留 SSE 残行，下一轮 read() 拿到剩余字节后拼起来再 split
+  //   - 与 /generate 路由（llm.js:1363）模式一致
+  let buffer = '';
 
   try {
     const config = getLlmConfig();
@@ -946,34 +950,40 @@ ${JSON.stringify(explainResults, null, 2)}
         break;
       }
       const { done, value } = await reader.read();
-      if (done) break;
 
-      const text = decoder.decode(value);
-      const lines = text.split('\n');
+      // ★ 修复字丢失：非末段 stream:true 保留不完整 UTF-8 字节（防中文字符被切两半丢字），
+      //   末段 stream:false flush 剩余字节；buffer 保留 SSE 残行。
+      buffer += decoder.decode(value, { stream: !done });
+      const lines = buffer.split('\n');
+      // 非末段保留最后一行（可能不完整，等下一轮 read() 拼起来）；末段清空
+      buffer = done ? '' : (lines.pop() || '');
+
       for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const dataStr = line.slice(6);
-          if (dataStr === '[DONE]') {
-            streamCompleted = true; clearTimeout(overallTimer);
+        if (!line.startsWith('data: ')) continue;
+        const dataStr = line.slice(6);
+        if (dataStr === '[DONE]') {
+          streamCompleted = true; clearTimeout(overallTimer);
+          if (!abortController.signal.aborted) {
+            res.write(`data: ${JSON.stringify({ type: 'done', analysis: fullContent })}\n\n`);
+          }
+          break;
+        }
+        try {
+          const data = JSON.parse(dataStr);
+          const content = data.choices?.[0]?.delta?.content || '';
+          if (content) {
+            fullContent += content;
             if (!abortController.signal.aborted) {
-              res.write(`data: ${JSON.stringify({ type: 'done', analysis: fullContent })}\n\n`);
+              res.write(`data: ${JSON.stringify({ type: 'chunk', content })}\n\n`);
             }
-            break;
           }
-          try {
-            const data = JSON.parse(dataStr);
-            const content = data.choices?.[0]?.delta?.content || '';
-            if (content) {
-                fullContent += content;
-                if (!abortController.signal.aborted) {
-                  res.write(`data: ${JSON.stringify({ type: 'chunk', content })}\n\n`);
-                }
-              }
-          } catch (e) {
-            // 忽略单行 JSON 解析错误（LLM 流中偶发），继续处理后续行
-          }
+        } catch (e) {
+          // 忽略单行 JSON 解析错误（LLM 流中偶发），继续处理后续行
         }
       }
+
+      // [DONE] 已收 / 流结束 / 客户端断开 → 退出 while
+      if (done || streamCompleted) break;
     }
 
     streamCompleted = true; clearTimeout(overallTimer);
