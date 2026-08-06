@@ -382,7 +382,7 @@ function getOrCreateRegistry(sessionId) {
 /**
  * 重置注册表里的"问题级独立"标志。
  *
- * 调用时机：每次新 user 消息到来时（即 generateSQLWithLangChainStreamGen_BAK 入口）。
+ * 调用时机：每次新 user 消息到来时（即 runSqlAgent 入口）。
  * 不重置会话级持久状态（getDomainIndexCalled / slicedDomains / tableSchema /
  * termConfirmed / userChoiceAsked / getTablesCalled），因为这些
  * 跟踪的是"已加载到 history 的数据"，数据本身跨问题仍然有效，重取会浪费 token。
@@ -864,7 +864,7 @@ async function compactConsumedToolResults(messages, foldedCache) {
 }
 
 function queueLog(content, immediate = false, username = null) {
-  // username 由调用方（generateSQLWithLangChainStreamGen_BAK）注入，
+  // username 由调用方（runSqlAgent）注入，
   // 写到 LOG_BUFFER 时一起打包，flushLogs 按用户分组聚合后再写盘
   LOG_BUFFER.push({ username, content });
   if (immediate) {
@@ -1063,14 +1063,27 @@ function sanitizeMessagesForLLM(messages) {
 //   - 真实 LLM context 历史来自 llm_messages.messages（loadMessagesFromDb）
 //   - 恢复方法：在本函数体内把 history 注入到 system message 或 user message 之前
 //     （注意：会影响 DeepSeek prefix cache，因为 system 变了）
-export async function* generateSQLWithLangChainStreamGen_BAK(
+//
+// ★ F16 重命名（原名：generateSQLWithLangChainStreamGen_BAK，2026-08）
+//   改名原因：
+//     1. 原名含 "LangChain" 误导 —— 本函数不依赖 LangChain 框架
+//        （无 AgentExecutor / ChatModel / langchain 运行时），仅 toolFuncs.js
+//        的工具声明用 @langchain/core/tools 的 DynamicTool schema。
+//     2. 原名含 "_BAK" 误导 —— "BAK" 后缀是 2026-06 阶段性优化清理的历史包袱，
+//        原非 BAK 版本（generateSQLWithLangChainStreamGen / V2）当时被删除，
+//        留下的 _BAK 才是唯一活跃入口，但"备份"语义早已名存实亡。
+//   名称选择："runSqlAgent" —— 动词在前（匹配 loadSkillMd / validateSqlFields
+//   项目惯例），"Agent" 反映多轮 tool-calling 循环本质，"Sql" 标注领域。
+//   历史可追溯：原名仍出现在 git log / docs/执行流程.md / docs/superpowers/
+//   reviews/ 与 plans/ 中（本注释作为锚点，git blame 可定位到此处）。
+export async function* runSqlAgent(
   question,
   history = "",
   signal,
   sessionId = null,
   username = null,
 ) {
-  logger.info("generateSQLWithLangChainStreamGen_BAK called (backup)", {
+  logger.info("runSqlAgent called", {
     question,
     historyLength: history?.length,
     sessionId,
@@ -1290,7 +1303,7 @@ ${skillMd}`;
     }
 
     queueLog(
-      "generateSQLWithLangChainStreamGen_BAK Round " +
+      "runSqlAgent Round " +
         (maxToolCallsInitial - maxToolCalls) +
         " Request:\n" +
         JSON.stringify(requestParams, null, 2),

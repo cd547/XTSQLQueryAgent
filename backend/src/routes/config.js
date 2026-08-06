@@ -71,7 +71,19 @@ router.post('/llm', adminRequired, asyncHandler(async (req, res) => {
   } else {
     const existing = db.prepare('SELECT value FROM configs WHERE key = ?').get('llm_config');
     if (existing) {
-      try { finalApiKey = JSON.parse(existing.value).apiKey || ''; } catch (_) { /* malformed json, fall through */ }
+      try {
+        finalApiKey = JSON.parse(existing.value).apiKey || '';
+      } catch (e) {
+        // ★ F15 修复：原代码静默吞错（catch(_) { }），DB 里 llm_config JSON 损坏时无任何线索。
+        //   改为 logger.warn：保留原行为（finalApiKey 保持空），但留下可观测信号
+        //   关键上下文：key 名 + error message + 损坏值的头部（前 100 字符，避开 log 大爆炸）
+        logger.warn('POST /llm: llm_config JSON 解析失败，apiKey 保留为空', {
+          key: 'llm_config',
+          error: e.message,
+          rawPreview: typeof existing.value === 'string' ? existing.value.slice(0, 100) : '<non-string>'
+        });
+        finalApiKey = '';
+      }
     }
   }
 

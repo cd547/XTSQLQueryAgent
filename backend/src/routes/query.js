@@ -7,7 +7,7 @@ import { getDb } from '../db/sqlite.js';
 import { getConfig, getLlmConfig } from '../services/config.js';
 import { authRequired, adminRequired, sessionBelongsToUser } from '../services/auth.js';
 import { logger } from '../logger.js';
-import { generateSQLWithLangChainStreamGen_BAK, loadSkillMd, getLastMessages, loadMessagesFromDb, clearSessionRegistry } from '../services/llm.js';
+import { runSqlAgent, loadSkillMd, getLastMessages, loadMessagesFromDb, clearSessionRegistry } from '../services/llm.js';
 import { validateReadOnlySql } from '../services/sqlValidator.js';
 import { poolQuery } from '../services/mysqlPool.js';
 import { config } from '../config.js';
@@ -331,7 +331,7 @@ router.post('/generate', async (req, res) => {
 
     // [DEAD-CODE 2026-07-15] historyText 当前未被 llm.js 消费（llm.js 用 llm_messages.messages JSON blob）
     // 保留这段代码以备未来"双上下文"设计（如：用 messages 表做更精细的 token 控制 / 摘要压缩 / 工具调用审计）
-    // 恢复方法：在 llm.js:677 generateSQLWithLangChainStreamGen_BAK 函数体内使用 history 形参
+    // 恢复方法：在 llm.js:1079 runSqlAgent 函数体内使用 history 形参
     let schema = '';
     let historyText = '';
     if (false && sessionId) {  // ← 临时禁用入口，避免无谓 SQL 查询
@@ -381,8 +381,28 @@ router.post('/generate', async (req, res) => {
       //   必须放在 flushHeaders 之后、for-await 之前：保证是流首事件、时序可预期。
       res.write(`data: ${JSON.stringify({ type: 'meta', sessionId })}\n\n`);
 
+      // ★ F14 路由侧分流：按用户配置的 apiMode 选实现
+      //   - 'chat_completions'（默认）/ 未配置 / 旧配置 → 走原 runSqlAgent
+      //   - 'responses_api' → 调新 runSqlAgentResponses（占位）
+      //   位置：meta 之后、generator 创建之前 —— 不创建 generator 就不烧 LLM 配额
+      //   占位策略：直接 yield error + done，让前端 loading 关闭 + 看到清晰提示
+      const llmCfgForDispatch = getLlmConfig();
+      if (llmCfgForDispatch?.apiMode === 'responses_api') {
+        const placeholderMsg = 'Responses API 暂未实现，请切换为 Chat Completions API';
+        logger.info('API mode dispatch → responses_api (placeholder)', {
+          sessionId,
+          username: req.user?.username,
+          apiMode: 'responses_api'
+        });
+        res.write(`data: ${JSON.stringify({ type: 'error', content: placeholderMsg })}\n\n`);
+        res.write(`data: ${JSON.stringify({ type: 'done', sql: '', message: placeholderMsg })}\n\n`);
+        res.end();
+        return;
+      }
+      // apiMode === 'chat_completions' 或无配置（旧用户） → 原代码 0 改动
+
       try {
-        const generator = generateSQLWithLangChainStreamGen_BAK(question, historyText, abortController.signal, sessionId, req.user.username);
+        const generator = runSqlAgent(question, historyText, abortController.signal, sessionId, req.user.username);
         let fullContent = '';
         let sql = '';
         let message = '';
