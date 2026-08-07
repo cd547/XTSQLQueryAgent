@@ -731,6 +731,12 @@ export async function runSqlAgentResponsesHandler(req, res, ctx) {
           totalPromptTokens += chunk.usage.prompt_tokens;
           totalCompletionTokens += chunk.usage.completion_tokens;
           totalTokens += chunk.usage.total_tokens;
+          // ★ v5.18 真正修复：把 usage chunk 推给前端（之前漏写 → 前端 type: 'usage' 事件永远不会到达）
+          //   前端 App.jsx:1011-1031 的 `else if (data.type === 'usage')` 分支依赖此事件
+          //   修复前：handler 收到 usage chunk 后只累加 + 落库，没 res.write → 前端 roundUsagesRef 永远空
+          //   修复后：前端 roundUsagesRef.current[data.round] 真正存到，done 累积 _lastRoundUsage 非空
+          //   → `usage: {...}` 真正挂上 → 实时显示"缓存命中率 XX%"
+          res.write(`data: ${JSON.stringify({ type: 'usage', usage: chunk.usage, round: chunk.round || 0 })}\n\n`);
           await persistUsageToDb({ sessionId, usage: chunk.usage, round: chunk.round || 0 });
           break;
         case 'LLM':

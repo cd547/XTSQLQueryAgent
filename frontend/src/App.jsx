@@ -167,6 +167,10 @@ function AuthenticatedApp({ user, logout }) {
   //   in-flight 的 readSSEStream onEvent 回调顶部比对，失效则丢弃写入。
   const streamRequestIdRef = useRef(0);
   const siderListRef = useRef(null);
+  // ★ v5.16：缓存本轮 SSE usage 数据，done 事件时挂到当前 assistant 消息
+  //   数据结构：{ [round]: { prompt_tokens, completion_tokens, total_tokens, cached_tokens } }
+  //   用途：在 ChatMessage 耗时左边展示"缓存命中率"
+  const roundUsagesRef = useRef({});
   
   const handleTabChange = (key) => {
     if (activeTabKey === 'chat' && chatContentRef.current) {
@@ -384,7 +388,82 @@ function AuthenticatedApp({ user, logout }) {
       const data = await getSessionMessages(sessionId);
       if (loadingRef.current.messagesVersion !== myVersion) return; // 已被新请求覆盖，丢弃
       if (data.messages) {
+        // ★ v5.16：在 filter 之前扫一遍 messages，构造 round → usage 映射
+        //   用途：filter 之后挂到 assistant 消息的 usage 字段
+        //   注意：DeepSeek prefix cache 命中率 = cached_tokens / prompt_tokens
+        //   同 round 内可能有多个 usage（多轮 LLM 调用），取最后一个 round 的最后一条 usage
+        const roundUsages = {};
+        for (const m of data.messages) {
+          if (m.role === 'usage') {
+            const r = typeof m.round === 'number' ? m.round : 0;
+            if (!roundUsages[r]) {
+              roundUsages[r] = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cached_tokens: 0 };
+            }
+            roundUsages[r].prompt_tokens += m.prompt_tokens || 0;
+            roundUsages[r].completion_tokens += m.completion_tokens || 0;
+            roundUsages[r].total_tokens += m.total_tokens || 0;
+            roundUsages[r].cached_tokens += m.cached_tokens || 0;
+          }
+        }
         const filtered = data.messages.filter(m => m.role !== 'usage');
+        // ★ v5.19 修复：按"问题边界"分桶 — 每条 assistant 消息只算自己问题段的 round 0..mRound
+        //   之前全局 roundUsages + 覆盖式：3 个问题都 round 0 → Q3 覆盖 Q1/Q2 → asst1 显示 Q3 命中率
+        //   现在 segmentUsages 在 user 消息时重置，每条 assistant 用自己段的 segmentUsages 累积
+        //
+        // ★ v5.19b 修复：assistant 消息在 DB 顺序里**在** usage 消息**之前**（流式期间**只**创建一条 assistant，usage 是 LLM 调用结束 yield 追加的）
+        //   → 第一遍扫到 assistant 时 segmentUsages 还是空 → assistantUsages[id] = undefined
+        //   修法：两遍扫描：① 切分 segments + 段内累积 usage；② 每条 assistant 用本段 segmentUsages 算累积
+        // 第一遍：按 user 切分 segments + 段内累积 usage
+        const segments = [];
+        let currentSeg = { start: 0, end: 0, usages: {} };
+        for (let i = 0; i < data.messages.length; i++) {
+          const m = data.messages[i];
+          if (m.role === 'user' && i > 0) {
+            segments.push(currentSeg);
+            currentSeg = { start: i, end: i, usages: {} };
+          } else if (m.role === 'usage') {
+            const r = typeof m.round === 'number' ? m.round : 0;
+            if (!currentSeg.usages[r]) {
+              currentSeg.usages[r] = { cached: 0, prompt: 0, completion: 0, total: 0 };
+            }
+            currentSeg.usages[r].cached += m.cached_tokens || 0;
+            currentSeg.usages[r].prompt += m.prompt_tokens || 0;
+            currentSeg.usages[r].completion += m.completion_tokens || 0;
+            currentSeg.usages[r].total += m.total_tokens || 0;
+          }
+          currentSeg.end = i;
+        }
+        segments.push(currentSeg);
+        // 第二遍：每条 assistant 用本段 segmentUsages 算累积
+        const assistantUsages = {};
+        for (const seg of segments) {
+          for (let i = seg.start; i <= seg.end; i++) {
+            const m = data.messages[i];
+            if (m.role === 'assistant') {
+              const mRound = typeof m.round === 'number' ? m.round : 0;
+              let sumCached = 0, sumPrompt = 0, sumCompletion = 0, sumTotal = 0;
+              let hasAny = false;
+              for (let r = 0; r <= mRound; r++) {
+                const u = seg.usages[r];
+                if (u) {
+                  sumCached += u.cached;
+                  sumPrompt += u.prompt;
+                  sumCompletion += u.completion;
+                  sumTotal += u.total;
+                  hasAny = true;
+                }
+              }
+              if (hasAny) {
+                assistantUsages[m.id] = {
+                  prompt_tokens: sumPrompt,
+                  completion_tokens: sumCompletion,
+                  total_tokens: sumTotal,
+                  cached_tokens: sumCached,
+                };
+              }
+            }
+          }
+        }
         // 老数据兜底：没有 elapsed_ms 时按 user/assistant 成对消息的 created_at 差值补算
         // 一次性扫描，按"相邻 user/assistant 配对"得到回显耗时
         const loaded = filtered.map(m => {
@@ -393,6 +472,14 @@ function AuthenticatedApp({ user, logout }) {
           // 这里统一归一化为 'log'，否则 groupMessagesByRound 不会把它们当 log 分组
           // → 历史会话回看时无法渲染轮次轴
           const normalizedRole = ['LLM', 'tool', 'tool_return'].includes(m.role) ? 'log' : m.role;
+          // ★ v5.17 修复：累积 0..mRound 的所有 round usage（之前只取当前 round）
+          //   公式：sum_cached(0..R) / sum_prompt(0..R) * 100
+          //   理由：单看当前 round 命中率有失偏颇；多轮对话下整轮累计命中率更能反映 prefix cache 效果
+          //   与 SSE 流式 done 事件路径一致（v5.17 同样的累积公式）
+          // ★ v5.19：直接查 assistantUsages（按问题边界分桶后的累积结果）
+          //   跨段 round 编号不互相影响（之前是全局 map 覆盖 → 同 round 互相覆盖）
+          //   asst1 看到的永远是"本问题"内 round 0..mRound 累积，不会被后续问题覆盖
+          const usage = normalizedRole === 'assistant' ? assistantUsages[m.id] : undefined;
           return {
             id: `db-${m.id}`,
             role: normalizedRole,
@@ -412,6 +499,8 @@ function AuthenticatedApp({ user, logout }) {
             // ★ 2026-07-29：透传 interrupted 字段，用于渲染"已中断" badge
             //   老数据（无 interrupted 列）默认 0/false，行为兼容
             interrupted: m.interrupted === 1 || m.interrupted === true,
+            // ★ v5.17：挂 usage（仅 assistant 消息，0..mRound 累积），用于渲染"缓存命中率" Tooltip
+            usage,
           };
         });
         // 老数据回填：相邻 user → assistant 配对，差值作为 elapsedMs
@@ -957,6 +1046,27 @@ function AuthenticatedApp({ user, logout }) {
               messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
             });
           }
+        } else if (data.type === 'usage') {
+          // ★ v5.18 真正修复：把本轮 usage 存到 roundUsagesRef
+          //   根因：v5.16 第一版 + v5.16b + v5.16c + v5.17 全部没真正工作！
+          //   后端 SSE `type: "usage"` 事件（[responsesApi.js:238-251](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/responsesApi.js#L238-L251)）
+          //   yield 出来后**没有**任何 else if 分支处理它 → 静默丢弃
+          //   → roundUsagesRef.current 永远 {} → done 累积 null → `usage: undefined` → 不显示
+          //   切走再回来能看：走历史回看路径，roundUsages 重新从 DB 构造（与 ref 无关）
+          //   修法：在 chunk 之后 / reasoning_done 之前加 `else if (data.type === 'usage')`
+          if (data.usage) {
+            const r = typeof data.round === 'number' ? data.round : 0;
+            roundUsagesRef.current[r] = {
+              prompt_tokens: data.usage.prompt_tokens || 0,
+              completion_tokens: data.usage.completion_tokens || 0,
+              total_tokens: data.usage.total_tokens || 0,
+              cached_tokens: data.usage.cached_tokens || 0,
+            };
+            // ★ v5.18 调试开关：默认开启；用户可手动注释
+            if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+              console.log('[v5.18 debug] usage 事件 round=' + r + ':', JSON.stringify(roundUsagesRef.current[r]));
+            }
+          }
         } else if (data.type === 'reasoning_done') {
           // ★ 思考过程结束：保留用户已选的 collapsed 状态（之前强制 true 会把用户展开的内容又折叠回去）
           setMessages(prev => prev);
@@ -1000,23 +1110,83 @@ function AuthenticatedApp({ user, logout }) {
             return newMsgs;
           });
         } else if (data.type === 'done') {
+          // ★ v5.16c 修复：同步捕获 lastRoundUsage 到本地变量
+          //   根因：setMessages(prev => ...) 的 prev 回调是 React 18 batched 异步执行，
+          //   如果在 setMessages 之后**立即** `roundUsagesRef.current = {}`，等 React flush 闭包时
+          //   ref 已经被清空 → 闭包内读 `roundUsagesRef.current[lastRound]` 拿到 undefined
+          //   → `usage: undefined` → 命中率不显示
+          //   切走再回来能看：走历史回看路径，roundUsages 重新从 DB 构造（与 ref 无关）
+          //   修法：① setMessages **前**同步读 ref 到本地变量 ② setMessages 闭包内用本地变量
+          //   ③ 清空 ref 放在 setMessages **之后**（已存在，顺序正确）
+          // ★ v5.17 修复：累积 0..lastRound 的所有 round usage（之前只取最后 round）
+          //   公式：sum_cached(0..R) / sum_prompt(0..R) * 100
+          //   理由：单看当前 round 命中率有失偏颇；多轮对话下整轮累计命中率更能反映 prefix cache 效果
+          const _roundKeys = Object.keys(roundUsagesRef.current);
+          const _lastRound = _roundKeys.length > 0
+            ? Math.max(..._roundKeys.map(Number).filter(n => !Number.isNaN(n)))
+            : null;
+          let _lastRoundUsage = null;
+          if (_lastRound !== null) {
+            // 累积 0.._lastRound 之间的所有 round usage
+            let _sumCached = 0, _sumPrompt = 0, _sumCompletion = 0, _sumTotal = 0;
+            let _hasAny = false;
+            for (let r = 0; r <= _lastRound; r++) {
+              const u = roundUsagesRef.current[r];
+              if (u) {
+                _sumCached += u.cached_tokens || 0;
+                _sumPrompt += u.prompt_tokens || 0;
+                _sumCompletion += u.completion_tokens || 0;
+                _sumTotal += u.total_tokens || 0;
+                _hasAny = true;
+              }
+            }
+            if (_hasAny) {
+              _lastRoundUsage = {
+                prompt_tokens: _sumPrompt,
+                completion_tokens: _sumCompletion,
+                total_tokens: _sumTotal,
+                cached_tokens: _sumCached,
+              };
+            }
+          }
+          // ★ v5.18 调试开关：dev 模式才打印（user 可以打开后端 debug 看到完整链路）
+          if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+            console.log('[v5.18 debug] done event: data.message.len=', (data.message || '').length, ', data.usage=', data.usage, ', data.round=', data.round, ', roundUsagesRef.current=', JSON.stringify(roundUsagesRef.current));
+          }
           setMessages(prev => {
             const newMsgs = [...prev];
             const lastIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+            if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+              console.log('[v5.18 debug] setMessages: lastIdx=', lastIdx, ', _lastRoundUsage=', JSON.stringify(_lastRoundUsage));
+            }
             if (lastIdx !== -1) {
               const startTime = newMsgs[lastIdx].startTime || Date.now();
               // 优先用后端权威耗时（含网络/工具调用），fallback 到前端本地计时
               const elapsedMs = (typeof data.elapsedMs === 'number' && data.elapsedMs >= 0)
                 ? data.elapsedMs
                 : Date.now() - startTime;
-              newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: data.message || '', sql: data.sql || '', isStreaming: false, elapsedMs };
+              newMsgs[lastIdx] = {
+                ...newMsgs[lastIdx],
+                content: data.message || '',
+                sql: data.sql || '',
+                isStreaming: false,
+                elapsedMs,
+                // ★ v5.17：用闭包外同步捕获的累积 _lastRoundUsage
+                usage: _lastRoundUsage || undefined,
+              };
             }
             return newMsgs;
           });
+          // done 后清空本轮 usage 缓存（避免下一轮污染）
+          roundUsagesRef.current = {};
           // 更新 token 显示
           if (data.totalTokens) {
             setCurrentTokens(prev => prev + data.totalTokens);
           }
+          // ★ v5.18：删掉 done 块末尾的 `if (data.usage)` 兜底
+          //   原因：后端 yield done 不带 data.usage 字段（[responsesApi.js:682](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/responsesApi.js#L682)）
+          //   兜底块永远不进，纯粹是无效死代码
+          //   真正的 usage 处理已搬到 L1011-1028 的 `else if (data.type === 'usage')` 分支
           // ★ 兜底：done 事件也带 sessionId，做最后一层防御。
           //   正常路径 meta 已先到，currentSessionId 已被回写，
           //   这里的 if 短路为 false（React 闭包拿到的是 meta 之前的旧值，
@@ -1728,6 +1898,10 @@ const explainColumns = useMemo(() => explainResults.length > 0
                           sql={msg.sql}
                           startTime={msg.startTime}
                           elapsedMs={msg.elapsedMs}
+                          // ★ v5.16：single 消息（user/assistant/单 log）也透传 usage（v5.16 修复）
+                          //   之前 v5.16 第一版只改了 RoundGroup 内的 ChatMessage，遗漏了 single 分支的 assistant 消息
+                          //   → assistant 消息不走 roundGroup，usage 一直未传 → 缓存命中率不显示
+                          usage={msg.usage}
                           onOpenSqlTab={handleOpenSqlTab}
                           onCopyAndExecute={handleCopyAndExecute}
                           userQuestion={userQuestion}

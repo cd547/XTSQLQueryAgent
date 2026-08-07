@@ -348,6 +348,17 @@ html.xtsql-dark .xtsql-log-tag.return { color: #fbbf24; }
   user-select: none;
   cursor: default;
 }
+/* ★ v5.16：缓存命中率（显示在耗时左边） */
+.xtsql-msg-hitrate {
+  font-size: 11px;
+  color: var(--xtsql-text-secondary);
+  margin-right: 4px;
+  user-select: none;
+  cursor: default;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--xtsql-bg-elevated, rgba(0, 0, 0, 0.04));
+}
 .xtsql-action-btn {
   height: 28px;
   padding: 0 12px !important;

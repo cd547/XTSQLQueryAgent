@@ -47,6 +47,8 @@ const RoundGroup = memo(function RoundGroup({
             sql={log.sql}
             startTime={log.startTime}
             elapsedMs={log.elapsedMs}
+            // ★ v5.16：透传 usage（assistant 消息才有），用于在耗时左边展示"缓存命中率"
+            usage={log.usage}
             userQuestion={userQuestion}
             favoriteState={favoriteStates?.[log.id]}
             onFavorite={userQuestion ? ({ userQuestion: uq, sqlOutput }) => onFavorite?.({ msgId: log.id, userQuestion: uq, sqlOutput }) : undefined}

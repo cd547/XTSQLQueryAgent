@@ -7,7 +7,7 @@ import AppIcon from './AppIcon.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { getMarkdownRenderers } from './markdownRenderers.jsx';
 
-const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, onOpenSqlTab, onCopyAndExecute, onFavorite, favoriteState, userQuestion, userAvatar, interrupted }) {
+const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, onOpenSqlTab, onCopyAndExecute, onFavorite, favoriteState, userQuestion, userAvatar, interrupted, usage }) {
   const { theme: themeMode } = useTheme();
   const isUser = role === 'user';
   const isLog = role === 'log' || role === 'LLM' || role === 'tool' || role === 'tool_return';
@@ -45,6 +45,27 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
     const minutes = Math.floor(seconds / 60);
     const remainder = Math.round(seconds - minutes * 60);
     return `${minutes}m ${remainder}s`;
+  })();
+
+  // ★ v5.16：DeepSeek prefix cache 命中率
+  //   公式：cached_tokens / (cached_tokens + miss_tokens) = cached_tokens / prompt_tokens
+  //   prompt_tokens = cached + miss（DeepSeek API 约定）
+  //   只在 assistant 消息 + 有 usage 数据时显示
+  const hitRateInfo = (() => {
+    if (!usage || role === 'user' || role === 'log' || role === 'LLM' || role === 'tool' || role === 'tool_return') return null;
+    const prompt = usage.prompt_tokens || 0;
+    const cached = usage.cached_tokens || 0;
+    if (prompt <= 0) return null;
+    const miss = prompt - cached;
+    const hitRate = ((cached / (cached + miss)) * 100).toFixed(1);
+    return {
+      hitRate,
+      cached,
+      miss,
+      prompt,
+      completion: usage.completion_tokens || 0,
+      total: usage.total_tokens || 0,
+    };
   })();
 
   // 日志类型（工具调用 / 思考过程）
@@ -126,6 +147,19 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
         </div>
         {!isUser && (isStreaming || elapsedStr || (sql && sql.trim())) && (
           <div className="xtsql-msg-actions">
+            {hitRateInfo && (
+              <Tooltip
+                title={
+                  <div>
+                    <div>prefix cache 命中率</div>
+                    <div>命中 {hitRateInfo.cached} / 未命中 {hitRateInfo.miss} = {hitRateInfo.hitRate}%</div>
+                    <div>prompt {hitRateInfo.prompt} · completion {hitRateInfo.completion} · total {hitRateInfo.total}</div>
+                  </div>
+                }
+              >
+                <span className="xtsql-msg-hitrate">缓存命中率 {hitRateInfo.hitRate}%</span>
+              </Tooltip>
+            )}
             {elapsedStr && (
               <Tooltip title="本次回答从发送到完成的耗时（流式期间实时更新）">
                 <span className="xtsql-msg-elapsed">耗时 {elapsedStr}</span>
