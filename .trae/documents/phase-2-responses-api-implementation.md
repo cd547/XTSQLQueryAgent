@@ -51,12 +51,16 @@ Phase 2 的目标：**完整实现** Responses API 路径，让 `apiMode='respon
 
 **目标文件**：[backend/src/services/llm.js](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js)
 
-**改动**：在 [L336-338](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L336-L338) 紧挨插入：
+**改动**：在 [L337-339](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L337-L339) 紧挨插入：
 
 ```js
 // ★ Phase 2 B1: setter（与 getLastMessages 对偶，供 responsesApi.js 同步 lastMessages 全局缓存）
+//   ★ 深拷贝原因（与 CC path L1558 `lastMessages = JSON.parse(JSON.stringify(messages))` 1:1 对齐）：
+//     CC 路径不深拷贝会让调试接口 GET /api/query/messages 返回"未来轮次"消息
+//     （因为 messages 后续会被 push 新 tool 消息，原引用 lastMessages 也跟着变），
+//     深拷贝隔离让 GET 始终返回"调用 setter 那一刻的快照"
 export function setLastMessages(messages) {
-  lastMessages = messages;
+  lastMessages = JSON.parse(JSON.stringify(messages));
 }
 ```
 
@@ -78,8 +82,7 @@ export function setLastMessages(messages) {
 | 2 | `getPrunedToolsForRun` | [L1262-1280](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L1262-L1280) | `getOrCreateRegistry` | `{prunedTools, prunedNames}` |
 | 3 | `executeToolCallsInStages` | [L1565-1933](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L1565-L1933) | `toolsMap` + `messages`（mutated）| `{hadToolCalls, execResults}` |
 | 4 | `recordPendingUserChoices` | [L1854-1932](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L1854-L1932) | `pendingUserChoiceList`（mutated）| `void` |
-| 5 | `handleToolCallErrors` | 合并到 helper 3 内 | — | — |
-| 6 | `saveRunState` | [L1556-1563](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L1556-L1563) + [L1960-1974](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L1960-L1974) | `setLastMessages` (新) + `saveMessagesToDb` | `void` |
+| 5 | `saveRunState` | [L1556-1563](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L1556-L1563) + [L1960-1974](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L1960-L1974) | `setLastMessages` (新) + `saveMessagesToDb` | `void` |
 
 **关键技术约束**（12 + 13 轮审计锁定）：
 - **纯函数**：所有 ctx 参数显式传入，无闭包依赖
@@ -169,26 +172,69 @@ export async function executeToolCallsInStages(ctx) {
     ```
     **不创建** abortController / overallTimer / streamCompleted——这些**生命周期管理**由路由层负责（与 CC path 1:1 对齐，CC path 路由层 L355-372 创建 + L582-625 catch 块清理）
 
+12. **generator 签名（必经参数）**：
+    ```js
+    async function* _runSqlAgentResponsesStreamGen({
+      question, historyText, signal, sessionId, username,
+      allTools,        // ★ DynamicTool[]（从 ctx.tools 传入，与 CC path L1115-1128 1:1）
+      systemMessage,   // ★ 已拼装的 systemMessage（与 CC path L1131-1132 1:1）
+      cfg,             // ★ agentConfig（含 max_tool_calls 等）
+    }) {
+      // ★ historyText 在 generator 内**不直接使用**（与 CC path L334 [DEAD-CODE 2026-07-15] 1:1 对齐）
+      //   历史从 DB loadMessagesFromDb 加载，不依赖传入 historyText 占位
+      //   保留参数是 signature 对齐 CC path（CC path L405 接收 history 也不使用）
+      ...
+    }
+    ```
+    **关键**：handler 调用 generator 时**必须**传这 8 个参数（其中 3 个是新加的 `allTools`/`systemMessage`/`cfg`），否则 generator 内部 `initMessagesForRun` / `getPrunedToolsForRun` / `executeToolCallsInStages` 会因变量未定义抛 ReferenceError。
+13. **toolsMap 构建时机（★ 致命问题 2 修复）**：
+    - **generator 初始化阶段**（while 循环外、循环内复用）由 `allTools` 构建一次 `toolsMap = new Map(allTools.map(t => [t.name, t]))`
+    - 传给 `executeToolCallsInStages` 的 ctx.toolsMap 直接用此 Map（helper 内部**不**重新构建）
+    - **不传** `allTools` 给 helper（避免重复构建 Map + 类型不一致）
+
 **主 generator 关键代码模式**（5.2 节伪代码 → 真实代码）：
+
 ```js
-// 初始化（与 runSqlAgent L1131-1168 1:1，**用 helper**）
-const messages = initMessagesForRun(sessionId, question, systemMessage);
-let maxToolCalls = cfg.max_tool_calls || 30;
-// ★ 12 轮审计修订：toolsDefinition 在 while 外，tools 在 while 内每轮重算
-const toolsDefinition = tools.map(/* 1:1 with L1115-1128 */);
-const toolsMap = new Map(toolsDefinition.map(t => [t.function.name, t]));
-let pendingUserChoiceList = [];
-const MAX_USER_CHOICE_PER_TURN = 3;
+// ★ 关键技术约束 12：签名固定 8 参数（其中 allTools/systemMessage/cfg 是新加的）
+export async function* _runSqlAgentResponsesStreamGen({
+  question, historyText, signal, sessionId, username,
+  allTools, systemMessage, cfg,
+}) {
+  // ★ 关键技术约束 13：toolsMap 在 generator 初始化阶段构建一次（循环外）
+  //   Map key = t.name（DynamicTool 直接有 .name，不需要 .function.name 包装）
+  //   与 helper 5.5.4 的 ctx.toolsMap 期望类型一致：Map<string, DynamicTool>
+  // ★ toolsMap 基于完整 allTools 构建（key = t.name），剪枝不影响 mapping，
+  //   因为 prunedTools 是 allTools 的子集（[getPrunedToolsForRun] 只过滤不增删元素），
+  //   且 prunedTools 中 t.name === allTools 中对应元素的 t.name，key 值不变，
+  //   故循环内可直接复用 toolsMap，**无需**按架构计划 5.2 节另外构建 toolsMapForExec
+  const toolsMap = new Map(allTools.map(t => [t.name, t]));
 
-while (maxToolCalls > 0) {
-  const { prunedTools, prunedNames } = getPrunedToolsForRun(toolsDefinition, sessionId);
-  // 调 fetchResponsesStream + translateResponsesEvent
-  // 累积 pendingToolCalls Map（并行）
-  // 累加 roundAssistantContent / roundReasoningContent
-  // 每轮 LLM 入口 + 出口各 yield 一次
+  // 初始化（与 runSqlAgent L1131-1168 1:1，**用 helper**）
+  const messages = initMessagesForRun(sessionId, question, systemMessage);
+  let maxToolCalls = cfg.max_tool_calls || 30;
+  // ★ 12 轮审计修订：toolsDefinition 在 while 外，tools 在 while 内每轮重算
+  //   allTools 是 DynamicTool[]，toolsDefinition 是 OpenAI 工具 schema 格式（{type, function:{name,...}}）
+  //   两者的 name 字段位置不同（allTools[i].name vs toolsDefinition[i].function.name），
+  //   **不能**直接 `allTools` 传给 `getPrunedToolsForRun`，必须先转 toolsDefinition
+  const toolsDefinition = allTools.map(/* 1:1 with L1115-1128：把 DynamicTool 转 OpenAI schema */);
+  let pendingUserChoiceList = [];
+  const MAX_USER_CHOICE_PER_TURN = 3;
+
+  while (maxToolCalls > 0) {
+    const { prunedTools, prunedNames } = getPrunedToolsForRun(toolsDefinition, sessionId);
+    // 调 fetchResponsesStream + translateResponsesEvent
+    // 累积 pendingToolCalls Map（并行）
+    // 累加 roundAssistantContent / roundReasoningContent
+    // 每轮 LLM 入口 + 出口各 yield 一次
+
+    // ★ toolsMap 直接复用（构造一次，循环内复用）
+    const { execResults } = await executeToolCallsInStages({
+      ..., toolsMap, availableToolNames: new Set(prunedTools.map(t => t.function.name)), messages, ...
+    });
+  }
+
+  // 终结 yield done（带 reasoning 字段 + 可选 userChoiceRequest）
 }
-
-// 终结 yield done（带 reasoning 字段 + 可选 userChoiceRequest）
 ```
 
 **handler 关键代码模式**（5.1 节伪代码 → 真实代码，**独立重写**不"复用 query.js 代码"）：
@@ -213,7 +259,16 @@ export async function runSqlAgentResponsesHandler(req, res, ctx) {
   let userChoiceRequestFromStream = null;  // 13 轮恢复（与 CC path L420 1:1）
 
   try {
-    for await (const chunk of _runSqlAgentResponsesStreamGen(...)) {
+    // ★ handler 在 try 块开始时创建 generator（关键技术约束 12）
+    //   必须传 8 个参数：5 个原 + 3 个新（allTools/systemMessage/cfg）
+    //   ctx.tools = toolsDefinition（与 CC path L1115-1128 1:1，DynamicTool[]）
+    const generator = _runSqlAgentResponsesStreamGen({
+      question, historyText, signal: abortController.signal, sessionId, username,
+      allTools: ctx.tools,           // ★ DynamicTool[]
+      systemMessage: ctx.systemMessage,
+      cfg: ctx.cfg,
+    });
+    for await (const chunk of generator) {
       if (abortController.signal.aborted) break;
       if (typeof chunk.round === 'number') lastRound = chunk.round;
       // ★ 用 switch 而非 if/else if（与 CC path L431-490 if/else if 有意差异，便于 review）
@@ -293,6 +348,13 @@ export async function runSqlAgentResponsesHandler(req, res, ctx) {
 
 ```js
 // ★ Phase 2: apiMode 路由分发（Q2 选 C：单行委派 + 新文件封装）
+// ★ 动态 import 原因（不接受静态 import 建议）：
+//   1. 与"新 API 完全独立"原则一致——不启动 responses_api 模式时不加载 responsesApi.js + agentHelpers.js
+//      （节省 ~1200 行模块初始化 + 启动时间；普通用户用 chat_completions 完全不感知）
+//   2. ESM 动态 import 有模块缓存（首次后性能等价静态 import），无运行时开销
+//   3. 静态 import 会强制 query.js 加载 responsesApi.js → 间接加载 agentHelpers.js
+//      → 间接触发 llm.js 全量 export 评估 → 可能拖慢路由注册
+//   4. 测试场景：用动态 import 可在 test 中 mock responsesApi.js 单独测试
 if (llmCfgForDispatch?.apiMode === 'responses_api') {
   const { runSqlAgentResponsesHandler } = await import('../services/responsesApi.js');
   return runSqlAgentResponsesHandler(req, res, {
@@ -556,3 +618,6 @@ rm backend/test-route-apimode-dispatch-responses.mjs
 |---|---|---|---|
 | 2026-08-07 | v1 | agent | 初版（基于 13 轮审计修订，~6.5h 估算）|
 | 2026-08-07 | v2 | agent | **5 项严重错误修复**：① 删除 Step 3 handler 伪代码的重复 `res.flushHeaders()` + `meta`（路由层 L374 + L381 已做，handler 再调会抛 ERR_HTTP_HEADERS_SENT）；② 把"复用 query.js L404-625"改为"独立重写 + 调 helper"（消除自相矛盾）；③ Step 4 委派代码补充完整 ctx 参数表（13 个参数）+ 显式标注来源；④ Step 4 关键约束强调保留 `logger.info`（运维日志不能丢）；⑤ Step 3 关键技术约束新增 #11（handler 签名 ctx 边界 + abortController/overallTimer/streamCompleted 生命周期由路由层负责）。+ 3 项小修复：⑥ getLastMessages 行号 L336-338 → L337-339；⑦ Step 3 handler 行数估计 280 → 330；⑧ 工时调整 6.5h → 7h。|
+| 2026-08-07 | v3 | agent | **2 项致命问题修复 + 1 项设计决策保留**：① 关键技术约束新增 #12（generator 签名固定 8 参数，其中 `allTools`/`systemMessage`/`cfg` 是新加的——旧文档缺失这三参数会导致 generator 内部 `initMessagesForRun` / `getPrunedToolsForRun` / `executeToolCallsInStages` 抛 ReferenceError，整个 Responses API 路径失效）；② 关键技术约束新增 #13（toolsMap 在 generator 初始化阶段构建一次，Map key 用 `t.name` 而非 `t.function.name`——helper ctx.toolsMap 期望 `Map<string, DynamicTool>`）+ 主 generator 代码示例补全 + handler 伪代码 for-await 行补完整参数调用（`allTools: ctx.tools`、`systemMessage: ctx.systemMessage`、`cfg: ctx.cfg`）；③ 拒绝"动态 import → 静态 import"建议：动态 import 与"新 API 完全独立"原则一致（不启动 responses_api 不加载 ~1200 行）+ ESM 模块缓存保证性能 + 测试可独立 mock，故保留动态 import 并加 4 条理由注释。|
+| 2026-08-07 | v4 | agent | **2 项问题修复**：① `setLastMessages` 加深拷贝（`lastMessages = JSON.parse(JSON.stringify(messages))`）——与 CC path L1558 行为 1:1 对齐，**避免**调试接口 GET /api/query/messages 返回"未来轮次"消息（引用别名问题：原引用跟着 messages 后续 push 变化），附 4 行注释说明深拷贝原因；② 删除 helper 列表中 `handleToolCallErrors` 条目（已合并到 `executeToolCallsInStages` 内部，作为独立条目会误导开发者以为需要额外实现/调用），保留 5 个有效 helper（`initMessagesForRun` / `getPrunedToolsForRun` / `executeToolCallsInStages` / `recordPendingUserChoices` / `saveRunState`）。|
+| 2026-08-07 | v5 | agent | **1 项不一致修复 + 1 项保留决策**：① Step 3 主 generator 代码示例中 toolsMap 构造处新增 4 行注释——明确"剪枝不影响 mapping，因为 prunedTools 是 allTools 的子集，[getPrunedToolsForRun] 只过滤不增删元素，key 值不变，循环内可直接复用 toolsMap，无需按架构计划 5.2 节另外构建 toolsMapForExec"，消除与架构计划可能存在的认知偏差；② **保留** historyText 命名（不统一为 architecture 计划的 `history`）——用户确认 historyText 是历史保留的死变量（[DEAD-CODE 2026-07-15]），架构/实施文档命名差异属于文档风格差异，**不影响**实施行为，且避免无谓的命名 churn。|
