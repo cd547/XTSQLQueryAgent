@@ -176,10 +176,22 @@ export async function initDatabase() {
       session_id INTEGER,
       messages TEXT,
       message_tokens INTEGER DEFAULT 0,
+      api_mode TEXT DEFAULT 'chat_completions',
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (session_id) REFERENCES sessions(id)
     )
   `);
+  // ★ v5.14 迁移：老库补 api_mode 列（已存在则跳过）
+  try {
+    const cols = db.prepare("PRAGMA table_info(llm_messages)").all();
+    const hasApiMode = cols.some((c) => c.name === 'api_mode');
+    if (!hasApiMode) {
+      db.exec("ALTER TABLE llm_messages ADD COLUMN api_mode TEXT DEFAULT 'chat_completions'");
+      logger.info('Migration: added api_mode column to llm_messages');
+    }
+  } catch (e) {
+    logger.warn('Failed to migrate api_mode column', { error: e.message });
+  }
 
   db.exec(`CREATE INDEX IF NOT EXISTS idx_llm_messages_session_id ON llm_messages(session_id)`);
 

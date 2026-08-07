@@ -50,7 +50,8 @@ function sanitizeUsername(name) {
  *
  * 仅在 JSON.parse 失败的 catch 块内调用，正常情况不动原始字符串。
  */
-function fixBareQuotesInJsonArgs(s) {
+// ★ Phase 2 Step 2: 纯加法 export（供 agentHelpers.js 复用，不动实现）
+export function fixBareQuotesInJsonArgs(s) {
   let result = '';
   let inString = false;
   let i = 0;
@@ -286,7 +287,8 @@ function writeLlmLog(content, username) {
  * @param {string} responseText - 流式累积的 content 字段
  * @returns {{ content: string, extraThinking: string }}
  */
-function splitThinkingFromContent(responseText) {
+// ★ Phase 2 Step 3: 纯加法 export
+export function splitThinkingFromContent(responseText) {
   if (
     !responseText ||
     typeof responseText !== "string" ||
@@ -314,7 +316,7 @@ function splitThinkingFromContent(responseText) {
 const LOG_BUFFER = [];
 let flushTimer = null;
 
-function flushLogs() {
+export function flushLogs() {
   if (LOG_BUFFER.length === 0) return;
   const flushing = LOG_BUFFER.splice(0);
   // 按 username 分组聚合后批量写盘，减少 appendFileSync 次数（系统级合并到 _system）
@@ -338,6 +340,15 @@ export function getLastMessages() {
   return lastMessages;
 }
 
+// ★ Phase 2 B1: setter（与 getLastMessages 对偶，供 responsesApi.js 同步 lastMessages 全局缓存）
+//   ★ 深拷贝原因（与 CC path L1558 `lastMessages = JSON.parse(JSON.stringify(messages))` 1:1 对齐）：
+//     CC 路径不深拷贝会让调试接口 GET /api/query/messages 返回"未来轮次"消息
+//     （因为 messages 后续会被 push 新 tool 消息，原引用 lastMessages 也跟着变），
+//     深拷贝隔离让 GET 始终返回"调用 setter 那一刻的快照"
+export function setLastMessages(messages) {
+  lastMessages = JSON.parse(JSON.stringify(messages));
+}
+
 // ============================================================
 // 工具调用注册表（用于程序化拦截重复调用，规则 10）
 // ============================================================
@@ -346,7 +357,7 @@ export function getLastMessages() {
 // 会话删除或 llm_messages 清空时通过 clearSessionRegistry 释放。
 const sessionToolRegistries = new Map();
 
-function getOrCreateRegistry(sessionId) {
+export function getOrCreateRegistry(sessionId) {
   if (!sessionId) return null;
   if (!sessionToolRegistries.has(sessionId)) {
     sessionToolRegistries.set(sessionId, {
@@ -390,7 +401,8 @@ function getOrCreateRegistry(sessionId) {
  * 历史 Bug 2026-07-28：未做此重置时，Q1 校验通过的"✓passed"会残留在 Q2/Q3 的
  * checklist 里，误导 LLM 跳过本轮 SQL 校验。
  */
-function resetPerQuestionRegistryFlags(reg) {
+// ★ Phase 2 Step 3: 纯加法 export
+export function resetPerQuestionRegistryFlags(reg) {
   if (!reg) return;
   reg.validateSqlFieldsCalled = false;
   reg.validateSqlFieldsPassed = false;
@@ -427,7 +439,8 @@ function buildChecklist(reg) {
  * @param {object|null} reg - 会话工具调用注册表
  * @returns {{role: 'system', content: string} | null} 没有已调用工具时返回 null
  */
-function buildToolCallChecklistMessage(reg) {
+// ★ Phase 2 Step 3: 纯加法 export
+export function buildToolCallChecklistMessage(reg) {
   if (!reg) return null;
   const parts = [];
   if (reg.getDomainIndexCalled) parts.push("get_domain_index:✓");
@@ -483,7 +496,7 @@ function buildToolCallChecklistMessage(reg) {
  *   - block=true: 整次调用被拦截，message 为返回给 LLM 的提示
  *   - block=false: 允许调用；args 为（可能过滤后的）参数；notice 为可选的附加提示
  */
-function checkAndFilterDuplicateCall(toolName, args, sessionId) {
+export function checkAndFilterDuplicateCall(toolName, args, sessionId) {
   const reg = getOrCreateRegistry(sessionId);
   if (!reg) return { block: false, args };
 
@@ -634,7 +647,8 @@ function checkAndFilterDuplicateCall(toolName, args, sessionId) {
  * @param {string|null} [overrideId=null] - 覆盖 id（request_user_choice 用，从 tool.func 返回的 {id, marker, payload} 中提取）
  *   用于保证 registry 内 id 与 marker 内 id 一致（reviewer #2 修复）
  */
-function recordToolCall(toolName, args, sessionId, overrideId = null) {
+// ★ Phase 2 Step 2: 纯加法 export
+export function recordToolCall(toolName, args, sessionId, overrideId = null) {
   const reg = getOrCreateRegistry(sessionId);
   if (!reg) return;
   if (toolName === "get_tables") {
@@ -765,7 +779,8 @@ export function getSessionChecklist(sessionId) {
  * @param {Map} foldedCache - 折叠缓存（单请求级，由调用方创建并传入）
  * @returns {Array} 折叠后的新数组（不修改原数组）
  */
-async function compactConsumedToolResults(messages, foldedCache) {
+// ★ Phase 2 Step 3: 纯加法 export
+export async function compactConsumedToolResults(messages, foldedCache) {
   if (!Array.isArray(messages) || messages.length === 0 || !foldedCache)
     return messages;
 
@@ -863,7 +878,8 @@ async function compactConsumedToolResults(messages, foldedCache) {
   return result;
 }
 
-function queueLog(content, immediate = false, username = null) {
+// ★ Phase 2 Step 2: 纯加法 export
+export function queueLog(content, immediate = false, username = null) {
   // username 由调用方（runSqlAgent）注入，
   // 写到 LOG_BUFFER 时一起打包，flushLogs 按用户分组聚合后再写盘
   LOG_BUFFER.push({ username, content });
@@ -878,7 +894,11 @@ function queueLog(content, immediate = false, username = null) {
   }
 }
 
-function getProviderConfig(provider, model) {
+// ★ Phase 2 修复（Step 3 偏差遗漏）：纯加法 export
+//   原因：getLlmConfig() 返回的 config 不含 baseURL 字段（DB 只存 provider/apiKey/model）
+//   原 runSqlAgent L1115 调 getProviderConfig(provider, model) 从静态表派生 baseURL，
+//   responsesApi.js 同样需要这个函数。1 行 export 关键词，无实现改动。
+export function getProviderConfig(provider, model) {
   const configs = {
     openai: { baseURL: "https://api.openai.com/v1", model: "gpt-4o" },
     deepseek: {
@@ -896,7 +916,8 @@ function getProviderConfig(provider, model) {
   };
 }
 
-function saveMessagesToDb(sessionId, messages) {
+// ★ Phase 2 Step 2: 纯加法 export
+export function saveMessagesToDb(sessionId, messages, apiMode = "chat_completions") {
   try {
     const db = getDb();
     const messagesJson = JSON.stringify(messages);
@@ -908,13 +929,15 @@ function saveMessagesToDb(sessionId, messages) {
       .prepare("SELECT id FROM llm_messages WHERE session_id = ?")
       .get(sessionId);
     if (existing) {
+      // ★ v5.14：只在新 apiMode 与现有不同时更新（保留历史会话的首次模式）
+      //   避免每次 save 都覆盖、让前端看到稳定值
       db.prepare(
-        "UPDATE llm_messages SET messages = ?, message_tokens = ?, updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
-      ).run(messagesJson, messageTokens, sessionId);
+        "UPDATE llm_messages SET messages = ?, message_tokens = ?, api_mode = CASE WHEN api_mode IS NULL OR api_mode = '' THEN ? ELSE api_mode END, updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
+      ).run(messagesJson, messageTokens, apiMode, sessionId);
     } else {
       db.prepare(
-        "INSERT INTO llm_messages (session_id, messages, message_tokens) VALUES (?, ?, ?)",
-      ).run(sessionId, messagesJson, messageTokens);
+        "INSERT INTO llm_messages (session_id, messages, message_tokens, api_mode) VALUES (?, ?, ?, ?)",
+      ).run(sessionId, messagesJson, messageTokens, apiMode);
     }
     logger.debug("Saved messages to database", {
       sessionId,
@@ -931,7 +954,7 @@ export function loadMessagesFromDb(sessionId) {
     const db = getDb();
     const record = db
       .prepare(
-        "SELECT messages, message_tokens FROM llm_messages WHERE session_id = ?",
+        "SELECT messages, message_tokens, api_mode FROM llm_messages WHERE session_id = ?",
       )
       .get(sessionId);
     if (record && record.messages) {
@@ -946,6 +969,7 @@ export function loadMessagesFromDb(sessionId) {
       return {
         messages: sanitizeMessagesForLLM(rawMessages),
         messageTokens: record.message_tokens || 0,
+        apiMode: record.api_mode || "chat_completions",  // ★ v5.14：返回 api_mode 供前端展示
       };
     }
     return null;
@@ -1558,6 +1582,7 @@ ${skillMd}`;
       lastMessages = JSON.parse(JSON.stringify(messages));
 
       // 保存到数据库（如果有 sessionId）
+      // ★ v5.14：CC path 不传 apiMode → 用默认值 'chat_completions'
       if (sessionId) {
         saveMessagesToDb(sessionId, messages);
       }

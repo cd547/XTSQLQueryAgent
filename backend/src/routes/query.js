@@ -8,6 +8,8 @@ import { getConfig, getLlmConfig } from '../services/config.js';
 import { authRequired, adminRequired, sessionBelongsToUser } from '../services/auth.js';
 import { logger } from '../logger.js';
 import { runSqlAgent, loadSkillMd, getLastMessages, loadMessagesFromDb, clearSessionRegistry } from '../services/llm.js';
+import { runSqlAgentResponsesHandler } from '../services/responsesApi.js';
+import { tools } from '../services/toolFuncs.js';
 import { validateReadOnlySql } from '../services/sqlValidator.js';
 import { poolQuery } from '../services/mysqlPool.js';
 import { config } from '../config.js';
@@ -247,6 +249,8 @@ router.get('/messages/:sessionId', async (req, res) => {
         messages: result.messages,
         count: result.messages.length,
         messageTokens: result.messageTokens,
+        // ★ v5.14：返回 api_mode 让前端展示实际使用的 API 类型
+        apiMode: result.apiMode,
         sessionId
       });
     } else {
@@ -383,20 +387,53 @@ router.post('/generate', async (req, res) => {
 
       // ★ F14 路由侧分流：按用户配置的 apiMode 选实现
       //   - 'chat_completions'（默认）/ 未配置 / 旧配置 → 走原 runSqlAgent
-      //   - 'responses_api' → 调新 runSqlAgentResponses（占位）
+      //   - 'responses_api' → 委派给 responsesApi.js 的 runSqlAgentResponsesHandler
+      //     （与 CC path 1:1 对齐：abortController / requestStartTime / overallTimer /
+      //      streamCompleted 全部透传，handler 内部负责 generator + DB 持久化 + 流式分派）
       //   位置：meta 之后、generator 创建之前 —— 不创建 generator 就不烧 LLM 配额
-      //   占位策略：直接 yield error + done，让前端 loading 关闭 + 看到清晰提示
       const llmCfgForDispatch = getLlmConfig();
       if (llmCfgForDispatch?.apiMode === 'responses_api') {
-        const placeholderMsg = 'Responses API 暂未实现，请切换为 Chat Completions API';
-        logger.info('API mode dispatch → responses_api (placeholder)', {
+        logger.info('API mode dispatch → responses_api', {
           sessionId,
           username: req.user?.username,
-          apiMode: 'responses_api'
+          apiMode: 'responses_api',
         });
-        res.write(`data: ${JSON.stringify({ type: 'error', content: placeholderMsg })}\n\n`);
-        res.write(`data: ${JSON.stringify({ type: 'done', sql: '', message: placeholderMsg })}\n\n`);
-        res.end();
+        const requestStartTime = Date.now();
+        // ★ v5.11 修复：Responses path 不像 CC path 那样在 llm.js:1152 内部拼 system message
+        //   必须由路由层在委派前拼装（与 runSqlAgent L1152 1:1：loadSkillMd + 同前缀）
+        //   修复前没传 systemMessage → handler 内部 systemMessage=undefined → instructions 字段空字符串
+        //   → DeepSeek 报告 "instructions is empty" 或生成内容无 system 约束
+        let systemMessage = '';
+        try {
+          const skillMd = await loadSkillMd();
+          systemMessage = `你是XTSQLQueryAgent。严格遵守以下规则，随后根据用户问题生成SQL。\n${skillMd}`;
+        } catch (e) {
+          logger.error('loadSkillMd 失败，使用空 system message', { error: e.message });
+        }
+        await runSqlAgentResponsesHandler(req, res, {
+          abortController,
+          requestStartTime,
+          overallTimer,
+          streamCompleted: false,
+          sessionId,
+          question,
+          historyText,
+          username: req.user?.username,
+          tools,
+          cfg: llmCfgForDispatch,
+          systemMessage,
+          // ★ Phase 2: max_tool_calls 从 DB agent_config 查（与 runSqlAgent L1182 1:1）
+          maxToolCalls: (() => {
+            try {
+              const db = getDb();
+              const row = db.prepare('SELECT value FROM configs WHERE key = ?').get('agent_max_tool_calls');
+              return row?.value || '30';
+            } catch (e) {
+              return '30';
+            }
+          })(),
+          logger,
+        });
         return;
       }
       // apiMode === 'chat_completions' 或无配置（旧用户） → 原代码 0 改动
