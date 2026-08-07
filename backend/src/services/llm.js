@@ -1436,6 +1436,10 @@ ${skillMd}`;
                     prompt_tokens: usage.prompt_tokens || 0,
                     completion_tokens: usage.completion_tokens || 0,
                     total_tokens: usage.total_tokens || 0,
+                    // ★ v5.15：cached_tokens 透传（CC path 来自 usage.prompt_cache_hit_tokens）
+                    //   Responses path 来自 usage.input_tokens_details.cached_tokens（已在 responsesApi.js:228 提取）
+                    //   前端用 cached_tokens / prompt_tokens 计算 prefix cache 命中率
+                    cached_tokens: cacheHit,
                   },
                   round: currentRound,
                 };

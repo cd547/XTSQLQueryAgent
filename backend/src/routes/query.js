@@ -469,6 +469,8 @@ router.post('/generate', async (req, res) => {
             fullContent += chunk.content;
             res.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk.content, round: chunk.round || 0 })}\n\n`);
           } else if (chunk.type === 'usage') {
+            // ★ v5.15：cached_tokens 透传（CC path 从 usage.prompt_cache_hit_tokens 取值，Responses path 走 handler）
+            const cachedTokens = chunk.usage.cached_tokens || 0;
             totalPromptTokens += chunk.usage.prompt_tokens;
             totalCompletionTokens += chunk.usage.completion_tokens;
             totalTokens += chunk.usage.total_tokens;
@@ -476,8 +478,8 @@ router.post('/generate', async (req, res) => {
             if (sessionId) {
               try {
                 const db = getDb();
-                db.prepare('INSERT INTO messages (session_id, role, content, prompt_tokens, completion_tokens, total_tokens, round) VALUES (?, ?, ?, ?, ?, ?, ?)')
-                  .run(sessionId, 'usage', `Round token: ${chunk.usage.total_tokens} (prompt: ${chunk.usage.prompt_tokens}, completion: ${chunk.usage.completion_tokens})`, chunk.usage.prompt_tokens, chunk.usage.completion_tokens, chunk.usage.total_tokens, chunk.round || 0);
+                db.prepare('INSERT INTO messages (session_id, role, content, prompt_tokens, completion_tokens, total_tokens, cached_tokens, round) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+                  .run(sessionId, 'usage', `Round token: ${chunk.usage.total_tokens} (prompt: ${chunk.usage.prompt_tokens}, completion: ${chunk.usage.completion_tokens}, cached: ${cachedTokens})`, chunk.usage.prompt_tokens, chunk.usage.completion_tokens, chunk.usage.total_tokens, cachedTokens, chunk.round || 0);
               } catch (e) {
                 logger.error('保存usage失败', { error: e.message });
               }

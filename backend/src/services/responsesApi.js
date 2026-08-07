@@ -241,6 +241,10 @@ function translateResponsesEvent(event, { streamToolCalls, responseText, reasoni
             prompt_tokens: prompt,
             completion_tokens: completion,
             total_tokens: total,
+            // ★ v5.15：cached_tokens 透传（Responses path 来自 usage.input_tokens_details.cached_tokens）
+            //   CC path 来自 usage.prompt_cache_hit_tokens（已在 llm.js:1442 提取）
+            //   前端用 cached_tokens / prompt_tokens 计算 prefix cache 命中率
+            cached_tokens: cacheHit,
           },
           round: currentRound,
         });
@@ -273,8 +277,10 @@ async function persistUsageToDb({ sessionId, usage, round }) {
   if (!sessionId) return;
   try {
     const db = getDb();
-    db.prepare('INSERT INTO messages (session_id, role, content, prompt_tokens, completion_tokens, total_tokens, round) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .run(sessionId, 'usage', `Round token: ${usage.total_tokens} (prompt: ${usage.prompt_tokens}, completion: ${usage.completion_tokens})`, usage.prompt_tokens, usage.completion_tokens, usage.total_tokens, round);
+    // ★ v5.15：cached_tokens 字段（Responses path 来自 usage.input_tokens_details.cached_tokens，
+    //   已在 v5.15 yield 处提取到 usage.cached_tokens）—— 与 CC path query.js:482 INSERT 1:1 对齐
+    db.prepare('INSERT INTO messages (session_id, role, content, prompt_tokens, completion_tokens, total_tokens, cached_tokens, round) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .run(sessionId, 'usage', `Round token: ${usage.total_tokens} (prompt: ${usage.prompt_tokens}, completion: ${usage.completion_tokens}, cached: ${usage.cached_tokens || 0})`, usage.prompt_tokens, usage.completion_tokens, usage.total_tokens, usage.cached_tokens || 0, round);
   } catch (e) {
     logger.error('保存usage失败', { error: e.message });
   }
