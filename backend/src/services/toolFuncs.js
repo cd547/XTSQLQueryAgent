@@ -680,12 +680,8 @@ export const tools = [
   new DynamicTool({
     name: "request_user_choice",
     description: "【需要用户输入】当任务需要用户确认/选择/补充才能继续时调用。\n" +
-      "参数 questions: 1-3 个问题的数组，每个问题独立可答。\n" +
-      "  - question: 必填，问题文本，≤200 字\n" +
-      "  - options: 必填，1-4 个选项，每项 ≤100 字\n" +
-      "  - multi_select: 可选，true=多选(checkbox)，false=单选(radio)，默认 false\n" +
-      "  - header: 可选，问题分类标签，≤12 字\n" +
-      "调用后程序自动结束当前轮次并弹出对话框（链式展示 N 张卡片，按钮『下一个』→『完成』）。",
+      "传 questions: 1-3 个独立问题（每题 question + options 1-4 项，字段约束见 schema）。" +
+      "调用后程序自动结束当前轮次并弹出对话框。",
     params: {
       type: 'object',
       properties: {
