@@ -19,7 +19,7 @@ import ExplainAnalyzeModal from './components/modals/ExplainAnalyzeModal.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { useTheme } from './context/ThemeContext.jsx';
 import * as api from './api/index.js';
-import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined, MoreOutlined, DeleteOutlined, LoadingOutlined, LogoutOutlined, UserOutlined, BulbOutlined, BulbFilled } from '@ant-design/icons';
+import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined, MoreOutlined, DeleteOutlined, LoadingOutlined, LogoutOutlined, UserOutlined, BulbOutlined, BulbFilled, ClockCircleOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
@@ -2267,20 +2267,28 @@ children: currentResults.length > 0 ? (
                   <div className="xtsql-input-footer">
                     <div className="xtsql-input-meta">
                       {currentModel && <span className="xtsql-input-model-tag">{currentModel}</span>}
-                      {currentTokens > 0 && <span>{currentTokens} tokens</span>}
-                      <div
-                        className="xtsql-token-bar"
-                        onClick={handleViewMessages}
-                        title="查看消息详情"
-                      >
+                      {currentTokens > 0 && (
+                        <Tooltip title="该会话累计消耗的 token（含输出，按 API usage 计）">
+                          <span className="xtsql-input-tokens">
+                            <ClockCircleOutlined style={{ fontSize: 11, marginRight: 4 }} />
+                            {currentTokens.toLocaleString()} tokens
+                          </span>
+                        </Tooltip>
+                      )}
+                      <Tooltip title={`当前上下文 ${sessionMessagesTokens.toLocaleString()} tokens / 警告阈值 ${tokenWarningLevel.toLocaleString()}（点击查看详情）`}>
                         <div
-                          className="xtsql-token-bar-fill"
-                          style={{
-                            width: `${Math.min((sessionMessagesTokens / tokenWarningLevel) * 100, 100)}%`,
-                            backgroundColor: sessionMessagesTokens > tokenWarningLevel ? 'var(--xtsql-danger)' : 'var(--xtsql-accent)'
-                          }}
-                        />
-                      </div>
+                          className="xtsql-token-bar"
+                          onClick={handleViewMessages}
+                        >
+                          <div
+                            className="xtsql-token-bar-fill"
+                            style={{
+                              width: `${Math.min((sessionMessagesTokens / tokenWarningLevel) * 100, 100)}%`,
+                              backgroundColor: sessionMessagesTokens > tokenWarningLevel ? 'var(--xtsql-danger)' : 'var(--xtsql-accent)'
+                            }}
+                          />
+                        </div>
+                      </Tooltip>
                     </div>
                     {loading ? (
                       <Button
