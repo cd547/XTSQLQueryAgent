@@ -617,11 +617,11 @@ export const tools = [
   // }),
   new DynamicTool({
     name: "get_table_schema",
-    description: "获取指定表的全部字段信息（已合并 DDL+field_config）：列名/类型/注释/索引/外键 + 字段别名/枚举/虚拟关联/业务约束/业务规则。一次调用即可获得物理结构与业务语义。",
+    description: "获取指定表的完整字段信息：列名/类型/注释/索引/外键 + 字段别名/枚举/虚拟关联/业务规则（已合并 DDL 与 field_config，一次调用即得）",
     params: {
       type: 'object',
       properties: {
-        table_names: { type: 'array', items: { type: 'string' }, description: '需要查询的表名列表' }
+        table_names: { type: 'array', items: { type: 'string' }, description: '需要查询的表名' }
       },
       required: ['table_names']
     },
@@ -643,7 +643,7 @@ export const tools = [
   }),
   new DynamicTool({
     name: "request_tag_confirmation",
-    description: "请求用户确认是否将术语添加到表的标签中。当用户纠正表名或提供新的术语-表关联时使用。返回带特殊标记的字符串，会触发前端确认框弹出。",
+    description: "当用户纠正表名或给出术语-表映射时，请求用户确认是否将该术语加入表标签（会弹出确认框）。",
     params: {
       type: 'object',
       properties: {
@@ -778,12 +778,12 @@ export const tools = [
   // 详见 docs/superpowers/plans/2026-07-23-validate-sql-fields-tool-final.md
   new DynamicTool({
     name: "validate_sql_fields",
-    description: "【SQL 质量自检】最终输出 SQL 前必调，校验规则：\n" +
+    description: "【SQL 质量自检】输出 SQL 前必调，校验规则：\n" +
       "  R1 字段-表归属\n" +
       "  R2 字段别名反引号\n" +
       "  R3 MySQL 5.7 限制\n" +
-      "  R5 LIMIT 子句：SELECT 必须含 LIMIT\n" +
-      "返回 {valid, errors, summary}——valid=true 才可输出 SQL，拿到 errors 必须重写后再次校验。" ,
+      "  R5 必须含 LIMIT\n" +
+      "返回 {valid, errors, summary}。" ,
     params: {
       type: 'object',
       properties: {

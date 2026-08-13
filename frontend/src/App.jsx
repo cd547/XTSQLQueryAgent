@@ -388,12 +388,21 @@ function AuthenticatedApp({ user, logout }) {
       const data = await getSessionMessages(sessionId);
       if (loadingRef.current.messagesVersion !== myVersion) return; // 已被新请求覆盖，丢弃
       if (data.messages) {
+        // ★ 修复：空会话（0 条消息）直接清空返回。
+        //   原逻辑在下方"按问题分段"的第二遍扫描里会访问 data.messages[0] → undefined.role 抛错，
+        //   导致 setMessages(loaded) 永远不执行，切回空会话时残留上一个会话的消息。
+        if (data.messages.length === 0) {
+          setMessages([]);
+          setFavoriteStates({});
+          return;
+        }
         // ★ v5.16：在 filter 之前扫一遍 messages，构造 round → usage 映射
         //   用途：filter 之后挂到 assistant 消息的 usage 字段
         //   注意：DeepSeek prefix cache 命中率 = cached_tokens / prompt_tokens
         //   同 round 内可能有多个 usage（多轮 LLM 调用），取最后一个 round 的最后一条 usage
         const roundUsages = {};
         for (const m of data.messages) {
+          if (!m) continue; // 防御：跳过异常/空元素
           if (m.role === 'usage') {
             const r = typeof m.round === 'number' ? m.round : 0;
             if (!roundUsages[r]) {
@@ -418,6 +427,7 @@ function AuthenticatedApp({ user, logout }) {
         let currentSeg = { start: 0, end: 0, usages: {} };
         for (let i = 0; i < data.messages.length; i++) {
           const m = data.messages[i];
+          if (!m) continue; // 防御：跳过异常/空元素
           if (m.role === 'user' && i > 0) {
             segments.push(currentSeg);
             currentSeg = { start: i, end: i, usages: {} };
@@ -439,6 +449,7 @@ function AuthenticatedApp({ user, logout }) {
         for (const seg of segments) {
           for (let i = seg.start; i <= seg.end; i++) {
             const m = data.messages[i];
+            if (!m) continue; // 防御：跳过异常/空元素
             if (m.role === 'assistant') {
               const mRound = typeof m.round === 'number' ? m.round : 0;
               let sumCached = 0, sumPrompt = 0, sumCompletion = 0, sumTotal = 0;
