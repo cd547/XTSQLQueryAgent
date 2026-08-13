@@ -23,7 +23,7 @@ import {
   LLM_TIMEOUTS, withTimeout, withPromiseTimeout,
   loadSkillMd, splitThinkingFromContent,
   buildToolCallChecklistMessage, compactConsumedToolResults,
-  getOrCreateRegistry, resetPerQuestionRegistryFlags,
+  getOrCreateRegistry, resetRegistryForNewQuestion,
   queueLog, flushLogs, getProviderConfig,
 } from "./llm.js";
 import { getLlmConfig, getAgentConfig } from "./config.js";
@@ -342,9 +342,6 @@ async function* _runSqlAgentResponsesStreamGen({
     question, historyLength: historyText?.length, sessionId, username,
   });
 
-  // 每次新 user 消息（= 一次 invoke）重置"问题级独立"标志
-  resetPerQuestionRegistryFlags(getOrCreateRegistry(sessionId));
-
   // 1) LLM config（与 runSqlAgent L1118 1:1 对齐：从 config.js 取）
   let config;
   try {
@@ -394,6 +391,10 @@ async function* _runSqlAgentResponsesStreamGen({
 
   // 4) Messages 初始化
   let messages = initMessagesForRun({ sessionId, question, systemMessage });
+  // ★ 每次新 user 消息（= 一次 invoke）重置"问题级"状态：
+  //   validateSqlFields* 始终重置；域路由状态仅新问题时清空，
+  //   request_user_choice 中断后的续问保留状态（与 CC path 1:1 对齐）。
+  resetRegistryForNewQuestion(getOrCreateRegistry(sessionId), messages);
 
   // 5) Round 计数 / 终止信号
   // ★ Phase 2 决策：max_tool_calls 从参数传入（路由层从 DB 查 agent_max_tool_calls）

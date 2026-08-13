@@ -409,6 +409,66 @@ export function resetPerQuestionRegistryFlags(reg) {
   reg.validateSqlFieldsErrorCount = 0;
 }
 
+/**
+ * 检测"本次 user 消息是否是 request_user_choice 中断后的续问"。
+ *
+ * 判定依据：加载的历史消息中，最后一条 user 消息（即本次问题）紧邻的前一条
+ * 必须是 tool 消息且内容含 `<!--user_choice:` 标记 —— 表示上一轮以
+ * `request_user_choice` 中断（用户作答后前端合成一条 user 消息继续同一问题）。
+ *
+ * @param {Array} messages - 已加载并追加本次 user 消息后的 messages 数组
+ * @returns {boolean}
+ */
+export function detectUserChoiceContinuation(messages) {
+  if (!Array.isArray(messages) || messages.length < 2) return false;
+  let lastUserIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i] && messages[i].role === "user") {
+      lastUserIdx = i;
+      break;
+    }
+  }
+  if (lastUserIdx <= 0) return false;
+  const prev = messages[lastUserIdx - 1];
+  if (!prev || prev.role !== "tool") return false;
+  const content = typeof prev.content === "string" ? prev.content : "";
+  return content.includes("<!--user_choice:");
+}
+
+/**
+ * 每次新 user 消息（= 一次 /generate 调用）时重置"问题级"状态。
+ *
+ * - validateSqlFields* 始终重置（本问题内的校验计数）。
+ * - 域路由相关状态（getDomainIndexCalled / slicedDomains / tableSchema /
+ *   termConfirmed / userChoiceAsked / getTablesCalled）：
+ *   * 新问题 → 全部清空，允许模型重新 get_domain_index / get_sliced_index 路由新域；
+ *   * request_user_choice 中断后的续问 → 保留（同一问题继续，无需重新路由）。
+ *
+ * @param {object|null} reg - 会话工具调用注册表
+ * @param {Array} messages - 已加载并追加本次 user 消息后的 messages 数组
+ */
+export function resetRegistryForNewQuestion(reg, messages) {
+  if (!reg) return;
+  resetPerQuestionRegistryFlags(reg);
+  if (detectUserChoiceContinuation(messages)) {
+    logger.info("user_choice 续问：保留域路由状态", {
+      getDomainIndexCalled: reg.getDomainIndexCalled,
+      slicedDomains: [...reg.slicedDomains],
+    });
+    return;
+  }
+  // 新问题：清空域路由相关"问题级"状态，允许重新路由新业务域
+  // ★ getDomainIndexCalled 保持会话级（特例）：get_domain_index 返回内容少且会话内不变，
+  //   一次调用即可；新问题由剪枝（tools 列表中移除）+ checklist（get_domain_index:✓）
+  //   引导模型直接复用上下文中的业务域列表，无需再次调用。
+  reg.slicedDomains.clear();
+  reg.tableSchema.clear();
+  reg.termConfirmed.clear();
+  reg.userChoiceAsked.clear();
+  reg.getTablesCalled = false;
+  logger.info("新问题：已清空域路由状态");
+}
+
 function normalizeTableNames(arr) {
   if (!Array.isArray(arr)) return [];
   return [
@@ -833,6 +893,15 @@ export async function compactConsumedToolResults(messages, foldedCache) {
       continue;
     }
 
+    // ★ 2026-08-13 修复（A19）：折叠前跳过"被拦截/失败"的 tool 消息。
+    //   原逻辑只看参数 domain_ids 就重新生成真实表列表，会把"已剪枝/重复拦截"等
+    //   错误消息"复活"成真实结果，让 LLM 误以为工具调用成功。
+    const rawContent = typeof m.content === "string" ? m.content.trim() : "";
+    if (/^(Error:|🚫)/.test(rawContent)) {
+      result.push(m);
+      continue;
+    }
+
     // cache-aside: 命中直接用
     if (foldedCache.has(m.tool_call_id)) {
       result.push({ ...m, content: foldedCache.get(m.tool_call_id) });
@@ -1114,13 +1183,6 @@ export async function* runSqlAgent(
     username,
   });
 
-  // ★ 每次新 user 消息（= 一次 invoke）重置"问题级独立"标志。
-  //   validateSqlFields* 属于此范畴：避免上一问题的"✓passed"残留在本问题
-  //   的 checklist 里误导 LLM。会话级持久状态（getDomainIndexCalled /
-  //   slicedDomains / tableSchema / termConfirmed / userChoiceAsked）
-  //   保持不变，因为 history 已包含其结果。
-  resetPerQuestionRegistryFlags(getOrCreateRegistry(sessionId));
-
   let config;
   try {
     config = getLlmConfig();
@@ -1187,6 +1249,13 @@ ${skillMd}`;
       { role: "user", content: question },
     ];
   }
+
+  // ★ 每次新 user 消息（= 一次 invoke）重置"问题级"状态：
+  //   - validateSqlFields* 始终重置，避免上一问题的"✓passed"残留在 checklist 误导 LLM；
+  //   - 域路由状态（get_domain_index / get_sliced_index / schema / tag / choice 计数）
+  //     仅在新问题时清空（允许重新路由新业务域）；request_user_choice 中断后的
+  //     续问（用户作答）保留状态，同一问题继续无需重新路由。
+  resetRegistryForNewQuestion(getOrCreateRegistry(sessionId), messages);
 
   const agentConfig = getAgentConfig();
   let maxToolCalls = parseInt(agentConfig.agent_max_tool_calls || "30", 10);
