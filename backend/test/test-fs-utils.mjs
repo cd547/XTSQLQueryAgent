@@ -10,7 +10,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { ensureDir } from './src/utils/fs.js';
+import { ensureDir } from '../src/utils/fs.js';
 
 let pass = 0;
 let fail = 0;

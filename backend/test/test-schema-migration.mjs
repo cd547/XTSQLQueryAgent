@@ -1,15 +1,16 @@
 // 验证 schema 迁移工具的：
-//   1. 全新 DB：所有列被添加
-//   2. 老 DB：缺的列被补全，已有的列不报错
-//   3. 重复运行：幂等
+//   1. 老库首次初始化：cached_tokens / api_mode 被 ALTER 补列，其余表/列正常创建
+//   2. 已有列不报错 + 重复运行幂等
+//   3. 迁移为"首次启动一次性"：删列后重复 initDatabase 不会补回
 //   4. SQL 写错：抛错（不再静默吞掉）
 import Database from 'better-sqlite3';
 import path from 'path';
+import os from 'os';
 import { fileURLToPath } from 'url';
 import { unlinkSync, existsSync } from 'fs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
-const testDbPath = path.join(__dirname, 'test-migration.db');
+const testDbPath = path.join(os.tmpdir(), `xtsql-test-migration-${Date.now()}.db`);
 
 // 清理上次测试残留
 for (const ext of ['', '-wal', '-shm']) {
@@ -20,7 +21,26 @@ for (const ext of ['', '-wal', '-shm']) {
 // 设置环境变量，让 sqlite.js 用我们的测试 DB
 process.env.DB_PATH = testDbPath;
 
-const { initDatabase, getDb } = await import('./src/db/sqlite.js');
+const { initDatabase, getDb } = await import('../src/db/sqlite.js');
+
+// 0) 预建"老库"：messages 缺 cached_tokens、llm_messages 缺 api_mode（模拟历史版本 schema）
+const raw = new Database(testDbPath);
+raw.exec(`
+  CREATE TABLE messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER, role TEXT, content TEXT, sql TEXT, results TEXT,
+    prompt_tokens INTEGER DEFAULT 0, completion_tokens INTEGER DEFAULT 0,
+    total_tokens INTEGER DEFAULT 0, elapsed_ms INTEGER DEFAULT 0,
+    round INTEGER DEFAULT 0, interrupted INTEGER DEFAULT 0,
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+  CREATE TABLE llm_messages (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER, messages TEXT, message_tokens INTEGER DEFAULT 0,
+    updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+  );
+`);
+raw.close();
 
 function expect(name, actual, expected) {
   const ok = actual === expected;
@@ -32,7 +52,7 @@ function getColumns(table) {
   return getDb().prepare(`PRAGMA table_info(${table})`).all().map(c => c.name);
 }
 
-console.log('=== 1. 全新 DB：所有列应被添加 ===\n');
+console.log('=== 1. 老库首次初始化：迁移补列 + 其余建表 ===\n');
 await initDatabase();
 
 const userCols = getColumns('users');
@@ -67,23 +87,18 @@ try {
   process.exitCode = 1;
 }
 
-console.log('\n=== 3. 直接测试 addColumnIfMissing 函数：列不存在 → 添加；列存在 → 跳过 ===\n');
-// 复用当前 DB（不要 close，否则模块级 db 变量无法重置）
+console.log('\n=== 3. 迁移为"首次启动一次性"：删列后重复 initDatabase 不会补回 ===\n');
 const db3 = getDb();
 
-// 先删一个已存在的列
-db3.exec(`ALTER TABLE messages DROP COLUMN total_tokens`); // 删 total_tokens（前面的步骤已经加上了）
-
-// 用 PRAGMA 验证删除成功
-const colsAfterDrop = db3.prepare(`PRAGMA table_info(messages)`).all().map(c => c.name);
-expect('删除后 messages 缺 total_tokens', colsAfterDrop.includes('total_tokens'), false);
-
-// 重新导入 addColumnIfMissing 验证（需要从 sqlite.js 内部导出，替代方案：直接调用 initDatabase）
-// 这里采用：调用 initDatabase 触发 addColumnIfMissing
+// 删列后重跑 initDatabase（此时 initialized=true，直接返回，不再执行迁移）
+db3.exec(`ALTER TABLE messages DROP COLUMN cached_tokens`);
+db3.exec(`ALTER TABLE llm_messages DROP COLUMN api_mode`);
 await initDatabase();
 
 const colsAfterReadd = db3.prepare(`PRAGMA table_info(messages)`).all().map(c => c.name);
-expect('重新初始化后 messages 有 total_tokens', colsAfterReadd.includes('total_tokens'), true);
+expect('删列后重复 initDatabase：cached_tokens 仍缺失（一次性迁移契约）', colsAfterReadd.includes('cached_tokens'), false);
+const llmColsAfterReadd = db3.prepare(`PRAGMA table_info(llm_messages)`).all().map(c => c.name);
+expect('删列后重复 initDatabase：api_mode 仍缺失（一次性迁移契约）', llmColsAfterReadd.includes('api_mode'), false);
 
 console.log('\n=== 4. SQL 写错时应该抛错（不再静默吞掉） ===\n');
 // 直接测试：手动执行一个语法错的 ALTER，验证错误不被吞

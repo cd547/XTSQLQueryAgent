@@ -6,9 +6,9 @@ import os from 'os';
 const TEST_DB = path.join(os.tmpdir(), `xtsql-test-v514-${Date.now()}.db`);
 process.env.DB_PATH = TEST_DB;
 
-const { saveMessagesToDb, loadMessagesFromDb } = await import('./src/services/llm.js');
-const { saveRunState } = await import('./src/services/agentHelpers.js');
-const { getDb, initDatabase } = await import('./src/db/sqlite.js');
+const { saveMessagesToDb, loadMessagesFromDb } = await import('../src/services/llm.js');
+const { saveRunState } = await import('../src/services/agentHelpers.js');
+const { getDb, initDatabase } = await import('../src/db/sqlite.js');
 
 let pass = 0, fail = 0;
 const check = (name, cond) => {

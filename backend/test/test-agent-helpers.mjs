@@ -1,6 +1,6 @@
 // test-agent-helpers.mjs - 行为测试
-import * as h from './src/services/agentHelpers.js';
-import * as llm from './src/services/llm.js';
+import * as h from '../src/services/agentHelpers.js';
+import * as llm from '../src/services/llm.js';
 
 let pass = 0, fail = 0;
 function check(name, cond) {
@@ -145,7 +145,7 @@ console.log('\n=== helper 2 兼容：availableToolNames 兼容扁平 schema ==='
     { id: 'c1', type: 'function', function: { name: 'sql_executor', arguments: '{"q":"SELECT 1"}' } },
   ];
   // 找一个真实工具（mock 完整 toolsMap）
-  const realTools = (await import('./src/services/toolFuncs.js')).tools;
+  const realTools = (await import('../src/services/toolFuncs.js')).tools;
   const toolsMap = new Map(realTools.map((t) => [t.name, t]));
   // 关键：执行前 availableToolNames 集合（Set of flat names）要能正确比对 nested toolCall name
   const availableToolNames = new Set(flatPrunedTools.map((t) => t.function?.name || t.name));

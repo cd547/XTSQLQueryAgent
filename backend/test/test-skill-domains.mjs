@@ -7,7 +7,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { addTableToDomains } from './src/services/skillDomains.js';
+import { addTableToDomains } from '../src/services/skillDomains.js';
 
 let pass = 0;
 let fail = 0;

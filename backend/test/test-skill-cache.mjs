@@ -13,7 +13,7 @@
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { createSkillTreeCache } from './src/services/skillCache.js';
+import { createSkillTreeCache } from '../src/services/skillCache.js';
 
 let pass = 0;
 let fail = 0;

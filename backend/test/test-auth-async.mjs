@@ -1,10 +1,15 @@
-// 验证 bcrypt 异步化后端到端功能
+// 验证 bcrypt 异步化后端到端功能（使用临时 SQLite，避免污染真实 data/app.db）
+import path from 'path';
+import os from 'os';
 import express from 'express';
 import cookieParser from 'cookie-parser';
 import cors from 'cors';
-import { initDatabase, getDb } from './src/db/sqlite.js';
-import { initSkillLogTable } from './src/db/sqlite.js';
-import authRouter from './src/routes/auth.js';
+
+// ★ 必须在导入 sqlite.js 之前设置 DB_PATH（config.js 在模块加载时读取）
+process.env.DB_PATH = path.join(os.tmpdir(), `xtsql-test-auth-${Date.now()}.db`);
+
+const { initDatabase, getDb, initSkillLogTable } = await import('../src/db/sqlite.js');
+const { default: authRouter } = await import('../src/routes/auth.js');
 
 const app = express();
 app.use(cors({ origin: (o, cb) => cb(null, true), credentials: true }));

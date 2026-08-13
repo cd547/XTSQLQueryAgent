@@ -4,7 +4,7 @@ import path from 'path';
 import os from 'os';
 process.env.DB_PATH = path.join(os.tmpdir(), `xtsql-test-v515-${Date.now()}.db`);
 
-const { initDatabase, getDb } = await import('./src/db/sqlite.js');
+const { initDatabase, getDb } = await import('../src/db/sqlite.js');
 
 let pass = 0, fail = 0;
 const check = (name, cond) => {

@@ -1,4 +1,4 @@
-import { validateReadOnlySql, RULES, stripSqlComments } from './src/services/sqlValidator.js';
+import { validateReadOnlySql, RULES, stripSqlComments } from '../src/services/sqlValidator.js';
 
 let pass = 0;
 let fail = 0;

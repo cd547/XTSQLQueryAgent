@@ -26,7 +26,7 @@ import {
   buildUserChoiceMarker,
   makeUserChoiceId,
   tools
-} from './src/services/toolFuncs.js';
+} from '../src/services/toolFuncs.js';
 
 let pass = 0;
 let fail = 0;

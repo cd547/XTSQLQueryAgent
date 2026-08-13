@@ -10,7 +10,7 @@
  *   6. 多次并发调用互不干扰
  */
 
-import { withTimeout, withPromiseTimeout, LLM_TIMEOUTS } from './src/services/llm.js';
+import { withTimeout, withPromiseTimeout, LLM_TIMEOUTS } from '../src/services/llm.js';
 
 let pass = 0;
 let fail = 0;

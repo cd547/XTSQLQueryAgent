@@ -1,5 +1,5 @@
 // test-convert-input-items.mjs
-import { convertMessagesToInputItems } from './src/services/agentHelpers.js';
+import { convertMessagesToInputItems } from '../src/services/agentHelpers.js';
 
 let pass = 0, fail = 0;
 function check(name, cond) {

@@ -6,7 +6,7 @@
  * 运行：cd backend && node test-validate-sql-fields.mjs
  */
 
-import { validateSqlFields } from './src/services/validators.js';
+import { validateSqlFields } from '../src/services/validators.js';
 
 let passed = 0;
 let failed = 0;

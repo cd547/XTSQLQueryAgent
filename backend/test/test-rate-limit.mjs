@@ -1,6 +1,6 @@
 // 通过真实的 Express 服务器验证 rate-limit
 import express from 'express';
-import { authRateLimiter } from './src/middleware/rateLimit.js';
+import { authRateLimiter } from '../src/middleware/rateLimit.js';
 
 const app = express();
 app.use(express.json());

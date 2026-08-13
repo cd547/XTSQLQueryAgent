@@ -9,7 +9,7 @@
  * 运行：cd backend && node test-load-columns-map.mjs
  */
 
-import { loadColumnsMap, extractColumnsFromDDL } from './src/services/ddlUtils.js';
+import { loadColumnsMap, extractColumnsFromDDL } from '../src/services/ddlUtils.js';
 
 let passed = 0;
 let failed = 0;
@@ -84,7 +84,7 @@ console.log('\n========== Test 4: R1 集成验证（同名字段场景）=======
 
 // 实际项目里：columnRef 来自 sqlParser.extractColumnRefs
 // 这里直接验证 lookup 逻辑
-const { extractColumnRefs, buildAliasMap } = await import('./src/services/sqlParser.js');
+const { extractColumnRefs, buildAliasMap } = await import('../src/services/sqlParser.js');
 
 const sql1 = 'SELECT et.mobile FROM edu_teacher et';
 const refs1 = extractColumnRefs(sql1);

@@ -29,14 +29,13 @@ import {
   buildUserChoiceMarker,
   makeUserChoiceId,
   tools
-} from './src/services/toolFuncs.js';
+} from '../src/services/toolFuncs.js';
 import fs from 'fs';
 import path from 'path';
 import { fileURLToPath } from 'url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const { readFileSync } = fs;
-const backendDir = __dirname;
 
 let pass = 0;
 let fail = 0;
@@ -387,7 +386,7 @@ console.log('\n=== IT-25  v3 单调用多问题（1 次调 N questions → 拆 N
 // ======================================================================
 console.log('\n=== 额外：源码静态检查 ===');
 {
-  const llmPath = path.join(__dirname, 'src', 'services', 'llm.js');
+  const llmPath = path.join(__dirname, '..', 'src', 'services', 'llm.js');
   const llmSrc = fs.readFileSync(llmPath, 'utf-8');
 
   // 验证 buildToolCallChecklistMessage 中 userChoiceAsked 处理逻辑
@@ -408,7 +407,7 @@ console.log('\n=== 额外：源码静态检查 ===');
   truthy('messages.push 调用存在（其他用途）', messagesPushCount > 0);
 
   // 验证 toolFuncs.js 含 v3 validateQuestions
-  const toolFuncsPath = path.join(__dirname, 'src', 'services', 'toolFuncs.js');
+  const toolFuncsPath = path.join(__dirname, '..', 'src', 'services', 'toolFuncs.js');
   const toolFuncsSrc = fs.readFileSync(toolFuncsPath, 'utf-8');
   contains('toolFuncs.js 含 validateQuestions', toolFuncsSrc, 'function validateQuestions');
   contains('toolFuncs.js 工具 schema 含 questions 数组', toolFuncsSrc, 'questions:');

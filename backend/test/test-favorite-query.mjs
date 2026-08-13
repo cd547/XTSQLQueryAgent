@@ -16,8 +16,8 @@ const testRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'fav-query-test-'));
 process.env.SKILL_PATH = testRoot;
 process.env.PROJECT_ROOT = testRoot;
 
-const { extractJsonObject, saveFavoriteQuery, checkFavorites, deleteFavoriteQuery, getFavoriteSuggestions } = await import('./src/services/favoriteQuery.js');
-const { getDomainsForTables, invalidateReverseIndex } = await import('./src/services/skillDomains.js');
+const { extractJsonObject, saveFavoriteQuery, checkFavorites, deleteFavoriteQuery, getFavoriteSuggestions } = await import('../src/services/favoriteQuery.js');
+const { getDomainsForTables, invalidateReverseIndex } = await import('../src/services/skillDomains.js');
 
 let pass = 0;
 let fail = 0;
@@ -285,7 +285,7 @@ const getDbFn = () => db;
 // 导致路由层不传 signal 时直接抛 "Cannot read properties of undefined (reading 'addEventListener')"
 {
   // 直接调底层函数，传 undefined signal
-  const { withTimeout, withPromiseTimeout } = await import('./src/services/llm.js');
+  const { withTimeout, withPromiseTimeout } = await import('../src/services/llm.js');
   let threwWithTimeout = false;
   try {
     const t = withTimeout(undefined, 5000, 'regression-withTimeout');
