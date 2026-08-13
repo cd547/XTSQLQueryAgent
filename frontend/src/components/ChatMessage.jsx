@@ -58,6 +58,26 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
     if (prompt <= 0) return null;
     const miss = prompt - cached;
     const hitRate = ((cached / (cached + miss)) * 100).toFixed(1);
+    // ★ 每轮命中率明细：来自 usage.rounds（流式 done / 历史回看两条路径都已附带）
+    //   仅用于 tooltip 展示，不参与累计命中率计算
+    const rounds = (usage.rounds && typeof usage.rounds === 'object')
+      ? Object.keys(usage.rounds)
+          .map(Number)
+          .filter(n => !Number.isNaN(n))
+          .sort((a, b) => a - b)
+          .map(r => {
+            const u = usage.rounds[r] || {};
+            const p = u.prompt_tokens || 0;
+            const c = u.cached_tokens || 0;
+            return {
+              round: r,
+              cached: c,
+              miss: Math.max(0, p - c),
+              prompt: p,
+              rate: p > 0 ? ((c / p) * 100).toFixed(1) : null,
+            };
+          })
+      : [];
     return {
       hitRate,
       cached,
@@ -65,6 +85,7 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
       prompt,
       completion: usage.completion_tokens || 0,
       total: usage.total_tokens || 0,
+      rounds,
     };
   })();
 
@@ -150,10 +171,21 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
             {hitRateInfo && (
               <Tooltip
                 title={
-                  <div>
+                  <div style={{ fontSize: 12 }}>
                     <div>prefix cache 命中率</div>
-                    <div>命中 {hitRateInfo.cached} / 未命中 {hitRateInfo.miss} = {hitRateInfo.hitRate}%</div>
+                    <div>累计 命中 {hitRateInfo.cached} / 未命中 {hitRateInfo.miss} = {hitRateInfo.hitRate}%</div>
                     <div>prompt {hitRateInfo.prompt} · completion {hitRateInfo.completion} · total {hitRateInfo.total}</div>
+                    {hitRateInfo.rounds.length > 0 && (
+                      <div style={{ marginTop: 4, maxHeight: 180, overflowY: 'auto', fontSize: 11, lineHeight: 1.7 }}>
+                        <div>各轮命中率：</div>
+                        {hitRateInfo.rounds.map(r => (
+                          <div key={r.round}>
+                            Round {r.round}: {r.rate !== null ? `${r.rate}%` : '—'}
+                            {r.rate !== null && `（命中 ${r.cached} / prompt ${r.prompt}）`}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 }
               >

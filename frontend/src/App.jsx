@@ -402,24 +402,6 @@ function AuthenticatedApp({ user, logout }) {
           setFavoriteStates({});
           return;
         }
-        // ★ v5.16：在 filter 之前扫一遍 messages，构造 round → usage 映射
-        //   用途：filter 之后挂到 assistant 消息的 usage 字段
-        //   注意：DeepSeek prefix cache 命中率 = cached_tokens / prompt_tokens
-        //   同 round 内可能有多个 usage（多轮 LLM 调用），取最后一个 round 的最后一条 usage
-        const roundUsages = {};
-        for (const m of data.messages) {
-          if (!m) continue; // 防御：跳过异常/空元素
-          if (m.role === 'usage') {
-            const r = typeof m.round === 'number' ? m.round : 0;
-            if (!roundUsages[r]) {
-              roundUsages[r] = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cached_tokens: 0 };
-            }
-            roundUsages[r].prompt_tokens += m.prompt_tokens || 0;
-            roundUsages[r].completion_tokens += m.completion_tokens || 0;
-            roundUsages[r].total_tokens += m.total_tokens || 0;
-            roundUsages[r].cached_tokens += m.cached_tokens || 0;
-          }
-        }
         const filtered = data.messages.filter(m => m.role !== 'usage');
         // ★ v5.19 修复：按"问题边界"分桶 — 每条 assistant 消息只算自己问题段的 round 0..mRound
         //   之前全局 roundUsages + 覆盖式：3 个问题都 round 0 → Q3 覆盖 Q1/Q2 → asst1 显示 Q3 命中率
@@ -460,6 +442,8 @@ function AuthenticatedApp({ user, logout }) {
               const mRound = typeof m.round === 'number' ? m.round : 0;
               let sumCached = 0, sumPrompt = 0, sumCompletion = 0, sumTotal = 0;
               let hasAny = false;
+              // ★ 每轮命中率明细（round → {prompt/completion/total/cached}），供 tooltip 按轮展示
+              const rounds = {};
               for (let r = 0; r <= mRound; r++) {
                 const u = seg.usages[r];
                 if (u) {
@@ -468,6 +452,12 @@ function AuthenticatedApp({ user, logout }) {
                   sumCompletion += u.completion;
                   sumTotal += u.total;
                   hasAny = true;
+                  rounds[r] = {
+                    prompt_tokens: u.prompt,
+                    completion_tokens: u.completion,
+                    total_tokens: u.total,
+                    cached_tokens: u.cached,
+                  };
                 }
               }
               if (hasAny) {
@@ -476,6 +466,7 @@ function AuthenticatedApp({ user, logout }) {
                   completion_tokens: sumCompletion,
                   total_tokens: sumTotal,
                   cached_tokens: sumCached,
+                  rounds,
                 };
               }
             }
@@ -1090,12 +1081,17 @@ function AuthenticatedApp({ user, logout }) {
           //   修法：在 chunk 之后 / reasoning_done 之前加 `else if (data.type === 'usage')`
           if (data.usage) {
             const r = typeof data.round === 'number' ? data.round : 0;
-            roundUsagesRef.current[r] = {
-              prompt_tokens: data.usage.prompt_tokens || 0,
-              completion_tokens: data.usage.completion_tokens || 0,
-              total_tokens: data.usage.total_tokens || 0,
-              cached_tokens: data.usage.cached_tokens || 0,
-            };
+            // ★ 健壮性：同 round 累加而非覆盖，与历史回看路径（loadMessages 的 segmentUsages `+=`）
+            //   及 DB（每条 usage 事件落一行）保持一致。
+            //   当前每轮恰好一条 usage（一次 LLM 调用一条），覆盖/累加结果相同，行为无变化；
+            //   若未来同轮出现多条 usage（如重试/多次计费事件），累加才能保证"流式显示 == 刷新后回看"。
+            if (!roundUsagesRef.current[r]) {
+              roundUsagesRef.current[r] = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cached_tokens: 0 };
+            }
+            roundUsagesRef.current[r].prompt_tokens += data.usage.prompt_tokens || 0;
+            roundUsagesRef.current[r].completion_tokens += data.usage.completion_tokens || 0;
+            roundUsagesRef.current[r].total_tokens += data.usage.total_tokens || 0;
+            roundUsagesRef.current[r].cached_tokens += data.usage.cached_tokens || 0;
             // ★ v5.18 调试开关：默认开启；用户可手动注释
             if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
               console.log('[v5.18 debug] usage 事件 round=' + r + ':', JSON.stringify(roundUsagesRef.current[r]));
@@ -1164,6 +1160,8 @@ function AuthenticatedApp({ user, logout }) {
             // 累积 0.._lastRound 之间的所有 round usage
             let _sumCached = 0, _sumPrompt = 0, _sumCompletion = 0, _sumTotal = 0;
             let _hasAny = false;
+            // ★ 每轮命中率明细（round → {prompt/completion/total/cached}），供 tooltip 按轮展示
+            const _rounds = {};
             for (let r = 0; r <= _lastRound; r++) {
               const u = roundUsagesRef.current[r];
               if (u) {
@@ -1172,6 +1170,12 @@ function AuthenticatedApp({ user, logout }) {
                 _sumCompletion += u.completion_tokens || 0;
                 _sumTotal += u.total_tokens || 0;
                 _hasAny = true;
+                _rounds[r] = {
+                  prompt_tokens: u.prompt_tokens || 0,
+                  completion_tokens: u.completion_tokens || 0,
+                  total_tokens: u.total_tokens || 0,
+                  cached_tokens: u.cached_tokens || 0,
+                };
               }
             }
             if (_hasAny) {
@@ -1180,6 +1184,7 @@ function AuthenticatedApp({ user, logout }) {
                 completion_tokens: _sumCompletion,
                 total_tokens: _sumTotal,
                 cached_tokens: _sumCached,
+                rounds: _rounds,
               };
             }
           }
