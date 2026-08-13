@@ -133,6 +133,12 @@ function AuthenticatedApp({ user, logout }) {
   const contentRef = useRef('');
   const messageCountRef = useRef(0);
   const messagesEndRef = useRef(null);
+  // ★ 修复：用户是否停留在聊天区底部附近（阈值 100px）。
+  //   流式输出时仅当用户贴近底部才自动跟随滚动；用户上翻查看历史时不得被实时输出拉回底部。
+  //   初始为 true：进入会话时自动滚到最新消息。
+  const isNearBottomRef = useRef(true);
+  // 记录上一次自动滚动的会话 id，用于区分"切换会话"与"同会话流式增长"
+  const lastScrollSessionRef = useRef(null);
   // Per-session scrollTop 记忆：sessionId -> scrollTop。
   // 用 ref 而非 state，避免 onScroll 频繁触发重渲染。
   // 切换会话时优先恢复该会话上次的位置；无记忆时回退到"滚到最新消息"。
@@ -552,25 +558,36 @@ function AuthenticatedApp({ user, logout }) {
     if (messages.length > messageCountRef.current && currentSessionId) {
       const saved = sessionScrollTopsRef.current.get(currentSessionId);
       messageCountRef.current = messages.length;
+      // 区分"切换会话"（恢复该会话浏览位置）与"同会话流式增长"（仅在贴近底部时跟随）
+      const sessionChanged = lastScrollSessionRef.current !== currentSessionId;
+      lastScrollSessionRef.current = currentSessionId;
       // rAF 等 DOM 更新完成再操作 scrollTop，避免消息尚未渲染时 scrollHeight 还是旧值
       requestAnimationFrame(() => {
         if (!chatContentRef.current) return;
-        if (saved !== undefined) {
-          // 有记忆：恢复该会话上次浏览的位置（用户可能在中间/顶部/底部）
-          chatContentRef.current.scrollTop = saved;
-        } else {
-          // 无记忆（首次访问该会话）：滚到最新消息位置
+        if (sessionChanged) {
+          // 切换会话：有记忆则恢复该会话上次浏览位置，无记忆则滚到最新消息
+          if (saved !== undefined) {
+            chatContentRef.current.scrollTop = saved;
+          } else {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'instant' });
+          }
+        } else if (isNearBottomRef.current) {
+          // 同会话流式增长：仅当用户贴近底部时跟随输出
           messagesEndRef.current?.scrollIntoView({ behavior: 'instant' });
         }
+        // 用户已上翻查看历史（!isNearBottomRef.current）：保持当前位置，不滚动
       });
     }
   }, [messages.length, currentSessionId]);
 
   // onScroll 实时记录当前会话的 scrollTop
+  // 同时更新"是否贴近底部"标记，供流式自动滚动判断
   // 用 ref.set 不触发重渲染，性能开销可忽略
   const handleChatScroll = useCallback(() => {
     if (currentSessionId && chatContentRef.current) {
-      sessionScrollTopsRef.current.set(currentSessionId, chatContentRef.current.scrollTop);
+      const el = chatContentRef.current;
+      sessionScrollTopsRef.current.set(currentSessionId, el.scrollTop);
+      isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
     }
   }, [currentSessionId]);
   
@@ -953,7 +970,10 @@ function AuthenticatedApp({ user, logout }) {
           if (!streamingScrollRafRef.current) {
             streamingScrollRafRef.current = requestAnimationFrame(() => {
               streamingScrollRafRef.current = 0;
-              messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+              // ★ 修复：仅当用户贴近底部时才跟随实时输出；上翻查看历史时保持当前位置
+              if (isNearBottomRef.current) {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+              }
             });
           }
         } else if (data.type === 'LLM' || data.type === 'tool' || data.type === 'tool_return') {
@@ -1054,7 +1074,10 @@ function AuthenticatedApp({ user, logout }) {
           if (!streamingScrollRafRef.current) {
             streamingScrollRafRef.current = requestAnimationFrame(() => {
               streamingScrollRafRef.current = 0;
-              messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+              // ★ 修复：仅当用户贴近底部时才跟随实时输出；上翻查看历史时保持当前位置
+              if (isNearBottomRef.current) {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+              }
             });
           }
         } else if (data.type === 'usage') {
