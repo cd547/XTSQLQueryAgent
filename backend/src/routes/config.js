@@ -167,6 +167,50 @@ router.get('/llm/models', adminRequired, asyncHandler(async (req, res) => {
   }
 }));
 
+// ★ 2026-08-17：查询 DeepSeek 账户余额
+//   文档：https://api-docs.deepseek.com/zh-cn/api/get-user-balance
+//   端点：GET https://api.deepseek.com/user/balance
+//   Auth: Authorization: Bearer <apiKey>
+//   返回：{ success, is_available, balance_infos: [{ currency, total_balance, granted_balance, topped_up_balance }] }
+router.get('/llm/balance', adminRequired, asyncHandler(async (req, res) => {
+  const db = getDb();
+  const row = db.prepare('SELECT value FROM configs WHERE key = ?').get('llm_config');
+
+  if (!row) {
+    return res.json({ success: false, message: '请先配置DeepSeek API Key' });
+  }
+
+  const config = JSON.parse(row.value);
+  if (!config.apiKey) {
+    return res.json({ success: false, message: '请先配置DeepSeek API Key' });
+  }
+
+  try {
+    const response = await fetch('https://api.deepseek.com/user/balance', {
+      headers: {
+        'Authorization': `Bearer ${config.apiKey}`,
+        'Accept': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      const errorText = await response.text();
+      logger.error('DeepSeek balance API error', { status: response.status, error: errorText });
+      return res.json({ success: false, message: `API错误: ${response.status}` });
+    }
+
+    const data = await response.json();
+    res.json({
+      success: true,
+      is_available: data.is_available,
+      balance_infos: data.balance_infos
+    });
+  } catch (error) {
+    logger.error('Failed to fetch deepseek balance', { error: error.message });
+    res.json({ success: false, message: error.message });
+  }
+}));
+
 router.get('/agent', async (req, res) => {  // 普通用户也用：读 token 警告阈值
   try {
     const config = getAgentConfig();

@@ -7,7 +7,7 @@ import AppIcon from './AppIcon.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { getMarkdownRenderers } from './markdownRenderers.jsx';
 
-const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, onOpenSqlTab, onCopyAndExecute, onFavorite, favoriteState, userQuestion, userAvatar, interrupted, usage }) {
+const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, onOpenSqlTab, onCopyAndExecute, onFavorite, favoriteState, userQuestion, userAvatar, interrupted, usage, toolName }) {
   const { theme: themeMode } = useTheme();
   const isUser = role === 'user';
   const isLog = role === 'log' || role === 'LLM' || role === 'tool' || role === 'tool_return';
@@ -91,7 +91,17 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
 
   // 日志类型（工具调用 / 思考过程）
   if (isLog) {
-    const typeLabel = logType === 'return' ? '工具返回' : logType === 'llm' ? '思考过程' : '工具调用';
+    // ★ 2026-08-17：工具调用 title 拼接工具名
+    //   例：原 "工具调用 2026/08/13 06:25" → 新 "工具调用 validate_sql_fields 2026/08/13 06:25"
+    //   仅 call 类型且有 toolName 时拼接；其他类型（return/llm）保持原样
+    let typeLabel;
+    if (logType === 'return') {
+      typeLabel = '工具返回';
+    } else if (logType === 'llm') {
+      typeLabel = '思考过程';
+    } else {
+      typeLabel = toolName ? `工具调用 ${toolName}` : '工具调用';
+    }
     const tagClass = logType === 'return' ? 'return' : (logType === 'llm' ? 'llm' : 'call');
     return (
       <div className="xtsql-log">
@@ -101,7 +111,16 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
             <span className={`xtsql-log-tag ${tagClass}`}>{typeLabel}</span>
             <span style={{ marginLeft: 'auto' }}>{timeStr}</span>
           </div>
-          {!collapsed && <div className="xtsql-log-body">{content}</div>}
+          {!collapsed && (
+            <div className="xtsql-log-body">
+              {/* ★ 2026-08-17：统一过滤"🔧 调用工具: ..."行（标题已拼工具名，body 再显示就重复）
+                  新数据 + 老数据 + 即使后端没重启跑旧代码 → 全部统一处理
+                  兜底：过滤后为空（如空参数工具）→ 显示"(无参数)"占位，避免节点"消失" */}
+              {logType === 'call' && content
+                ? (content.replace(/^🔧 调用工具:[^\n]*\n?/, '').trim() || '(无参数)')
+                : content}
+            </div>
+          )}
         </div>
       </div>
     );

@@ -1611,20 +1611,23 @@ ${skillMd}`;
       // 流式响应结束，输出工具调用日志
       for (const tc of validToolCalls) {
         const toolName = tc.function.name;
+        // 后端日志保留完整信息（admin 看后端日志仍可见"🔧 调用工具 + 参数"）
         queueLog(
           `🔧 调用工具: ${toolName} 参数:${JSON.stringify(tc.function.arguments)}`,
           true,
         );
+        // ★ 2026-08-17：yield log 恢复两行格式（"🔧 调用工具: xxx\n参数: {...}"）
+        //   工具名走独立 toolName 字段给前端（title 拼接用）
+        //   前端 ChatMessage 渲染 body 时统一过滤第一行（去掉"🔧 调用工具: xxx"行）
+        //   原因：① 即使后端没重启（跑旧代码）也能正常工作 ② 老数据历史回看格式一致 ③ 空参数时仍保留"🔧 调用工具: xxx"行不丢节点
         let logMsg = `🔧 调用工具: ${toolName}`;
         try {
           const parsedArgs = JSON.parse(tc.function.arguments || "{}");
-          if (Object.keys(parsedArgs).length > 0) {
-            logMsg += `\n参数: ${JSON.stringify(parsedArgs)}`;
-          }
+          logMsg += `\n参数: ${JSON.stringify(parsedArgs)}`;
         } catch (e) {
           logger.debug("JSON parse/split failed", { error: e.message });
         }
-        yield { type: "tool", log: logMsg, round: currentRound };
+        yield { type: "tool", log: logMsg, toolName, round: currentRound };
       }
 
       // 保存 assistant 消息，需要包含 tool_calls

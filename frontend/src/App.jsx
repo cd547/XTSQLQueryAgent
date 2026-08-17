@@ -495,6 +495,16 @@ function AuthenticatedApp({ user, logout }) {
             sql: m.sql || '',
             timestamp: m.created_at,
             logType: m.role === 'LLM' ? 'llm' : m.role === 'tool_return' ? 'return' : 'call',
+            // ★ 2026-08-17：历史回看抽取 toolName
+            //   老数据：m.content 含 "🔧 调用工具: {toolName}\n参数: ..." → regex 抽
+            //   新数据：m.content 只含 "参数: ..."（无"🔧 调用工具"行）→ regex 抽不到，toolName=null
+            //     历史回看新数据 title 退化为"工具调用"（无工具名），可接受
+            //   实时流式不受影响（新数据通过 data.toolName 字段传入，逻辑在 L1000-1015 logMsg 构段）
+            toolName: (() => {
+              if (m.role !== 'tool') return null;
+              const match = (m.content || '').match(/🔧 调用工具:\s*(\S+)/);
+              return match ? match[1] : null;
+            })(),
             // 历史回看：所有日志类型（LLM思考 / 工具调用 / 工具返回）默认折叠，
             // 与流式实时态（collapsed: true）保持一致，避免历史消息全展开
             collapsed: ['LLM', 'tool', 'tool_return'].includes(m.role),
@@ -1004,6 +1014,18 @@ function AuthenticatedApp({ user, logout }) {
                 timestamp: new Date().toISOString(),
                 collapsed: true,
                 logType: logType,
+                // ★ 2026-08-17：透传工具名（仅 tool 类型有值）
+                //   前端 ChatMessage 用它拼接 title "工具调用 {toolName} {date}"
+                //   来源：后端 llm.js:1627 yield { type: "tool", toolName, ... }
+                toolName: (() => {
+                  if (data.type !== 'tool') return null;
+                  // 优先用后端 yield 的 toolName 字段（新数据）
+                  if (data.toolName) return data.toolName;
+                  // 兜底：后端未重启（跑旧代码）时从 content regex 抽
+                  // 兼容老后端的 log 格式 "🔧 调用工具: xxx\n参数: {...}"
+                  const match = (data.log || '').match(/🔧 调用工具:\s*(\S+)/);
+                  return match ? match[1] : null;
+                })(),
                 // ★ LLM 工具调用轮次编号（用于前端"数轴式"轮次展示）
                 //   后端 llm.js 在每个 yield 时附带 round 字段
                 //   同 assistant 消息内多条 log 可能共享同一 round（思考→调用→返回属于同一轮）
@@ -1934,6 +1956,10 @@ const explainColumns = useMemo(() => explainResults.length > 0
                           collapsed={msg.collapsed !== undefined ? msg.collapsed : true}
                           onToggleCollapse={handleToggleCollapse}
                           logType={msg.logType}
+                          // ★ 2026-08-17：透传 toolName（single log 消息也需要）
+                          //   历史回看：从 msg.toolName（regex 抽过）透传
+                          //   实时流式：单条 log 走 roundGroup 分支，但若 single 也走这里则从 msg.toolName 拿
+                          toolName={msg.toolName}
                           sql={msg.sql}
                           startTime={msg.startTime}
                           elapsedMs={msg.elapsedMs}
