@@ -544,13 +544,9 @@ export function buildToolCallChecklistMessage(reg) {
   if (parts.length === 0) return null;
   return {
     role: "system",
-    content:
-      `🚫 【冻结工具清单 - 绝对禁止重复调用】\n` +
-      `[已调用] ${parts.join(" | ")}\n\n` +
-      `【铁律】以上工具的结果已在你的上下文中。\n` +
-      `【禁止】任何"为了保险再调一次"、"再确认"、"重新看看"等重复调用。\n` +
-      `【禁止】在 SQL 生成阶段再次调用这些工具——会被程序拦截并造成 token 浪费。\n` +
-      `【判定】若信息已全 → 立即输出 SQL，不要再调用任何工具。`,
+    // 精简版 checklist：只列出已调用工具，重复调用约束交给 SKILL.md 第 9 节
+    // + checkAndFilterDuplicateCall 程序拦截。约 30 tokens（原 200 tokens）
+    content: `🔁 已调用: ${parts.join(" | ")}`,
   };
 }
 
@@ -1301,6 +1297,17 @@ export async function* runSqlAgent(
         true,
         username,
       );
+      // 同步 checklist 快照到 DB 历史（1:1 与传给 LLM 的原文一致）
+      // 仅作旁路记录，不影响 requestMessages / 原始 messages 数组 / prefix cache
+      // 历史回显需要"每轮调用过哪些"时，直接读这一行
+      try {
+        const db = getDb();
+        db.prepare(
+          'INSERT INTO messages (session_id, role, content, sql, results, round) VALUES (?, ?, ?, ?, ?, ?)'
+        ).run(sessionId, 'log', checklistMsg.content, '', '', currentRound);
+      } catch (e) {
+        logger.error('保存 checklist 失败', { error: e.message, sessionId, currentRound });
+      }
     } else {
       queueLog(
         `📋 [Round ${maxToolCallsInitial - maxToolCalls}] 本轮 LLM 请求无『已调用工具清单』（首轮或无 sessionId）`,

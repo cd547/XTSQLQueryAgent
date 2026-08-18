@@ -474,7 +474,12 @@ function AuthenticatedApp({ user, logout }) {
         }
         // 老数据兜底：没有 elapsed_ms 时按 user/assistant 成对消息的 created_at 差值补算
         // 一次性扫描，按"相邻 user/assistant 配对"得到回显耗时
-        const loaded = filtered.map(m => {
+        // 过滤 checklist 汇总行（content 以 "🔁 已调用:" 开头）
+        //   DB 仍写入（用于后续审计 / 缓存命中率分析），仅在历史 UI 中隐藏
+        //   旧数据 "🚫 冻结工具清单" 也用同一前缀判断一并隐藏
+        const loaded = filtered
+          .filter(m => !(m.content || '').startsWith('🔁 已调用:'))
+          .map(m => {
           let elapsedMs = m.elapsed_ms || null;
           // 历史 DB 行的 role 是 LLM/tool/tool_return，与流式 SSE 实时态的 'log' role 不同
           // 这里统一归一化为 'log'，否则 groupMessagesByRound 不会把它们当 log 分组
