@@ -4,8 +4,10 @@ import {
   loadTableIndex,
   loadSkillMd,
   tools,
+  LLM_TOOLS,
   formatTableInfoCompact,
   sliceTableIndexByDomains,
+  buildSystemMessage,
 } from "./toolFuncs.js";
 import { getDb } from "../db/sqlite.js";
 import { countMessagesTokens } from "./tokenizer.js";
@@ -362,7 +364,9 @@ export function getOrCreateRegistry(sessionId) {
   if (!sessionToolRegistries.has(sessionId)) {
     sessionToolRegistries.set(sessionId, {
       getTablesCalled: false,
-      getDomainIndexCalled: false,
+      // F18 (2026-08): get_domain_index 已迁移至 system 消息内嵌，不再作为 LLM 工具调用。
+      //   - 工具本身在 toolFuncs.js 仍保留为"已废弃"定义，用于兼容旧会话 history
+      //   - 剪枝 / 重复调用拦截 / checklist 均已移除（域清单在 system 中永久可见）
       slicedDomains: new Set(), // 已通过 get_sliced_index 加载过的域 ID
       tableSchema: new Set(),
       // F10: get_table_ddl 已合并到 get_table_schema（v4 起 DDL 物理结构 +
@@ -394,9 +398,10 @@ export function getOrCreateRegistry(sessionId) {
  * 重置注册表里的"问题级独立"标志。
  *
  * 调用时机：每次新 user 消息到来时（即 runSqlAgent 入口）。
- * 不重置会话级持久状态（getDomainIndexCalled / slicedDomains / tableSchema /
+ * 不重置会话级持久状态（slicedDomains / tableSchema /
  * termConfirmed / userChoiceAsked / getTablesCalled），因为这些
  * 跟踪的是"已加载到 history 的数据"，数据本身跨问题仍然有效，重取会浪费 token。
+ * （getDomainIndexCalled 已在 F18 移除：域清单已嵌入 system 永久可见）
  *
  * 历史 Bug 2026-07-28：未做此重置时，Q1 校验通过的"✓passed"会残留在 Q2/Q3 的
  * checklist 里，误导 LLM 跳过本轮 SQL 校验。
@@ -439,10 +444,11 @@ export function detectUserChoiceContinuation(messages) {
  * 每次新 user 消息（= 一次 /generate 调用）时重置"问题级"状态。
  *
  * - validateSqlFields* 始终重置（本问题内的校验计数）。
- * - 域路由相关状态（getDomainIndexCalled / slicedDomains / tableSchema /
+ * - 域路由相关状态（slicedDomains / tableSchema /
  *   termConfirmed / userChoiceAsked / getTablesCalled）：
- *   * 新问题 → 全部清空，允许模型重新 get_domain_index / get_sliced_index 路由新域；
+ *   * 新问题 → 全部清空，允许模型重新 get_sliced_index 路由新域；
  *   * request_user_choice 中断后的续问 → 保留（同一问题继续，无需重新路由）。
+ *   （F18: getDomainIndexCalled 已移除，域清单永久在 system 中可见）
  *
  * @param {object|null} reg - 会话工具调用注册表
  * @param {Array} messages - 已加载并追加本次 user 消息后的 messages 数组
@@ -452,15 +458,13 @@ export function resetRegistryForNewQuestion(reg, messages) {
   resetPerQuestionRegistryFlags(reg);
   if (detectUserChoiceContinuation(messages)) {
     logger.info("user_choice 续问：保留域路由状态", {
-      getDomainIndexCalled: reg.getDomainIndexCalled,
       slicedDomains: [...reg.slicedDomains],
     });
     return;
   }
   // 新问题：清空域路由相关"问题级"状态，允许重新路由新业务域
-  // ★ getDomainIndexCalled 保持会话级（特例）：get_domain_index 返回内容少且会话内不变，
-  //   一次调用即可；新问题由剪枝（tools 列表中移除）+ checklist（get_domain_index:✓）
-  //   引导模型直接复用上下文中的业务域列表，无需再次调用。
+  // （F18: getDomainIndexCalled 不再维护；新问题由"可用业务域"在 system 永久可见，
+  //   模型不会重复调用 get_domain_index）
   reg.slicedDomains.clear();
   reg.tableSchema.clear();
   reg.termConfirmed.clear();
@@ -478,12 +482,12 @@ function normalizeTableNames(arr) {
 
 function buildChecklist(reg) {
   if (!reg) return "（空）";
-  const domainIndexFlag = reg.getDomainIndexCalled ? "已调用" : "未调用";
+  // F18: get_domain_index 已从 registry 移除（域清单内嵌 system），
+  //   checklist 不再展示该条目。
   const slicedDomainsList = [...reg.slicedDomains].sort().join(", ") || "无";
   const schemaList = [...reg.tableSchema].sort().join(", ") || "无";
   const tablesFlag = reg.getTablesCalled ? "已调用" : "未调用";
   return [
-    `- get_domain_index: ${domainIndexFlag}`,
     `- get_sliced_index 已覆盖的域: ${slicedDomainsList}`,
     `- get_tables: ${tablesFlag}`,
     `- 已获取 schema（含 DDL/索引/外键）的表: ${schemaList}`,
@@ -503,7 +507,7 @@ function buildChecklist(reg) {
 export function buildToolCallChecklistMessage(reg) {
   if (!reg) return null;
   const parts = [];
-  if (reg.getDomainIndexCalled) parts.push("get_domain_index:✓");
+  // F18: get_domain_index 不再追踪（域清单在 system 中永久可见）
   if (reg.getTablesCalled) parts.push("get_tables:✓");
   if (reg.slicedDomains.size > 0)
     parts.push(`get_sliced_index:[${[...reg.slicedDomains].sort().join(",")}]`);
@@ -530,7 +534,7 @@ export function buildToolCallChecklistMessage(reg) {
   //   called=false: LLM 还没调用 → 应在输出 SQL 前调用
   //   注：本工具**不被剪枝**也不被"重复调用"拦截，是稳定工具（不剪枝，可反复调用）
   //   状态范围：per-question（由 resetPerQuestionRegistryFlags 在每次新 user
-  //   消息时重置），与上面的会话级持久状态（getDomainIndexCalled 等）不同。
+  //   消息时重置），与上面的会话级持久状态（slicedDomains 等）不同。
   if (reg.validateSqlFieldsCalled) {
     const status = reg.validateSqlFieldsPassed
       ? "✓passed"
@@ -573,18 +577,9 @@ export function checkAndFilterDuplicateCall(toolName, args, sessionId) {
     return { block: false, args };
   }
 
-  if (toolName === "get_domain_index") {
-    if (reg.getDomainIndexCalled) {
-      return {
-        block: true,
-        message:
-          `⚠️ 【重复调用已被程序拦截】get_domain_index 在本会话中已被调用过一次，业务域列表已存在于你的上下文中。\n\n` +
-          `📋 已有信息清单:\n${buildChecklist(reg)}\n\n` +
-          `请直接复用已有域列表，禁止再次调用 get_domain_index。`,
-      };
-    }
-    return { block: false, args };
-  }
+  // F18: get_domain_index 已废弃（description 显式标记），
+  //   不再拦截重复调用（registry 中也无对应标志位）。
+  //   若 LLM 仍调用本工具 → 正常执行返回域列表（无害，等价于 system 中已有内容）。
 
   if (toolName === "get_sliced_index") {
     const requestedDomains = normalizeTableNames(args.domain_ids);
@@ -713,8 +708,6 @@ export function recordToolCall(toolName, args, sessionId, overrideId = null) {
   if (!reg) return;
   if (toolName === "get_tables") {
     reg.getTablesCalled = true;
-  } else if (toolName === "get_domain_index") {
-    reg.getDomainIndexCalled = true;
   } else if (toolName === "get_sliced_index") {
     normalizeTableNames(args.domain_ids).forEach((d) =>
       reg.slicedDomains.add(d),
@@ -1198,7 +1191,10 @@ export async function* runSqlAgent(
 
   const skillMd = await loadSkillMd();
 
-  const toolsDefinition = tools.map((t) => ({
+  // F18: 发送给 LLM 的 tools 用 LLM_TOOLS（已过滤 get_domain_index）。
+  //   toolsMap 用完整 tools 构建（兜底执行：旧会话 history 中若有 get_domain_index
+  //   tool_call，toolsMap 仍能命中执行函数，避免"未知工具"错误）。
+  const toolsDefinition = LLM_TOOLS.map((t) => ({
     type: "function",
     function: {
       name: t.name,
@@ -1214,8 +1210,9 @@ export async function* runSqlAgent(
   const toolsMap = new Map(tools.map((t) => [t.name, t]));
   //const tableIndex = loadTableIndex();
 
-  const systemMessage = `你是XTSQLQueryAgent。严格遵守以下规则，随后根据用户问题生成SQL。
-${skillMd}`;
+  // ★ F18：system 拼接走 toolFuncs.buildSystemMessage 共享函数（CC/RA 单一来源）
+  //   内部会重新读 domain_router_index.json，拼接 "## 可用业务域" 小节。
+  const systemMessage = await buildSystemMessage(skillMd);
 
   let messages;
 
@@ -1252,9 +1249,10 @@ ${skillMd}`;
 
   // ★ 每次新 user 消息（= 一次 invoke）重置"问题级"状态：
   //   - validateSqlFields* 始终重置，避免上一问题的"✓passed"残留在 checklist 误导 LLM；
-  //   - 域路由状态（get_domain_index / get_sliced_index / schema / tag / choice 计数）
+  //   - 域路由状态（get_sliced_index / schema / tag / choice 计数）
   //     仅在新问题时清空（允许重新路由新业务域）；request_user_choice 中断后的
   //     续问（用户作答）保留状态，同一问题继续无需重新路由。
+  //     （F18: get_domain_index 已不在 registry 跟踪；域清单在 system 中永久可见）
   resetRegistryForNewQuestion(getOrCreateRegistry(sessionId), messages);
 
   const agentConfig = getAgentConfig();
@@ -1341,8 +1339,9 @@ ${skillMd}`;
     });
 
     // 工具剪枝：一次性工具调用过后，从 LLM 请求的 tools 数组中移除以节省 token
-    // - get_domain_index：调用后业务域列表已在 history 中，后续不需要
     // - get_sliced_index：调用后已加载的域在 history 中，后续不需要
+    //   （F18：get_domain_index 已从剪枝列表移除——域清单永久在 system 中可见，
+    //     不需要"调用后剪枝"，且工具本身已标"已废弃"）
     // 注意：toolsMap（用于执行工具的查找）保持不变，仅影响 LLM 看到哪些工具可选
     //
     // ★ validate_sql_fields：不再剪枝（含 Round 0）
@@ -1355,11 +1354,6 @@ ${skillMd}`;
     const pruneReg = sessionId ? getOrCreateRegistry(sessionId) : null;
     const prunedTools = pruneReg
       ? toolsDefinition.filter((t) => {
-          if (
-            t.function.name === "get_domain_index" &&
-            pruneReg.getDomainIndexCalled
-          )
-            return false;
           if (
             t.function.name === "get_sliced_index" &&
             pruneReg.slicedDomains.size > 0
@@ -1667,8 +1661,9 @@ ${skillMd}`;
         // 阶段 1：同步预处理（参数解析 + 重复调用检查）
         // 必须在并行执行前一次性完成，避免同一会话内两个相同工具的检查互相穿透
         // ★ 本轮可用的工具名集合（来自本轮实际发给 LLM 的 prunedTools）
-        //   一次性工具（get_domain_index / get_sliced_index）调用后被剪枝，从这里消失。
+        //   一次性工具（get_sliced_index）调用后被剪枝，从这里消失。
         //   LLM 若仍"幻觉"调用被剪枝的工具 → 立即拦截，不进入执行阶段。
+        //   （F18: get_domain_index 已移至 system，不在剪枝列表）
         const availableToolNames = new Set(
           prunedTools.map((t) => t.function.name),
         );

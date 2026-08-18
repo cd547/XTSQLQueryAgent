@@ -15,8 +15,9 @@ check('roles=system,user', m1[0].role === 'system' && m1[1].role === 'user');
 check('content 正确', m1[0].content === 'sys' && m1[1].content === 'q');
 
 console.log('=== helper 2: getPrunedToolsForRun ===');
+// F18: get_domain_index 已迁移至 system，剪枝测试改用 get_sliced_index 作为示例工具
 const tools = [
-  { function: { name: 'get_domain_index' } },
+  { function: { name: 'get_sliced_index' } },
   { function: { name: 'sql_executor' } },
 ];
 const r = h.getPrunedToolsForRun({ toolsDefinition: tools, sessionId: null, currentRound: 0 });
@@ -101,35 +102,33 @@ const r3parse = await h.executeToolCallsInStages({
 check('参数解析失败也写回 messages', messages3.length === 1 && messages3[0].content.includes('Error'));
 
 // === v5.9 新增：getPrunedToolsForRun 兼容两种 tool schema ===
-console.log('\n=== helper 1 兼容：嵌套 vs 扁平 tool schema ===');
+// F18 (2026-08): get_domain_index 已迁移至 system 消息内嵌，不再作为 LLM 工具调用。
+//   剪枝测试改为仅针对 get_sliced_index（剩余唯一一次性工具）。
+console.log('\n=== helper 1 兼容：嵌套 vs 扁平 tool schema（仅 get_sliced_index 剪枝）===');
 {
   // 嵌套 schema（CC path / OpenAI Chat Completions）
   const nested = [
-    { type: 'function', function: { name: 'get_domain_index' } },
     { type: 'function', function: { name: 'get_sliced_index' } },
     { type: 'function', function: { name: 'sql_executor' } },
   ];
   const reg1 = llm.getOrCreateRegistry('test_schema_nested');
-  reg1.getDomainIndexCalled = true;
-  reg1.slicedDomains = new Set();
+  reg1.slicedDomains = new Set(['finance']);
   const r1 = h.getPrunedToolsForRun({ toolsDefinition: nested, sessionId: 'test_schema_nested', currentRound: 0 });
-  check('嵌套 schema 剪枝 get_domain_index', r1.prunedTools.length === 2 && !r1.prunedTools.some(t => t.function.name === 'get_domain_index'));
-  check('嵌套 schema prunedNames 含 get_domain_index', r1.prunedNames.includes('get_domain_index'));
+  check('嵌套 schema 剪枝 get_sliced_index', r1.prunedTools.length === 1 && !r1.prunedTools.some(t => t.function.name === 'get_sliced_index'));
+  check('嵌套 schema prunedNames 含 get_sliced_index', r1.prunedNames.includes('get_sliced_index'));
 }
 {
   // 扁平 schema（Responses path / OpenAI Responses API）
   const flat = [
-    { type: 'function', name: 'get_domain_index' },
     { type: 'function', name: 'get_sliced_index' },
     { type: 'function', name: 'sql_executor' },
   ];
   const reg2 = llm.getOrCreateRegistry('test_schema_flat');
-  reg2.getDomainIndexCalled = true;
-  reg2.slicedDomains = new Set();
+  reg2.slicedDomains = new Set(['finance']);
   // ★ v5.9 修复前：这里会抛 TypeError "Cannot read properties of undefined (reading 'name')"
   const r2 = h.getPrunedToolsForRun({ toolsDefinition: flat, sessionId: 'test_schema_flat', currentRound: 0 });
-  check('扁平 schema 剪枝 get_domain_index', r2.prunedTools.length === 2 && !r2.prunedTools.some(t => t.name === 'get_domain_index'));
-  check('扁平 schema prunedNames 含 get_domain_index', r2.prunedNames.includes('get_domain_index'));
+  check('扁平 schema 剪枝 get_sliced_index', r2.prunedTools.length === 1 && !r2.prunedTools.some(t => t.name === 'get_sliced_index'));
+  check('扁平 schema prunedNames 含 get_sliced_index', r2.prunedNames.includes('get_sliced_index'));
 }
 
 // === v5.12 新增：executeToolCallsInStages availableToolNames 兼容两种 schema ===

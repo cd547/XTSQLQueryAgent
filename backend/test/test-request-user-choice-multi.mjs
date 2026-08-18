@@ -116,16 +116,17 @@ console.log('=== IT-11  连续 3 轮 user_choice（3 次独立调用）===');
 console.log('\n=== IT-12  user_choice + 业务工具混合（tools 数组位置）===');
 {
   // F10: get_table_ddl 已合并到 get_table_schema，索引全部前移 1 位
-  // （get_tables 已被注释，所以数组从 get_table_schema 开始）
+  // F18 (2026-08): get_domain_index 仍保留为"已废弃"工具，索引 3（位置不变）
   const idx = tools.findIndex(t => t.name === 'request_user_choice');
   eq('request_user_choice 的 tools 索引', idx, 2);
   eq('request_user_choice 前面是 request_tag_confirmation', tools[1]?.name, 'request_tag_confirmation');
-  eq('request_user_choice 后面是 get_domain_index', tools[3]?.name, 'get_domain_index');
+  eq('request_user_choice 后面是 get_domain_index（已废弃）', tools[3]?.name, 'get_domain_index');
 
   // 稳定工具组（index 0-3）顺序应符合 prefix cache 设计
   // F10: get_table_ddl 已合并到 get_table_schema，工具数量从 7 减为 6
+  // F18: get_domain_index 保留为已废弃工具（兼容旧会话 history），位置不变
   const stableGroup = tools.slice(0, 4).map(t => t.name);
-  eq('稳定工具组顺序（合并 DDL 后）', stableGroup.join(','),
+  eq('稳定工具组顺序（合并 DDL + get_domain_index 已废弃后）', stableGroup.join(','),
     'get_table_schema,request_tag_confirmation,request_user_choice,get_domain_index');
 }
 

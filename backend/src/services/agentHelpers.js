@@ -82,7 +82,9 @@ export function initMessagesForRun(ctx) {
 // ============================================================
 // helper 2: getPrunedToolsForRun
 // 源：llm.js L1271-1295（1:1 抽取）
-// 职责：按 sessionId 注册表剪枝一次性工具（get_domain_index / get_sliced_index）
+// 职责：按 sessionId 注册表剪枝一次性工具（get_sliced_index）
+//   F18: get_domain_index 已迁移至 system 消息内嵌，不再作为 LLM 工具调用，
+//   无需剪枝（工具本身已标"已废弃"）。
 // 返回：{ prunedTools, prunedNames }
 // ============================================================
 export function getPrunedToolsForRun(ctx) {
@@ -95,8 +97,6 @@ export function getPrunedToolsForRun(ctx) {
   const prunedTools = pruneReg
     ? toolsDefinition.filter((t) => {
         const toolName = getToolName(t);
-        if (toolName === "get_domain_index" && pruneReg.getDomainIndexCalled)
-          return false;
         if (toolName === "get_sliced_index" && pruneReg.slicedDomains.size > 0)
           return false;
         return true;
@@ -246,8 +246,9 @@ export async function executeToolCallsInStages(ctx) {
   // 阶段 1：同步预处理（参数解析 + 重复调用检查）
   // 必须在并行执行前一次性完成，避免同一会话内两个相同工具的检查互相穿透
   // ★ 本轮可用的工具名集合（来自本轮实际发给 LLM 的 prunedTools）
-  //   一次性工具（get_domain_index / get_sliced_index）调用后被剪枝，从这里消失。
+  //   一次性工具（get_sliced_index）调用后被剪枝，从这里消失。
   //   LLM 若仍"幻觉"调用被剪枝的工具 → 立即拦截，不进入执行阶段。
+  //   （F18: get_domain_index 已移至 system，不在剪枝列表）
   // ★ v5.12 修复：prunedTools 在 Responses path 是扁平 schema，复用顶层 getToolName
   const availableToolNames = new Set(
     prunedTools.map((t) => getToolName(t)),

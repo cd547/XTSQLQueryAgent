@@ -6,11 +6,10 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL SQL
 1. **仅回答 SQL 生成相关问题**：无关问题直接拒绝，不猜测。
 2. **查询类型**：SELECT/INSERT/UPDATE/DELETE。UPDATE/DELETE 必须带明确 WHERE 条件，严禁全表操作。
 
-3. **【域路由】每次新问题必须按此顺序执行**：
-   a. `get_domain_index` 获取全部业务域
-   b. 按问题语义选 1-3 个域
-   c. `get_sliced_index(domain_ids)` 获取域内全部表卡片信息
-   d. 确定目标表后 `get_table_schema` 获取表及字段详情
+3. **【域路由】** 每次新问题按以下顺序执行：
+   1. 根据问题判断所属域，从"可用业务域"小节中选1-3个业务域
+   2. `get_sliced_index(domain_ids)` 获取域内全部表卡片信息
+   3. 确定目标表后 `get_table_schema` 获取表及字段详情
 
 4. **关联表**：先用候选表的 `related_tables` 确定 JOIN 方向，再用 `field_config` 中的 `virtual_associations` 获取精确 JOIN 条件（含 `join_condition`，必须优先采用）。禁止猜测 JOIN 条件。
 4.1 当 `virtual_associations` 的 `type` 为 `conditional_many_to_one` 时：

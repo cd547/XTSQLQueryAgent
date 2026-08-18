@@ -9,7 +9,7 @@ import { authRequired, adminRequired, sessionBelongsToUser } from '../services/a
 import { logger } from '../logger.js';
 import { runSqlAgent, loadSkillMd, getLastMessages, loadMessagesFromDb, clearSessionRegistry } from '../services/llm.js';
 import { runSqlAgentResponsesHandler } from '../services/responsesApi.js';
-import { tools } from '../services/toolFuncs.js';
+import { LLM_TOOLS, buildSystemMessage } from '../services/toolFuncs.js';
 import { validateReadOnlySql } from '../services/sqlValidator.js';
 import { poolQuery } from '../services/mysqlPool.js';
 import { config } from '../config.js';
@@ -403,12 +403,14 @@ router.post('/generate', async (req, res) => {
         //   必须由路由层在委派前拼装（与 runSqlAgent L1152 1:1：loadSkillMd + 同前缀）
         //   修复前没传 systemMessage → handler 内部 systemMessage=undefined → instructions 字段空字符串
         //   → DeepSeek 报告 "instructions is empty" 或生成内容无 system 约束
+        // ★ F18：改用 toolFuncs.buildSystemMessage 共享函数（CC/RA 单一来源），
+        //   内部自动追加 "## 可用业务域" 小节
         let systemMessage = '';
         try {
           const skillMd = await loadSkillMd();
-          systemMessage = `你是XTSQLQueryAgent。严格遵守以下规则，随后根据用户问题生成SQL。\n${skillMd}`;
+          systemMessage = await buildSystemMessage(skillMd);
         } catch (e) {
-          logger.error('loadSkillMd 失败，使用空 system message', { error: e.message });
+          logger.error('loadSkillMd/buildSystemMessage 失败，使用空 system message', { error: e.message });
         }
         await runSqlAgentResponsesHandler(req, res, {
           abortController,
@@ -419,7 +421,7 @@ router.post('/generate', async (req, res) => {
           question,
           historyText,
           username: req.user?.username,
-          tools,
+          tools: LLM_TOOLS,  // F18: RA 路径也用 LLM_TOOLS（已过滤 get_domain_index）
           cfg: llmCfgForDispatch,
           systemMessage,
           // ★ Phase 2: max_tool_calls 从 DB agent_config 查（与 runSqlAgent L1182 1:1）

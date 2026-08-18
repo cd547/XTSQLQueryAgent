@@ -725,11 +725,13 @@ export const tools = [
     }
   }),
   // ===== 可变工具：调用一次后会被剪枝（见 llm.js 中的剪枝逻辑）=====
-  // 剪枝顺序：get_domain_index 先剪（Round 2 后），get_sliced_index 后剪（Round 3 后）
-  // 顺序必须按"调用顺序"排，先被调用的先剪
+  // 剪枝顺序：get_sliced_index 后剪（Round 3 后）
+  // 注：get_domain_index 已迁移至 system 消息内嵌（2026-08），不再作为 LLM 工具调用。
+  //     为兼容旧会话（history 中已存在 get_domain_index tool message）暂时保留，
+  //     description 显式标记"已废弃"，LLM 不应再调用。
   new DynamicTool({
     name: "get_domain_index",
-    description: "列出所有业务域（id + 名称 + 描述），用于域路由第一步。",
+    description: "【已废弃，请勿调用】业务域列表已嵌入系统提示词的「可用业务域」小节，根据问题直接选域后调用 get_sliced_index(domain_ids) 即可。调用本工具将浪费 token 且不会得到新信息。",
     params: {
       type: 'object',
       properties: {},
@@ -821,3 +823,37 @@ export const tools = [
     }
   })
 ];
+
+// ============================================================
+// LLM_TOOLS：发送给 LLM 的工具列表（去掉已废弃工具）
+// F18 (2026-08)：get_domain_index 已迁移至 system 消息内嵌，LLM 不应再看到。
+//   - tools 数组保留 get_domain_index 定义（旧会话 history 兼容 + 兜底执行
+//     toolsMap 仍能命中，避免"未知工具"错误）
+//   - LLM_TOOLS 用于构造发送给 LLM 的 tools 字段（CC + RA 双路径共用）
+//   - 后续若新增已废弃工具，统一在这里 filter，CC/RA 自动同步
+// ============================================================
+export const LLM_TOOLS = tools.filter((t) => t.name !== "get_domain_index");
+
+// ============================================================
+// buildSystemMessage：CC path + Responses path 共用的 system message 装配函数
+// 单一来源（避免两处各写一份导致漂移）。
+// 输入：已加载的 SKILL.md 内容
+// 输出：完整 system message（身份前缀 + SKILL + 可用业务域清单）
+// ============================================================
+export async function buildSystemMessage(skillMd) {
+  // 每次请求重新读 domain_router_index.json（用户决策：保证热更新即时生效，
+  // 接受少量 IO 开销）。文件通常 <10KB，单次 readFile <1ms。
+  const domainIndex = await loadDomainRouterIndex();
+  // F19 (2026-08)：id 加反引号 + 中文名用全角括号，结构上让 id 更突出
+  //   降低模型把"name"误当成 id 传给 get_sliced_index 的概率
+  const domainList = (domainIndex?.domains || [])
+    .map((d) => `- \`${d.id}\`（${d.name}）: ${d.description}`)
+    .join("\n") || "（暂无业务域）";
+  return (
+    `你是XTSQLQueryAgent。严格遵守以下规则，随后根据用户问题生成SQL。\n` +
+    `${skillMd}\n\n` +
+    `## 可用业务域\n` +
+    `> 传给 get_sliced_index 的 domain_ids 必须是左侧 \`id\`（英文部分），不是括号里的中文名。\n` +
+    `${domainList}`
+  );
+}
