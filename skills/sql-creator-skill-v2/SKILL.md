@@ -24,7 +24,7 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL SQL
    - **唯一来源**：`get_table_schema(table_names)` 一次返回该表**全部**信息——物理结构
      （列名/类型/注释/索引/外键）与业务语义（别名/枚举/关联/规则）已合并，不得再调任何其它工具补充 DDL。
    - **返回结构**（短键名约定）：
-     - `fields`：`{ 列名: { t:类型, c:注释, k:索引(PRI/MUL/UNI), nn:NOT NULL, d:默认值, fk:外键引用 } }`
+     - `fields`：`{ 列名: { t:类型, c:注释, fk:外键引用 } }`
      - `field_aliases`：字段中文别名；`field_enums`：枚举值→业务标签映射
      - `virtual_associations`：精确 JOIN 条件；`business_rules`：必须以
        WHERE/JOIN/CASE WHEN 形式显式体现的业务规则

@@ -291,7 +291,21 @@ function ensureField(fields, colName) {
   return fields[colName];
 }
 
-export async function getTableSchema(tableNames) {
+/**
+ * 精简字段属性：只保留 t (类型) / c (注释) / fk (外键引用)
+ * - 去掉 k (索引)、nn (NOT NULL)、d (默认值)：对 SELECT 生成几乎无用
+ * - 用户在 EXPLAIN 优化等少数场景下需要完整属性时，可传 verbose=true 拿全量
+ */
+function slimFieldProps(f) {
+  if (!f) return f;
+  const slim = { t: f.t };
+  if (f.c !== undefined) slim.c = f.c;
+  if (f.fk !== undefined) slim.fk = f.fk;
+  return slim;
+}
+
+export async function getTableSchema(tableNames, options = {}) {
+  const { verbose = false } = options;
   const names = Array.isArray(tableNames) ? tableNames : [tableNames];
   // 并行读所有表的 field_config + DDL（多表场景下两个盘都并行触发，不再串行）
   const entries = await Promise.all(names.map(async (name) => {
@@ -330,6 +344,18 @@ export async function getTableSchema(tableNames) {
     return [name, result];
   }));
   const result = Object.fromEntries(entries);
+  // F20 (2026-08)：精简模式（默认）下过滤掉 k/nn/d 三类对 SELECT 几乎无用的属性
+  //   verbose=true 时保留全量（EXPLAIN 优化 / 排查默认值等场景）
+  //   在聚合前对每表 fields 单独处理，避免对每个字段重复判断
+  if (!verbose) {
+    for (const tableData of Object.values(result)) {
+      if (tableData?.fields) {
+        for (const col of Object.keys(tableData.fields)) {
+          tableData.fields[col] = slimFieldProps(tableData.fields[col]);
+        }
+      }
+    }
+  }
   return names.length === 1 ? result[names[0]] : result;
 }
 
@@ -617,7 +643,7 @@ export const tools = [
   // }),
   new DynamicTool({
     name: "get_table_schema",
-    description: "获取指定表的完整字段信息：列名/类型/注释/索引/外键 + 字段别名/枚举/虚拟关联/业务规则（已合并 DDL 与 field_config，一次调用即得）",
+    description: "获取指定表的字段信息：列名/类型/注释/外键 + 字段别名/枚举/虚拟关联/业务规则（已合并 DDL 与 field_config，一次调用即得）。",
     params: {
       type: 'object',
       properties: {
@@ -638,6 +664,7 @@ export const tools = [
       if (!Array.isArray(tableNames) || tableNames.length === 0) return '请提供 table_names 参数（表名数组）';
       // 紧凑 JSON：无缩进。deepseek-v3 对 JSON 结构化数据解析无差别，
       // 但能省 25-40% token（多表场景节省更显著），且对多轮上下文累积友好。
+      // F20：LLM 永远拿到精简版（仅 t/c/fk），无需 verbose 选项
       return JSON.stringify(await getTableSchema(tableNames));
     }
   }),
