@@ -647,7 +647,7 @@ export const tools = [
     params: {
       type: 'object',
       properties: {
-        table_names: { type: 'array', items: { type: 'string' }, description: '需要查询的表名' }
+        table_names: { type: 'array', items: { type: 'string' }, description: '查询的表名' }
       },
       required: ['table_names']
     },
@@ -714,13 +714,13 @@ export const tools = [
       properties: {
         questions: {
           type: 'array',
-          description: '1-3 个问题的数组',
+          description: '问题数组',
           minItems: 1, maxItems: 3,
           items: {
             type: 'object',
             properties: {
-              question: { type: 'string', description: '问题文本，≤200 字' },
-              options: { type: 'array', items: { type: 'string' }, description: '1-4 个选项，每项 ≤100 字', minItems: 1, maxItems: 4 },
+              question: { type: 'string', description: '问题，≤200 字' },
+              options: { type: 'array', items: { type: 'string' }, description: '选项，每项 ≤100 字', minItems: 1, maxItems: 4 },
               multi_select: { type: 'boolean', description: 'true=多选/checkbox，false=单选/radio，默认 false' },
               header: { type: 'string', description: '问题分类标签，≤12 字' }
             },
@@ -774,7 +774,7 @@ export const tools = [
   }),
   new DynamicTool({
     name: "get_sliced_index",
-    description: "传入 1-5 个 domain_id，返回这些域的候选表。",
+    description: "传入domain_id，返回这些域的候选表。",
     params: {
       type: 'object',
       properties: {
@@ -816,7 +816,7 @@ export const tools = [
     params: {
       type: 'object',
       properties: {
-        sql: { type: 'string', description: '待校验的 SQL 语句' }
+        sql: { type: 'string', description: '待校验的SQL' }
       },
       required: ['sql']
     },

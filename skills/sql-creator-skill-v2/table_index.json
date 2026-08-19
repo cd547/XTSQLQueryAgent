@@ -326,7 +326,8 @@
         "edu_student",
         "order_entry",
         "edu_campus",
-        "order_contract_template"
+        "order_contract_template",
+        "admin_department_children"
       ]
     },
     {
@@ -603,9 +604,6 @@
         "customer_info",
         "admin_user"
       ],
-      "business_constraints": [
-        "列表查询常加 user_type = 1 AND enabled = 1（顾问类型、启用状态）"
-      ],
       "business_rules": []
     },
     {
@@ -619,9 +617,6 @@
         "crm_channels",
         "admin_user",
         "customer_clue_info"
-      ],
-      "business_constraints": [
-        "channel_code为唯一键，同一渠道编码可被多条线索的level1~level5引用"
       ],
       "business_rules": [
         {
@@ -684,10 +679,6 @@
         "edu_campus",
         "admin_department_children"
       ],
-      "business_constraints": [
-        "org字段区分事业部：0-渊学通 1-科桥 2-克勒 3-择校圈",
-        "与customer_info为STRAIGHT_JOIN强制关联（customer_code）"
-      ],
       "business_rules": []
     },
     {
@@ -701,9 +692,6 @@
         "customer_info",
         "customer_label"
       ],
-      "business_constraints": [
-        "通常在查询customer_info时通过EXISTS子查询使用"
-      ],
       "business_rules": []
     },
     {
@@ -715,10 +703,6 @@
       ],
       "related_tables": [
         "customer_info"
-      ],
-      "business_constraints": [
-        "concat_type: 0-手机号 1-微信号 2-邮箱",
-        "通常在查询customer_info时通过EXISTS子查询按联系方式类型过滤"
       ],
       "business_rules": []
     },
@@ -734,9 +718,6 @@
         "admin_user",
         "customer_clue_pool"
       ],
-      "business_constraints": [
-        "assign_status: 0-未分配 1-分配成功"
-      ],
       "business_rules": []
     },
     {
@@ -748,10 +729,6 @@
       ],
       "related_tables": [
         "customer_label_rel"
-      ],
-      "business_constraints": [
-        "deleted: 查询时需加 deleted = 0 过滤已删除数据",
-        "code字段为唯一键"
       ],
       "business_rules": []
     },
@@ -866,13 +843,7 @@
         "edu_student",
         "admin_user"
       ],
-      "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "网申个人信息",
-          "description": "该表保存学生网申过程中需要填写的个人基础信息，可通过 student_id 与规划信息、网申主表关联。"
-        }
-      ]
+      "business_constraints": []
     },
     {
       "name": "study_abroad_apply_online_school_info",
@@ -887,13 +858,7 @@
         "study_abroad_school",
         "study_abroad_offer_info"
       ],
-      "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "网申学校明细",
-          "description": "一个网申主记录可以对应多个申请学校信息，查询时通过 apply_online_info_id 关联网申主表。"
-        }
-      ]
+      "business_constraints": []
     },
     {
       "name": "study_abroad_attachment",
@@ -1329,21 +1294,24 @@
     },
     {
       "name": "order_student",
-      "description": "订单学生表",
+      "description": "订单表",
       "tags": [
-        "订单",
-        "学生"
+        "订单"
       ],
       "related_tables": [
-        "study_abroad_planning_info"
+        "order_type",
+        "edu_student_type",
+        "order_pattern",
+        "edu_goods",
+        "admin_user",
+        "edu_student",
+        "order_entry",
+        "edu_campus",
+        "order_contract_template",
+        "edu_student_type_project"
+
       ],
-      "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "规划信息关联订单学生",
-          "description": "留学规划信息中的 order_id 关联 order_student.id，用于追溯学生对应的订单信息。"
-        }
-      ]
+      "business_constraints": []
     },
     {
       "name": "edu_student",
@@ -1353,20 +1321,17 @@
         "基础信息"
       ],
       "related_tables": [
-        "study_abroad_planning_info",
-        "study_abroad_apply_online_account_info",
-        "study_abroad_apply_online_info",
-        "study_abroad_document",
-        "study_abroad_offer_info",
-        "study_abroad_visa_info"
+        "my_user",
+        "customer_clue_info",
+        "edu_campus_school",
+        "edu_student_type",
+        "edu_student_status",
+        "edu_student_type_project",
+        "edu_student_certificates_type",
+        "crm_target_school",
+        "crm_tag_definition"
       ],
-      "business_constraints": [],
-      "business_rules": [
-        {
-          "rule": "学生基础信息主表",
-          "description": "edu_student 是学生基础信息表，留学模块大部分业务表通过 student_id 关联该表。"
-        }
-      ]
+      "business_constraints": []
     },
     {
       "name": "auth_role",

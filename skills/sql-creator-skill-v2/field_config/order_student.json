@@ -97,6 +97,14 @@
       "type": "many_to_one",
       "description": "",
       "business_rule": ""
+    },
+    {
+      "name": "关联二级部门",
+      "target_table": "admin_department_children",
+      "join_condition": "admin_department_children.id = order_student.admin_department_children_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
     }
   ],
   "calculated_fields": {},
