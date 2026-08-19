@@ -1358,20 +1358,14 @@ export async function* runSqlAgent(
     //   修复：始终携带 validate_sql_fields，让 LLM 在任何轮次可自由调用。token 代价
     //   ~600 字符（工具定义），相对正确性收益可接受。
     // 关联：项目记忆 project_memory.md 'Engineering Conventions' 需要更新。
-    const pruneReg = sessionId ? getOrCreateRegistry(sessionId) : null;
-    const prunedTools = pruneReg
-      ? toolsDefinition.filter((t) => {
-          if (
-            t.function.name === "get_sliced_index" &&
-            pruneReg.slicedDomains.size > 0
-          )
-            return false;
-          return true;
-        })
-      : toolsDefinition;
-    const prunedNames = toolsDefinition
-      .filter((t) => !prunedTools.includes(t))
-      .map((t) => t.function.name);
+    // ★ 工具剪枝已禁用（2026-08-18）：DeepSeek prefix cache 要求 requestParams
+    //   字节级稳定才能跨轮命中。"已调过的工具下次不传"的设计虽然省 ~200 tokens 定义，
+    //   但让 tools 数组从 5 → 4 → 3 递减，每轮 cache hash 都变。
+    //   禁掉剪枝后，5 个工具永远不变，cache 完美命中，多花的 ~200 tokens 在 cache 命中后
+    //   实际是 0 cost（已缓存部分不重复计费）。
+    //   关联：project_memory.md "F22: 禁掉 tools 数组剪枝以稳定 prefix cache"
+    const prunedTools = toolsDefinition;
+    const prunedNames = [];
     if (prunedNames.length > 0) {
       queueLog(
         `✂️ [Round ${maxToolCallsInitial - maxToolCalls}] 本轮 LLM 请求已剪枝工具（不再传入）: ${prunedNames.join(", ")}`,
