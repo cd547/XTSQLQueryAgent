@@ -643,7 +643,7 @@ export const tools = [
   // }),
   new DynamicTool({
     name: "get_table_schema",
-    description: "获取指定表的字段信息：列名/类型/注释/外键 + 字段别名/枚举/虚拟关联/业务规则（已合并 DDL 与 field_config，一次调用即得）。",
+    description: "获取指定表的详细信息：列名/类型/注释/外键 + 字段别名/枚举/虚拟关联/业务规则。",
     params: {
       type: 'object',
       properties: {
@@ -670,7 +670,7 @@ export const tools = [
   }),
   new DynamicTool({
     name: "request_tag_confirmation",
-    description: "当用户纠正表名或给出术语-表映射时，请求用户确认是否将该术语加入表标签（会弹出确认框）。",
+    description: "当用户纠正表名或给出术语-表映射时，请求用户确认是否将该术语加入表标签。",
     params: {
       type: 'object',
       properties: {
@@ -706,7 +706,7 @@ export const tools = [
   //   位置：稳定工具组末尾，**严禁放首位**——会破坏 prefix cache
   new DynamicTool({
     name: "request_user_choice",
-    description: "【需要用户输入】当任务需要用户确认/选择/补充才能继续时调用。\n" +
+    description: "当任务需要用户确认/选择/补充才能继续时调用。\n" +
       "传 questions: 1-3 个独立问题（每题 question + options 1-4 项，字段约束见 schema）。" +
       "调用后程序自动结束当前轮次并弹出对话框。",
     params: {
@@ -774,7 +774,7 @@ export const tools = [
   }),
   new DynamicTool({
     name: "get_sliced_index",
-    description: "【按域裁剪】传入 1-5 个 domain_id，返回这些域的候选表池（含标签/关联表/业务规则）。",
+    description: "传入 1-5 个 domain_id，返回这些域的候选表。",
     params: {
       type: 'object',
       properties: {

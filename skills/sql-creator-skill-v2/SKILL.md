@@ -78,9 +78,11 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL SQL
 **【硬性要求】** `**SQL**:` 后面必须是 ```sql ... ``` 代码块，SQL 语句写在代码块内。禁止裸 SQL 文本。
 
 ## 标签纠正
-用户给出术语→表名映射时，调用 `request_tag_confirmation(term, table, description)`。
-- `term`：术语数组（支持多个），`table`：表名，`description`：可选描述。
+**只有用户明确说**"X 就是 Y表" 时，才调用 `request_tag_confirmation`。
 - 示例：用户说"aa表就是edu_student" → `request_tag_confirmation(term=["aa"], table="edu_student", description="学生")`
+❌ 禁止触发场景：
+- LLM **自行推断**"X 听起来像 Y" → 禁止触发 request_tag_confirmation
+- 用户用相似拼写（如 admin_infor / adminInfo）→ 禁止自动映射
 
 **【重要】不要把 `request_user_choice` 的答案误判为术语映射。**
 - `request_user_choice` 的选项结果只是用户选择，不代表术语映射，切勿自动转为 `request_tag_confirmation`。
