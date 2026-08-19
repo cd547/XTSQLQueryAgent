@@ -1,6 +1,6 @@
 {
-  "id": "course",
-  "name": "课程",
+  "id": "course_school",
+  "name": "课程（科桥/克勒）",
   "tables": [
     "edu_course",
     "edu_course_exam",
@@ -12,8 +12,6 @@
     "tk_knowledge_new",
     "tk_knowledge_course",
     "tk_paper_new",
-    "edu_study",
-    "edu_study_student",
     "keqiao_class",
     "keqiao_class_student",
     "keqiao_class_teacher",
@@ -27,9 +25,6 @@
     "keqiao_surface_subject",
     "keqiao_surface_table",
     "keqiao_surface_subject_teacher",
-    "edu_activities",
-    "edu_activities_student",
-    "edu_teacher_work",
     "keqiao_class_grade",
     "keqiao_grade"
   ]

@@ -1,0 +1,20 @@
+CREATE TABLE `edu_room` (
+  `id` bigint(11) NOT NULL AUTO_INCREMENT,
+  `name` varchar(1024) NOT NULL COMMENT '班级名称',
+  `start_date` bigint(11) NOT NULL COMMENT '开班日期（时间戳）',
+  `stop_date` bigint(11) NOT NULL COMMENT '结班日期（时间戳）',
+  `total_hours` decimal(6,2) NOT NULL COMMENT '班级总课时',
+  `num` int(11) NOT NULL COMMENT '班级人数',
+  `edu_goods_id` bigint(11) NOT NULL COMMENT '产品ID',
+  `admin_user_id` int(11) NOT NULL COMMENT '创建人ID',
+  `created_time` bigint(11) NOT NULL COMMENT '创建时间（时间戳）',
+  `del` int(11) NOT NULL DEFAULT '0' COMMENT '0-正常 1-删除',
+  `edu_campus_id` bigint(11) DEFAULT NULL COMMENT '一级校区ID',
+  PRIMARY KEY (`id`),
+  KEY `edu_room_wj_1` (`edu_goods_id`) USING BTREE,
+  KEY `edu_room_wj_2` (`admin_user_id`) USING BTREE,
+  KEY `edu_room_ibfk_3` (`edu_campus_id`),
+  CONSTRAINT `edu_room_ibfk_1` FOREIGN KEY (`edu_goods_id`) REFERENCES `edu_goods` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `edu_room_ibfk_2` FOREIGN KEY (`admin_user_id`) REFERENCES `admin_user` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `edu_room_ibfk_3` FOREIGN KEY (`edu_campus_id`) REFERENCES `edu_campus` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB AUTO_INCREMENT=91 DEFAULT CHARSET=utf8mb4 COMMENT='班级-班级信息表'

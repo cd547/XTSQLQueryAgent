@@ -20,8 +20,13 @@
     },
     { "id": "campus", "name": "校区", "description": "校区、分校、公司主体" },
     {
-      "id": "course",
-      "name": "课程",
+      "id": "course_edu",
+      "name": "课程(学通)",
+      "description": "课程层级、科目、知识点、试卷、排课、班级"
+    },
+    {
+      "id": "course_school",
+      "name": "课程(科桥/克勒)",
       "description": "课程层级、科目、知识点、试卷、排课、班级"
     },
     {

@@ -1309,7 +1309,6 @@
         "edu_campus",
         "order_contract_template",
         "edu_student_type_project"
-
       ],
       "business_constraints": []
     },
@@ -1624,6 +1623,92 @@
       "description": "字典表",
       "tags": [],
       "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_class_type",
+      "description": "班级类型",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_room",
+      "description": "班级-班级信息表",
+      "tags": [],
+      "related_tables": [
+        "edu_goods",
+        "admin_user",
+        "edu_campus"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_room_study",
+      "description": "班级-班级排课记录表",
+      "tags": ["班课"],
+      "related_tables": [
+        "edu_course_exam_subject_name",
+        "edu_class_type",
+        "admin_user",
+        "edu_campus_school_class",
+        "edu_room",
+        "edu_study"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_video",
+      "description": "视频表",
+      "tags": [],
+      "related_tables": [
+        "edu_study"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_video_address",
+      "description": "视频地址",
+      "tags": [],
+      "related_tables": [
+        "edu_video"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_study_feedback",
+      "description": "排课老师考勤反馈",
+      "tags": [],
+      "related_tables": [
+        "edu_study",
+        "edu_study_feedback_type",
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_study_feedback_type",
+      "description": "考勤反馈名称",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_adjust_study",
+      "description": "调课申请",
+      "tags": [],
+      "related_tables": [
+        "edu_study",
+        "admin_user"
+      ],
       "business_constraints": [],
       "business_rules": []
     }

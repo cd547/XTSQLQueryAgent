@@ -1,7 +1,7 @@
 {
-  "table_name": "edu_student_type",
+  "table_name": "edu_study_feedback_type",
   "field_aliases": {
-    "name": ["学员类型名称", "学员类型"]
+    "name": ["反馈类型名称", "反馈名称"]
   },
   "field_enums": {},
   "virtual_associations": [],

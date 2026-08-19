@@ -1,0 +1,16 @@
+{
+  "table_name": "edu_class_type",
+  "field_aliases": {},
+  "field_enums": {},
+  "virtual_associations": [
+    {
+      "name": "关联排课",
+      "target_table": "edu_study",
+      "join_condition": "edu_study.edu_class_type_id = edu_class_type.id",
+      "type": "many_to_one"
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}

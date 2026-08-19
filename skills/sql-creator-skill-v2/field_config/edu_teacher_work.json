@@ -1,7 +1,13 @@
 {
   "table_name": "edu_teacher_work",
-  "field_aliases": {},
-  "field_enums": {},
+  "field_aliases": {
+    "id": ["排班ID"],
+    "admin_user_id": ["老师ID"],
+    "work_time": ["排班时间", "毫秒时间戳"]
+  },
+  "field_enums": {
+    "del": {"0": "正常", "1": "删除"}
+  },
   "virtual_associations": [
         {
       "name": "关联更新人",

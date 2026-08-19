@@ -1,7 +1,30 @@
 {
   "table_name": "edu_study",
-  "field_aliases": {},
-  "field_enums": {},
+  "field_aliases": {
+    "id": ["排课ID"],
+    "type": ["排课类型", "课程类型"],
+    "status": ["排课状态"],
+    "class_time_start": ["上课开始时间"],
+    "class_time_end": ["上课结束时间"],
+    "class_hour": ["课时"],
+    "class_week": ["星期"],
+    "edu_campus_school_class_id": ["教室ID"],
+    "edu_course_exam_subject_name_id": ["四级科目名ID"],
+    "edu_class_type_id": ["班型ID"],
+    "edu_admin_user_id": ["授课老师ID"],
+    "admin_user_id": ["操作人ID", "创建人ID"],
+    "classin_course_id": ["classin网课ID"],
+    "is_video": ["是否关联视频"]
+  },
+  "field_enums": {
+    "type": {"1": "线下课", "2": "网课", "3": "活动(教研活动)", "4": "classin网课"},
+    "status": {"1": "未结课", "2": "已结课"},
+    "class_week": {"0": "周日", "1": "周一", "2": "周二", "3": "周三", "4": "周四", "5": "周五", "6": "周六"},
+    "english_teaching": {"1": "否", "2": "是"},
+    "jingsai_teaching": {"1": "否", "2": "是"},
+    "trial_teaching": {"1": "否", "2": "是"},
+    "del": {"0": "正常", "1": "删除"}
+  },
   "virtual_associations": [
     {
       "name": "关联科目名称",
@@ -53,8 +76,18 @@
     }
   ],
   "calculated_fields": {},
-  "business_constraints": {},
+  "business_constraints": {
+    "del_required": "所有查询必须加 a.del = 0（强制逻辑删除过滤）"
+  },
   "business_rules": [
+    {
+      "name": "非教研活动",
+      "description": "type IN (1,2,4)"
+    },
+    {
+      "name": "教研活动",
+      "description": "type=3 教研活动场景下，edu_campus_school_class_id 可为 NULL"
+    },
     {
       "name": "class_time_start和class_time_end格式",
       "description": "class_time_start和class_time_end是13位时间戳"
@@ -66,6 +99,14 @@
     {
       "name": "授课形式展示",
       "description": "CASE \n  WHEN es.english_teaching = 2 AND es.jingsai_teaching = 2 THEN CONCAT('英语授课，竞赛', CASE WHEN es.trial_teaching = 2 THEN '，试听课' ELSE '' END) \n  WHEN es.english_teaching = 2 AND es.jingsai_teaching = 1 THEN CONCAT('英语授课', CASE WHEN es.trial_teaching = 2 THEN '，试听课' ELSE '' END) \n  WHEN es.english_teaching = 1 AND es.jingsai_teaching = 2 THEN CONCAT('竞赛', CASE WHEN es.trial_teaching = 2 THEN '，试听课' ELSE '' END) \n  ELSE CASE WHEN es.trial_teaching = 2 THEN '试听课' ELSE '常规课' END \nEND"
+    },
+    {
+      "name": "小时数计算",
+      "description": "(class_time_end - class_time_start) / 3600000"
+    },
+    {
+      "name": "调课状态派生",
+      "description": "EXISTS (SELECT 1 FROM edu_adjust_study WHERE old_study_id = a.id AND del = 0 AND ((adjust_status = 3) OR (adjust_status = 1 AND valid = 1)))"
     }
   ]
 }

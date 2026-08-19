@@ -1,0 +1,28 @@
+{
+  "table_name": "edu_room_study",
+  "field_aliases": {
+    "id": ["关联ID","班课预排ID"],
+    "edu_study_id": ["排课ID"],
+    "edu_room_id": ["班级ID"]
+  },
+  "field_enums": {
+    "del": {"0": "正常", "1": "删除"}
+  },
+  "virtual_associations": [
+    {
+      "name": "关联班级",
+      "target_table": "edu_room",
+      "join_condition": "edu_room.id = edu_room_study.edu_room_id",
+      "type": "many_to_one"
+    },
+    {
+      "name": "关联排课",
+      "target_table": "edu_study",
+      "join_condition": "edu_study.id = edu_room_study.edu_study_id",
+      "type": "many_to_one"
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}
