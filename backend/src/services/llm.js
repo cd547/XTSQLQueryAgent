@@ -389,6 +389,18 @@ export function getOrCreateRegistry(sessionId) {
       validateSqlFieldsCalled: false,
       validateSqlFieldsPassed: false,
       validateSqlFieldsErrorCount: 0,
+      // F23 (2026-08): get_call_history 累积的"已调用工具"快照。
+      //   - 由 llm.js 工具执行循环自动写入（每调一个非 get_call_history 工具就 push）
+      //   - 由 get_call_history 工具拦截器读取并返回给 LLM
+      //   - 持久化到 history 避免 prefix cache 中断（每轮 LLM 看到稳定的累积 tool 消息）
+      //   - resetRegistryForNewQuestion 在新问题时清空
+      //   - 防重复：同工具同参数不重复登记（即使 LLM 误调重复也只记录一次）
+      callHistory: [],
+      // F23 (2026-08): get_call_history 循环检测计数器。
+      //   - LLM 看到历史里的 synthetic get_call_history 后可能模仿调用；
+      //   - 若连续两轮 LLM 只调用 get_call_history（无其他工具），强制 break 跳出循环。
+      //   - resetRegistryForNewQuestion 在新问题时清零。
+      gchLoopCount: 0,
     });
   }
   return sessionToolRegistries.get(sessionId);
@@ -470,6 +482,10 @@ export function resetRegistryForNewQuestion(reg, messages) {
   reg.termConfirmed.clear();
   reg.userChoiceAsked.clear();
   reg.getTablesCalled = false;
+  // F23 (2026-08): get_call_history 累积清空（新问题历史从零开始）
+  reg.callHistory = [];
+  // F23 (2026-08): get_call_history 循环计数器清零
+  reg.gchLoopCount = 0;
   logger.info("新问题：已清空域路由状态");
 }
 
@@ -1276,45 +1292,16 @@ export async function* runSqlAgent(
     //   从 0 开始递增；maxToolCallsInitial 是入口处记录的初始值
     //   每轮 LLM 入口处计算一次，整轮内复用
     const currentRound = maxToolCallsInitial - maxToolCalls;
-    // 每轮 LLM 请求前，临时向 messages 追加"已调用工具清单"消息（仅用于本轮请求，不持久化）。
-    // 目的：让 LLM 在生成 tool_call 决策前明确看到本会话已调用的工具 + 参数，
-    //       避免因长上下文注意力衰减造成的重复调用（详见 project_memory.md）。
-    // 不持久化：清单消息只放在 requestMessages，原始 messages 数组不被修改，
-    //           避免污染 history / DB / 调试接口的 lastMessages。
-    const checklistMsg = sessionId
-      ? buildToolCallChecklistMessage(getOrCreateRegistry(sessionId))
-      : null;
-
-    // 明确记录『当时调用情况』到 log（仅本轮 LLM 请求使用，不存 DB，不累积到 messages）：
-    //   - 没有 checklistMsg 时记录『(无)』，便于知道本轮没有清单消息
-    //   - 有 checklistMsg 时用 BEGIN/END 标记包裹，便于 grep 抓取
-    if (checklistMsg) {
-      queueLog(
-        `📋 [Round ${maxToolCallsInitial - maxToolCalls}] 本轮 LLM 请求末尾追加的『已调用工具清单』消息（仅本轮使用，不存 DB）:\n` +
-          `--- BEGIN checklist (requestMessages 末尾) ---\n` +
-          `${checklistMsg.content}\n` +
-          `--- END checklist ---`,
-        true,
-        username,
-      );
-      // 同步 checklist 快照到 DB 历史（1:1 与传给 LLM 的原文一致）
-      // 仅作旁路记录，不影响 requestMessages / 原始 messages 数组 / prefix cache
-      // 历史回显需要"每轮调用过哪些"时，直接读这一行
-      try {
-        const db = getDb();
-        db.prepare(
-          'INSERT INTO messages (session_id, role, content, sql, results, round) VALUES (?, ?, ?, ?, ?, ?)'
-        ).run(sessionId, 'log', checklistMsg.content, '', '', currentRound);
-      } catch (e) {
-        logger.error('保存 checklist 失败', { error: e.message, sessionId, currentRound });
-      }
-    } else {
-      queueLog(
-        `📋 [Round ${maxToolCallsInitial - maxToolCalls}] 本轮 LLM 请求无『已调用工具清单』（首轮或无 sessionId）`,
-        true,
-        username,
-      );
-    }
+    // F23 (2026-08): get_call_history 工具由系统在每轮 LLM 响应后强制注入到
+    //   assistant.tool_calls 最前面（见下方"强制注入"段）。它作为 tool 消息
+    //   持久化在 messages 数组中，每轮新增的 tool message 字节稳定，prefix
+    //   cache 可跨轮命中（之前用 checklistMsg 临时追加在末尾，每轮字节变导致
+    //   末尾 prefix cache 中断，命中率从 90% 跌到 22%）。这里不再构造临时
+    //   checklistMsg，buildToolCallChecklistMessage 函数保留为兼容旧历史/日志
+    //   解析的旁路导出。
+    // 旧 checklist 路径（2026-08-20 之前）：临时向 messages 末尾追加 role:system
+    //   消息，每次内容都变 → 末尾 prefix cache 必中断 → 命中率 22.6%。
+    // 新 get_call_history 路径：作为 tool 消息按顺序累积，字节稳定 → 命中率高。
 
     // 剥离"无工具调用"的 assistant 消息中的 reasoning_content
     //
@@ -1335,9 +1322,7 @@ export async function* runSqlAgent(
       messages,
       foldedCache,
     );
-    const requestMessages = (
-      checklistMsg ? [...compactedMessages, checklistMsg] : compactedMessages
-    ).map((m) => {
+    const requestMessages = compactedMessages.map((m) => {
       if (m.role === "assistant" && m.reasoning_content && !m.tool_calls) {
         const { reasoning_content, ...rest } = m;
         return rest;
@@ -1627,13 +1612,37 @@ export async function* runSqlAgent(
 
       // 保存 assistant 消息，需要包含 tool_calls
       // 使用清理后的 finalResponseText（剥离了 thinking）和 finalReasoningContent（追加了被剥离的 thinking）
+      // F23 v3 (2026-08): 在 push 前先把 get_call_history 合成到 tool_calls 头部。
+      //   - 字节稳定的关键：synthetic tool_call_id 必须是常量字符串（不能含时间戳/随机数），
+      //     跨轮同一位置出现相同字节，prefix cache 才能命中。
+      //   - LLM_TOOLS 已过滤掉 get_call_history，LLM 看不到此工具（不会主动调），保证 synthetic 是唯一来源。
+      //   - F23 v3 条件式注入：仅当 LLM 本轮实际调用了非 get_call_history 工具时才注入。
+      //     LLM 不调任何工具（直接回答）时不注入 — 避免 history 中"每轮都调 get_call_history"
+      //     的示例让 LLM 模仿调用。LLM 看到"调工具时才出现"会知道这是程序行为不是必调。
+      //   - 防重复：若 LLM 因旧 history 误调 get_call_history，跳过注入避免 id 冲突。
+      const hasCallHistory = validToolCalls.some(
+        (tc) => tc.function?.name === "get_call_history",
+      );
+      const hasRealToolCall = validToolCalls.some(
+        (tc) => tc.function?.name !== "get_call_history",
+      );
+      if (hasRealToolCall && !hasCallHistory) {
+        validToolCalls.unshift({
+          id: "synthetic_get_call_history",
+          type: "function",
+          function: {
+            name: "get_call_history",
+            arguments: "{}",
+          },
+        });
+      }
       const assistantMsg = {
         role: "assistant",
         content: finalResponseText || "",
         reasoning_content: finalReasoningContent || "",
       };
       if (validToolCalls.length > 0) {
-        // 为每个 tool_call 确保有 id
+        // 为每个 tool_call 确保有 id（get_call_history 已自带常量 id，跳过）
         validToolCalls.forEach((tc, idx) => {
           if (!tc.id) {
             tc.id = `call_${Date.now()}_${idx}`;
@@ -1665,9 +1674,13 @@ export async function* runSqlAgent(
         //   一次性工具（get_sliced_index）调用后被剪枝，从这里消失。
         //   LLM 若仍"幻觉"调用被剪枝的工具 → 立即拦截，不进入执行阶段。
         //   （F18: get_domain_index 已移至 system，不在剪枝列表）
-        const availableToolNames = new Set(
-          prunedTools.map((t) => t.function.name),
-        );
+        // F23: 显式补入 get_call_history —— 该工具由系统在每轮强制注入，LLM_TOOLS
+        //   故意过滤掉（避免 LLM 主动调），因此也不在 prunedTools 中。如果不补入，
+        //   后续的"工具已被剪枝"拦截会把它误判为非法调用。
+        const availableToolNames = new Set([
+          ...prunedTools.map((t) => t.function.name),
+          "get_call_history",
+        ]);
         const prepared = validToolCalls.map((toolCall) => {
           const toolName = toolCall.function.name;
           const toolArgs = toolCall.function.arguments || "{}";
@@ -1768,6 +1781,34 @@ export async function* runSqlAgent(
         //   同步工具也会被 await 正确处理（Promise.resolve 包装）
         const execResults = await Promise.all(
           prepared.map(async (p) => {
+            // F23: get_call_history 拦截器 —— 跳过 tool.func 调用，直接构造稳定 JSON。
+            //   tool.func 的占位返回 ("{called_count:0,...}") 是固定字符串，
+            //   而本拦截器构造的内容依赖 reg.callHistory（已调用工具列表），更有意义。
+            //   字节稳定性：JSON.stringify 的字段顺序固定（callHistory push 时序固定），
+            //   跨轮同位置同内容，prefix cache 命中。
+            // F23 v2: 加入 _instruction 字段明确告诉 LLM：
+            //   ① 这是系统自动注入的工具（LLM 不需要主动调）
+            //   ② 如已掌握所有信息请直接输出最终答案
+            //   ③ 防止 LLM 看到历史中的 synthetic tool_call 后模仿进入死循环
+            if (p.toolName === "get_call_history") {
+              const reg = getOrCreateRegistry(sessionId);
+              const callHistory = reg?.callHistory || [];
+              const stableContent = JSON.stringify({
+                called_count: callHistory.length,
+                called_tools: callHistory,
+                _instruction:
+                  "本工具由系统自动注入，每轮 LLM 响应后程序强制调用一次，LLM 不需要主动调用。" +
+                  "如已掌握所有信息请直接输出最终答案；如需继续推理可调用其它工具。" +
+                  "重复调用本工具不会获得新信息。",
+              });
+              return {
+                ...p,
+                rawResult: stableContent,
+                toolMessageContent: stableContent,
+                userChoiceId: null,
+                execError: null,
+              };
+            }
             if (!p.tool || (p.dupCheck && p.dupCheck.block)) {
               return {
                 ...p,
@@ -1894,6 +1935,8 @@ export async function* runSqlAgent(
             yield {
               type: "tool_return",
               log: `🚫 拦截重复调用: ${toolName}\n参数: ${toolArgs}\n${p.dupCheck.message}`,
+              // F23 v3: tool_return 透传 toolName — 前端用其判断是否隐藏 get_call_history
+              toolName: p.toolName,
               round: currentRound,
             };
             messages.push({
@@ -1914,6 +1957,8 @@ export async function* runSqlAgent(
             yield {
               type: "tool_return",
               log: `🚫 ${errLabel}: ${p.toolName}\n${p.execError.message}`,
+              // F23 v3: tool_return 透传 toolName — 前端用其判断是否隐藏 get_call_history
+              toolName: p.toolName,
               round: currentRound,
             };
             messages.push({
@@ -1935,12 +1980,16 @@ export async function* runSqlAgent(
             yield {
               type: "tool_return",
               log: `✅ ${toolName} 参数已自动修复（裸 ASCII 双引号 → 中文右引号）。后续请直接使用中文引号 \`""\` 或 \`「」\`，或反斜杠转义 \`\\"\`；禁止裸 ASCII 双引号。`,
+              // F23 v3: tool_return 透传 toolName
+              toolName: p.toolName,
               round: currentRound,
             };
           }
           yield {
             type: "tool_return",
             log: `📋 工具 ${toolName} 返回:\n${typeof resultContent === "string" ? resultContent : JSON.stringify(resultContent)}`,
+            // F23 v3: tool_return 透传 toolName — 前端用其判断是否隐藏 get_call_history
+            toolName: p.toolName,
             round: currentRound,
           };
           messages.push({
@@ -2028,6 +2077,110 @@ export async function* runSqlAgent(
             }
             // error case: 不动 pendingUserChoiceList, 让 LLM 修正重试
           }
+        }
+
+        // F23: 登记本轮成功调用的工具到 reg.callHistory（用于 get_call_history 拦截器读取）。
+        //   - 仅登记"成功执行"的工具（execError/dupCheck.block 跳过）—— 失败的调用不应进
+        //     callHistory，否则 LLM 下一轮会看到"已调过"假阳性，导致误判"功能不可用"。
+        //   - 同 tool_name + args 不重复登记（防御性 dedup，虽然 LLM_TOOLS 已过滤重复调用工具，
+        //     但同会话内 LLM 仍可能因 history 残留重调同名工具）。
+        //   - 跳过 get_call_history 自身 —— 它的"已调"状态对 LLM 决策无意义。
+        //   - 字节稳定：先按 toolName 排序再 dedup，再按时间顺序 push；JSON.stringify 字段
+        //     顺序固定 → 跨轮同位置同字节 → prefix cache 命中。
+        (() => {
+          const reg = getOrCreateRegistry(sessionId);
+          if (!reg) return;
+          for (const p of execResults) {
+            if (!p.toolName || p.toolName === "get_call_history") continue;
+            if (p.execError) continue;
+            if (p.dupCheck && p.dupCheck.block) continue;
+            const sig = `${p.toolName}::${p.toolCall?.function?.arguments || "{}"}`;
+            if (reg.callHistory.some((h) => h.sig === sig)) continue;
+            let parsedArgs = {};
+            try {
+              parsedArgs = JSON.parse(p.toolCall?.function?.arguments || "{}");
+            } catch {
+              parsedArgs = p.toolCall?.function?.arguments || "";
+            }
+            reg.callHistory.push({
+              sig,
+              tool: p.toolName,
+              args: parsedArgs,
+              called_at_round: currentRound,
+            });
+          }
+        })();
+
+        // F23 v2: get_call_history 循环检测 —— LLM 看到历史中 synthetic tool_call 后
+        //   可能模仿调用，若连续两轮 LLM 仅调用 get_call_history（无任何其他工具），
+        //   强制 break 跳出循环。
+        //   关键：必须判断 LLM "实际调用"（validToolCalls）而非 execution 后的
+        //   execResults —— execResults 永远会包含 synthetic get_call_history，
+        //   不能用作判断依据。
+        //   设计：连续两轮 LLM "只调" get_call_history 才 break（计数 1→2 时 break）。
+        //   - 第一轮仅调 get_call_history：仅递增计数（1），仍允许下一轮（给 LLM 看
+        //     _instruction 提示的机会）。
+        //   - 第二轮仍仅调：计数到 2，push 一条 system 提示后设 gchLoopBreak=true，
+        //     外层检查后 break。
+        //   - 中间 LLM 调用了其它工具：计数清零（正常流程）。
+        let gchLoopBreak = false;
+        (() => {
+          // LLM 实际调用的工具名（不含 synthetic，因为 synthetic 是在 hasCallHistory
+          // 检查后由我们 unshift 的，不在 LLM 原始决策里）
+          const llmActualCalls = validToolCalls.filter(
+            (tc) => tc.function?.name !== "get_call_history",
+          );
+          const llmOnlyCalledGch =
+            validToolCalls.length > 0 && llmActualCalls.length === 0;
+
+          const reg = getOrCreateRegistry(sessionId);
+          if (!reg) return;
+
+          if (llmOnlyCalledGch) {
+            reg.gchLoopCount = (reg.gchLoopCount || 0) + 1;
+            logger.info("get_call_history loop detection", {
+              sessionId,
+              currentRound,
+              gchLoopCount: reg.gchLoopCount,
+            });
+            if (reg.gchLoopCount >= 2) {
+              logger.warn(
+                "LLM stuck in get_call_history loop, forcing end",
+                { sessionId, currentRound, gchLoopCount: reg.gchLoopCount },
+              );
+              // 推一条强提示到 messages（虽然即将 break，但保留语义完整性，
+              // 万一上层有兜底逻辑能看到这条 system 消息）
+              messages.push({
+                role: "system",
+                content:
+                  "⚠️ [系统提示] 检测到你连续多轮只调用 get_call_history。" +
+                  "该工具由系统自动注入，你不需要主动调用它。" +
+                  "请直接输出最终答案。",
+              });
+              pendingUserChoiceList.length = 0; // 清空 user_choice 避免干扰 break
+              gchLoopBreak = true;
+            }
+          } else {
+            // LLM 调了其它工具（或没调任何工具），重置计数
+            if (reg.gchLoopCount !== 0) {
+              logger.info("get_call_history loop reset (LLM called other tool)", {
+                sessionId,
+                currentRound,
+              });
+            }
+            reg.gchLoopCount = 0;
+          }
+        })();
+
+        // F23 v2: 命中循环且需 break 时，先 yield 一条终止事件给前端再退出
+        if (gchLoopBreak) {
+          yield {
+            type: "error",
+            content:
+              "检测到 LLM 重复调用 get_call_history，已强制终止。",
+            round: currentRound,
+          };
+          break;
         }
 
         // ★ 跳出 while 循环：检测到至少一个 request_user_choice 后 TURN 1 终止

@@ -91,6 +91,10 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
 
   // 日志类型（工具调用 / 思考过程）
   if (isLog) {
+    // ★ F23 v3 (2026-08)：始终隐藏 get_call_history 工具的调用和返回结果
+    //   该工具由系统自动注入（用于 LLM 上下文 cache 优化），用户无需感知
+    //   toolName 由后端 tool/tool_return 事件透传过来，get_call_history 对应的 call/return 都隐藏
+    if (toolName === 'get_call_history') return null;
     // ★ 2026-08-17：工具调用 title 拼接工具名
     //   例：原 "工具调用 2026/08/13 06:25" → 新 "工具调用 validate_sql_fields 2026/08/13 06:25"
     //   仅 call 类型且有 toolName 时拼接；其他类型（return/llm）保持原样

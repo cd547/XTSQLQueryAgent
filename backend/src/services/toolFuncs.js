@@ -848,18 +848,42 @@ export const tools = [
         summary: result.summary,
       };
     }
+  }),
+  // ===== F23 (2026-08): get_call_history =====
+  // 由 llm.js 在每轮强制注入到 assistant.tool_calls 最前面的"系统工具"。
+  // 工具描述里**不写"避免重复调用"**——那是 SKILL.md / system 的事，
+  // description 字段写"无入参"避免 LLM 误传参数。
+  // 真正的返回内容由 llm.js 在执行阶段拦截、按当前 reg.callHistory 构造。
+  // 不放入 LLM_TOOLS（filter 已过滤），LLM 看不到该工具。
+  new DynamicTool({
+    name: "get_call_history",
+    description: "【系统工具，由程序自动注入】返回本会话已调用的工具历史。无入参。",
+    params: {
+      type: 'object',
+      properties: {},
+      required: []
+    },
+    func: async () => {
+      // 占位返回：实际值由 llm.js 工具执行循环拦截后构造
+      return '{"called_count":0,"called_tools":[],"_note":"interceptor-overridden"}';
+    }
   })
 ];
 
 // ============================================================
-// LLM_TOOLS：发送给 LLM 的工具列表（去掉已废弃工具）
+// LLM_TOOLS：发送给 LLM 的工具列表（去掉已废弃工具和系统自动注入的工具）
 // F18 (2026-08)：get_domain_index 已迁移至 system 消息内嵌，LLM 不应再看到。
 //   - tools 数组保留 get_domain_index 定义（旧会话 history 兼容 + 兜底执行
 //     toolsMap 仍能命中，避免"未知工具"错误）
-//   - LLM_TOOLS 用于构造发送给 LLM 的 tools 字段（CC + RA 双路径共用）
-//   - 后续若新增已废弃工具，统一在这里 filter，CC/RA 自动同步
+// F23 (2026-08)：get_call_history 由 llm.js 在每轮强制注入到 assistant.tool_calls
+//   的最前面，无需 LLM 主动调用，也不应展示给 LLM（避免"要不要调"的决策延迟）。
+//   - tools 数组保留 get_call_history 定义（执行层 toolsMap 命中用）
+//   - LLM_TOOLS 过滤掉，让 LLM 看不到该工具
+//   - llm.js 强制注入时使用 synthetic tool_call_id
 // ============================================================
-export const LLM_TOOLS = tools.filter((t) => t.name !== "get_domain_index");
+export const LLM_TOOLS = tools.filter(
+  (t) => t.name !== "get_domain_index" && t.name !== "get_call_history"
+);
 
 // ============================================================
 // buildSystemMessage：CC path + Responses path 共用的 system message 装配函数

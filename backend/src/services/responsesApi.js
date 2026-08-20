@@ -577,6 +577,8 @@ async function* _runSqlAgentResponsesStreamGen({
             yield {
               type: "tool_return",
               log: `🚫 拦截重复调用: ${toolName}\n参数: ${toolArgs}\n${p.dupCheck.message}`,
+              // F23 v3: tool_return 透传 toolName — 前端用其判断是否隐藏 get_call_history
+              toolName: p.toolName,
               round: currentRound,
             };
             continue;
@@ -587,6 +589,8 @@ async function* _runSqlAgentResponsesStreamGen({
             yield {
               type: "tool_return",
               log: `🚫 ${errLabel}: ${p.toolName}\n${p.execError.message}`,
+              // F23 v3: tool_return 透传 toolName
+              toolName: p.toolName,
               round: currentRound,
             };
             continue;
@@ -596,12 +600,16 @@ async function* _runSqlAgentResponsesStreamGen({
             yield {
               type: "tool_return",
               log: `✅ ${toolName} 参数已自动修复（裸 ASCII 双引号 → 中文右引号）。后续请直接使用中文引号 \`""\` 或 \`「」\`，或反斜杠转义 \`\\"\`；禁止裸 ASCII 双引号。`,
+              // F23 v3: tool_return 透传 toolName
+              toolName: p.toolName,
               round: currentRound,
             };
           }
           yield {
             type: "tool_return",
             log: `📋 工具 ${toolName} 返回:\n${typeof resultContent === "string" ? resultContent : JSON.stringify(resultContent)}`,
+            // F23 v3: tool_return 透传 toolName — 前端用其判断是否隐藏 get_call_history
+            toolName: p.toolName,
             round: currentRound,
           };
         }

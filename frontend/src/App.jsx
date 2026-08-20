@@ -505,10 +505,30 @@ function AuthenticatedApp({ user, logout }) {
             //   新数据：m.content 只含 "参数: ..."（无"🔧 调用工具"行）→ regex 抽不到，toolName=null
             //     历史回看新数据 title 退化为"工具调用"（无工具名），可接受
             //   实时流式不受影响（新数据通过 data.toolName 字段传入，逻辑在 L1000-1015 logMsg 构段）
+            // F23 v3: tool_return 也需要抽 toolName（用于隐藏 get_call_history）
+            //   tool_return 的 content 格式有 4 种（参考后端 llm.js / responsesApi.js yield）：
+            //     ① "📋 工具 {name} 返回: ..."
+            //     ② "🚫 拦截重复调用: {name}\n..."
+            //     ③ "🚫 {errLabel}: {name}\n..."
+            //     ④ "✅ {name} 参数已自动修复..."
             toolName: (() => {
-              if (m.role !== 'tool') return null;
-              const match = (m.content || '').match(/🔧 调用工具:\s*(\S+)/);
-              return match ? match[1] : null;
+              const c = m.content || '';
+              if (m.role === 'tool') {
+                // 工具调用：🔧 调用工具: {name}\n参数: ...
+                const match = c.match(/🔧 调用工具:\s*(\S+)/);
+                return match ? match[1] : null;
+              }
+              if (m.role === 'tool_return') {
+                // 工具返回：①/②/③/④ 多种前缀格式
+                let match = c.match(/📋 工具 (\S+) 返回/);
+                if (match) return match[1];
+                match = c.match(/✅ (\S+) 参数已自动修复/);
+                if (match) return match[1];
+                match = c.match(/🚫 (?:拦截重复调用:|[^:\n]+:)\s*(\S+)/);
+                if (match) return match[1];
+                return null;
+              }
+              return null;
             })(),
             // 历史回看：所有日志类型（LLM思考 / 工具调用 / 工具返回）默认折叠，
             // 与流式实时态（collapsed: true）保持一致，避免历史消息全展开
@@ -1022,14 +1042,30 @@ function AuthenticatedApp({ user, logout }) {
                 // ★ 2026-08-17：透传工具名（仅 tool 类型有值）
                 //   前端 ChatMessage 用它拼接 title "工具调用 {toolName} {date}"
                 //   来源：后端 llm.js:1627 yield { type: "tool", toolName, ... }
+                // F23 v3: tool_return 也透传 toolName — 用于前端 ChatMessage 隐藏 get_call_history 的返回
+                //   优先 data.toolName（新后端会 yield toolName），未传时用 regex 兜底（兼容旧后端/历史回看）
                 toolName: (() => {
-                  if (data.type !== 'tool') return null;
-                  // 优先用后端 yield 的 toolName 字段（新数据）
-                  if (data.toolName) return data.toolName;
-                  // 兜底：后端未重启（跑旧代码）时从 content regex 抽
-                  // 兼容老后端的 log 格式 "🔧 调用工具: xxx\n参数: {...}"
-                  const match = (data.log || '').match(/🔧 调用工具:\s*(\S+)/);
-                  return match ? match[1] : null;
+                  const log = data.log || '';
+                  if (data.type === 'tool' || data.type === 'tool_return') {
+                    // 优先用后端 yield 的 toolName 字段（新数据）
+                    if (data.toolName) return data.toolName;
+                    // 兜底 1：tool 类型 log 格式 "🔧 调用工具: xxx\n参数: {...}"
+                    let match = log.match(/🔧 调用工具:\s*(\S+)/);
+                    if (match) return match[1];
+                    // 兜底 2：tool_return 的 4 种格式
+                    //   ① "📋 工具 {name} 返回: ..."
+                    //   ② "🚫 拦截重复调用: {name}\n..."
+                    //   ③ "🚫 {errLabel}: {name}\n..."
+                    //   ④ "✅ {name} 参数已自动修复..."
+                    match = log.match(/📋 工具 (\S+) 返回/);
+                    if (match) return match[1];
+                    match = log.match(/✅ (\S+) 参数已自动修复/);
+                    if (match) return match[1];
+                    match = log.match(/🚫 (?:拦截重复调用:|[^:\n]+:)\s*(\S+)/);
+                    if (match) return match[1];
+                    return null;
+                  }
+                  return null;
                 })(),
                 // ★ LLM 工具调用轮次编号（用于前端"数轴式"轮次展示）
                 //   后端 llm.js 在每个 yield 时附带 round 字段
