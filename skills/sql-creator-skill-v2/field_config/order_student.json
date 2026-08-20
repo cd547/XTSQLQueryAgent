@@ -15,6 +15,19 @@
       "1":"已生效",
       "2":"已耗尽",
       "3":"转移中"
+    },
+    "type_id": {
+      "1": "新签",
+      "2": "复购",
+      "3": "续费",
+      "4": "退费",
+      "5": "其他",
+      "6": "佣金收入"
+    },
+    "pattern_id": {
+      "1": "课程",
+      "2": "学杂费",
+      "3": "其他"
     }
   },
   "virtual_associations": [
@@ -99,9 +112,9 @@
       "business_rule": ""
     },
     {
-      "name": "关联二级部门",
+      "name": "关联订单创建人所在二级部门",
       "target_table": "admin_department_children",
-      "join_condition": "admin_department_children.id = order_student.admin_department_children_id",
+      "join_condition": "admin_department_children.id = order_student.create_admin_department_children_id",
       "type": "many_to_one",
       "description": "",
       "business_rule": ""
@@ -112,6 +125,18 @@
   "business_rules": [
     { "name":"订单金额",
       "description": "指成交金额 transaction_amount，而非 total_amount（订单总金额）"
+    },{
+      "name":"主辅订单",
+      "description": "主订单：main_order_student_id = NULL。辅订单：main_order_student_id =主订单ID"
+    }
+  ],
+  "common_sqls": [
+    {
+      "id": "order_basic_export",
+      "title": "订单列表",
+      "main_table": "order_student",
+      "tables": ["order_student AS a", "edu_student AS b", "admin_user AS c", "order_entry AS d", "edu_goods AS e", "edu_campus AS f", "order_type AS h", "order_pattern AS m"],
+      "sql": "LEFT JOIN edu_student b ON a.student_id = b.id\nLEFT JOIN admin_user c ON a.admin_user_id = c.id\nLEFT JOIN order_entry d ON a.order_entry_id = d.id\nLEFT JOIN edu_goods e ON a.goods_id = e.id\nLEFT JOIN edu_campus f ON a.edu_campus_id = f.id\nLEFT JOIN order_type h ON a.type_id = h.id\nLEFT JOIN order_pattern m ON a.pattern_id = m.id"
     }
   ]
 }
