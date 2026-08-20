@@ -16,10 +16,13 @@ CREATE TABLE `edu_student` (
   `phone` bigint(11) DEFAULT NULL COMMENT '学生手机',
   `sex` int(11) NOT NULL DEFAULT '3' COMMENT '性别1男2女3其他',
   `institutions` varchar(1024) DEFAULT NULL COMMENT '目标院校',
+  `institutions_id` int(11) DEFAULT NULL COMMENT '目标学校枚举ID',
   `ingrade` varchar(255) DEFAULT NULL COMMENT '在读年级',
   `direction` varchar(255) DEFAULT NULL COMMENT '专业方向',
+  `direction_id` int(11) DEFAULT NULL COMMENT '专业方向ID',
   `characters` varchar(255) DEFAULT NULL COMMENT '学生性格',
   `inschool` varchar(255) DEFAULT NULL COMMENT '在读学校',
+  `inschool_id` int(11) DEFAULT NULL COMMENT '在读学校枚举ID',
   `examination_time` bigint(11) DEFAULT NULL COMMENT '考试时间（时间戳）',
   `achievement` varchar(255) DEFAULT NULL COMMENT '语言成绩',
   `abroad` varchar(255) DEFAULT NULL COMMENT '留学国家',
@@ -61,6 +64,9 @@ CREATE TABLE `edu_student` (
   KEY `edu_student_wj_7_idx` (`update_my_user_id`),
   KEY `idx_student_code` (`student_code`),
   KEY `idx_es_code_del` (`student_code`,`del`,`id`),
+  KEY `idx_inschool_id` (`inschool_id`),
+  KEY `idx_institutions_id` (`institutions_id`),
+  KEY `idx_direction_id` (`direction_id`),
   CONSTRAINT `edu_student_ibfk_1` FOREIGN KEY (`my_user_id`) REFERENCES `my_user` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `edu_student_ibfk_2` FOREIGN KEY (`campus_school_id`) REFERENCES `edu_campus_school` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `edu_student_ibfk_3` FOREIGN KEY (`edu_student_type_id`) REFERENCES `edu_student_type` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
@@ -68,4 +74,4 @@ CREATE TABLE `edu_student` (
   CONSTRAINT `edu_student_ibfk_5` FOREIGN KEY (`edu_student_type_project_id`) REFERENCES `edu_student_type_project` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `edu_student_ibfk_6` FOREIGN KEY (`certificates_type`) REFERENCES `edu_student_certificates_type` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
   CONSTRAINT `edu_student_wj_7` FOREIGN KEY (`update_my_user_id`) REFERENCES `my_user` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
-) ENGINE=InnoDB AUTO_INCREMENT=214744 DEFAULT CHARSET=utf8mb4 COMMENT='学生'
+) ENGINE=InnoDB AUTO_INCREMENT=214745 DEFAULT CHARSET=utf8mb4 COMMENT='学生'

@@ -1,0 +1,9 @@
+{
+  "table_name": "crm_tag_definition",
+  "field_aliases": {},
+  "field_enums": {},
+  "virtual_associations": [],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}

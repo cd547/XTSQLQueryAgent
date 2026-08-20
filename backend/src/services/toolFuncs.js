@@ -158,20 +158,204 @@ function removeEmptyProperties(obj) {
   return Object.keys(result).length === 0 ? undefined : result;
 }
 
-export async function getTableSchema(tableNames) {
+/**
+ * 解析 DDL 文件，提取每张表的列信息（含索引 / 外键）。
+ *
+ * 输出 schema（短键名，与 SKILL.md L32 的图例一致）：
+ *   {
+ *     "id":            { "t": "bigint(20) unsigned", "c": "主键id",      "k": "PRI" },
+ *     "admin_user_id": { "t": "int(11)",            "c": "员工ID",      "k": "MUL" },
+ *     "campus_value":  { "t": "varchar(20)",        "c": "校区编码",    "k": "MUL", "nn": true, "d": "" },
+ *     ...
+ *   }
+ *
+ * 短键：
+ *   t  = type           字段类型（含 size / unsigned / 修饰符）
+ *   c  = comment        字段注释（缺省时省略）
+ *   k  = key            索引标记：PRI / MUL / UNI（缺省时省略）
+ *   nn = NOT NULL       字段非空时为 true（可空时省略，符合"省略默认值"原则）
+ *   d  = default        默认值字符串（缺省时省略；空串也省略）
+ *   fk = 外键引用       形如 "target_table.col"（缺省时省略）
+ *
+ * 设计取舍：
+ *   1. 字段顺序保留 DDL 原序（与 MySQL `DESCRIBE` 一致），方便 LLM 写 SQL 时按位置参考
+ *   2. nn/d/fk/c 全部 "省略默认值"，最大化 token 节省
+ *   3. KEY / UNIQUE KEY 的多列索引：把所有列都标 "MUL"/"UNI"（MySQL 行为一致）
+ *   4. FOREIGN KEY：只标记第一个被引用的列（MySQL 多列 FK 在本项目 DDL 中未出现）
+ *
+ * @param {string} ddlContent - 完整 DDL SQL 文本
+ * @returns {Object<string, Object>} - 字段名 → 字段元信息
+ */
+function parseDDLFields(ddlContent) {
+  const fields = {};
+  // FK 引用映射：列名 → "target_table.col"（从 CONSTRAINT ... FOREIGN KEY ... REFERENCES 提取）
+  const fkRefs = new Map();
+
+  for (const rawLine of ddlContent.split('\n')) {
+    const line = rawLine.trim();
+    if (!line) continue;
+    // 跳过表头 / 表尾 / 分隔行
+    if (/^CREATE\s+TABLE/i.test(line)) continue;
+    if (/^\)/.test(line)) continue;
+    if (/^ENGINE\s*=/i.test(line)) continue;
+    if (/^\)\s*ENGINE/i.test(line)) continue;
+
+    // PRIMARY KEY (`col1`,`col2`)
+    const pkMatch = line.match(/^PRIMARY\s+KEY\s*\(([^)]+)\)/i);
+    if (pkMatch) {
+      for (const col of extractColumnNames(pkMatch[1])) {
+        ensureField(fields, col).k = 'PRI';
+      }
+      continue;
+    }
+
+    // KEY `idx_name` (`col1`,`col2`)  /  KEY (`col`)
+    // UNIQUE KEY `name` (`cols`)
+    const keyMatch = line.match(/^(UNIQUE\s+)?KEY\s+(?:`[^`]+`\s+)?\(([^)]+)\)/i);
+    if (keyMatch) {
+      const isUnique = !!keyMatch[1];
+      const marker = isUnique ? 'UNI' : 'MUL';
+      for (const col of extractColumnNames(keyMatch[2])) {
+        // 已被 PRI 标记的不覆盖
+        if (fields[col]?.k === 'PRI') continue;
+        ensureField(fields, col).k = marker;
+      }
+      continue;
+    }
+
+    // CONSTRAINT `name` FOREIGN KEY (`col`) REFERENCES `tgt` (`col`)
+    const fkMatch = line.match(/^CONSTRAINT\s+`?[^`\s(]+`?\s+FOREIGN\s+KEY\s*\(([^)]+)\)\s+REFERENCES\s+`?(\w+)`?\s*\(([^)]+)\)/i);
+    if (fkMatch) {
+      const srcCols = extractColumnNames(fkMatch[1]);
+      const tgtTable = fkMatch[2];
+      const tgtCols = extractColumnNames(fkMatch[3]);
+      srcCols.forEach((src, i) => {
+        fkRefs.set(src, `${tgtTable}.${tgtCols[i] || tgtCols[0]}`);
+      });
+      continue;
+    }
+
+    // 字段定义行： `col` type [NOT NULL] [DEFAULT ...] [COMMENT '...']
+    // 类型可能带 size / unsigned / CHARACTER SET 等
+    const colMatch = line.match(/^`(\w+)`\s+([^\s,']+(?:\s*\([^)]*\))?(?:\s+unsigned|\s+zerofill)*)/i);
+    if (colMatch) {
+      const colName = colMatch[1];
+      const colType = colMatch[2].trim();
+      // 单行内可能含 COMMENT（COMMENT 内容可能含逗号，因此用 rest 而非按行末 split）
+      const rest = line.slice(colMatch[0].length);
+      const isNotNull = /\bNOT\s+NULL\b/i.test(rest);
+      // DEFAULT 后面跟一个字面量（数字 / 字符串 / 关键字如 CURRENT_TIMESTAMP）
+      const defaultMatch = rest.match(/\bDEFAULT\s+((?:'[^']*')|(?:\([^)]*\))|(?:CURRENT_TIMESTAMP(?:\s+ON\s+UPDATE\s+CURRENT_TIMESTAMP)?)|[^\s,]+)/i);
+      const commentMatch = rest.match(/\bCOMMENT\s+'((?:''|[^'])*)'/i);
+
+      const f = ensureField(fields, colName);
+      f.t = colType;
+      if (isNotNull) f.nn = true;
+      if (defaultMatch) {
+        let dv = defaultMatch[1];
+        // 字符串默认值去引号（'0' → 0, 'pending' → pending）——LLM 视觉上更干净
+        if (/^'.*'$|^".*"$/.test(dv)) dv = dv.slice(1, -1);
+        // 跳过空串默认（对 nullable 字段无信息量）+ 跳过 NULL（缺省即 nullable 语义）
+        if (dv !== '' && dv !== 'NULL') f.d = dv;
+      }
+      if (commentMatch) f.c = commentMatch[1].replace(/''/g, "'");
+      continue;
+    }
+  }
+
+  // 注入外键引用
+  for (const [col, ref] of fkRefs) {
+    if (fields[col]) fields[col].fk = ref;
+  }
+
+  return fields;
+}
+
+/** 辅助：从 "(col1, `col2`)" 字符串里提取所有列名（去反引号 / trim / 去重保序） */
+function extractColumnNames(colListStr) {
+  const names = [];
+  const seen = new Set();
+  for (const part of colListStr.split(',')) {
+    const name = part.trim().replace(/^`|`$/g, '');
+    if (name && !seen.has(name)) {
+      seen.add(name);
+      names.push(name);
+    }
+  }
+  return names;
+}
+
+/** 辅助：保证 fields[col] 存在并返回；用于上面在多分支里渐进式填字段 */
+function ensureField(fields, colName) {
+  if (!fields[colName]) fields[colName] = {};
+  return fields[colName];
+}
+
+/**
+ * 精简字段属性：只保留 t (类型) / c (注释) / fk (外键引用)
+ * - 去掉 k (索引)、nn (NOT NULL)、d (默认值)：对 SELECT 生成几乎无用
+ * - 用户在 EXPLAIN 优化等少数场景下需要完整属性时，可传 verbose=true 拿全量
+ */
+function slimFieldProps(f) {
+  if (!f) return f;
+  const slim = { t: f.t };
+  if (f.c !== undefined) slim.c = f.c;
+  if (f.fk !== undefined) slim.fk = f.fk;
+  return slim;
+}
+
+export async function getTableSchema(tableNames, options = {}) {
+  const { verbose = false } = options;
   const names = Array.isArray(tableNames) ? tableNames : [tableNames];
-  // 并行读所有表的 field_config（多表时不再串行读盘）
+  // 并行读所有表的 field_config + DDL（多表场景下两个盘都并行触发，不再串行）
   const entries = await Promise.all(names.map(async (name) => {
     const fieldConfigPath = path.join(SKILL_V2_PATH, 'field_config', `${name}.json`);
-    const content = await readFileIfExists(fieldConfigPath);
-    if (content) {
-      const config = JSON.parse(content);
-      const simplified = removeEmptyProperties(config);
-      return [name, simplified || {}];
+    const ddlPath = path.join(SKILL_V2_PATH, 'ddl', `${name}.sql`);
+
+    // 单表内也并行读两个文件（fs.promises 读两个盘比串行快一截）
+    const [fcContent, ddlContent] = await Promise.all([
+      readFileIfExists(fieldConfigPath),
+      readFileIfExists(ddlPath),
+    ]);
+
+    if (!fcContent && !ddlContent) {
+      return [name, { error: `表 ${name} 的 field_config 和 DDL 均不存在` }];
     }
-    return [name, { error: `表 ${name} 的配置不存在` }];
+
+    const result = {};
+
+    // 1. field_config 部分：aliases / enums / associations / rules
+    if (fcContent) {
+      const config = JSON.parse(fcContent);
+      const simplified = removeEmptyProperties(config);
+      if (simplified) Object.assign(result, simplified);
+    }
+
+    // 2. DDL 部分：fields（含类型/索引/外键）
+    //    放在第一位：LLM 工具 prompt 里把"fields"作为主结构，更显眼
+    if (ddlContent) {
+      result.fields = parseDDLFields(ddlContent);
+    }
+
+    // table_name 是冗余的：LLM 从工具调用的 args.table_names 已知是哪个表，
+    // 外层 Object.fromEntries 的 key 也已经是表名。删掉每表省 ~15 字符。
+    delete result.table_name;
+
+    return [name, result];
   }));
   const result = Object.fromEntries(entries);
+  // F20 (2026-08)：精简模式（默认）下过滤掉 k/nn/d 三类对 SELECT 几乎无用的属性
+  //   verbose=true 时保留全量（EXPLAIN 优化 / 排查默认值等场景）
+  //   在聚合前对每表 fields 单独处理，避免对每个字段重复判断
+  if (!verbose) {
+    for (const tableData of Object.values(result)) {
+      if (tableData?.fields) {
+        for (const col of Object.keys(tableData.fields)) {
+          tableData.fields[col] = slimFieldProps(tableData.fields[col]);
+        }
+      }
+    }
+  }
   return names.length === 1 ? result[names[0]] : result;
 }
 
@@ -459,11 +643,11 @@ export const tools = [
   // }),
   new DynamicTool({
     name: "get_table_schema",
-    description: "获取指定表的字段详情（别名、枚举、约束、业务、关联），支持多表。",
+    description: "获取指定表的详细信息：列名/类型/注释/外键 + 字段别名/枚举/虚拟关联/业务规则。",
     params: {
       type: 'object',
       properties: {
-        table_names: { type: 'array', items: { type: 'string' }, description: '需要查询的表名列表' }
+        table_names: { type: 'array', items: { type: 'string' }, description: '查询的表名' }
       },
       required: ['table_names']
     },
@@ -480,40 +664,13 @@ export const tools = [
       if (!Array.isArray(tableNames) || tableNames.length === 0) return '请提供 table_names 参数（表名数组）';
       // 紧凑 JSON：无缩进。deepseek-v3 对 JSON 结构化数据解析无差别，
       // 但能省 25-40% token（多表场景节省更显著），且对多轮上下文累积友好。
+      // F20：LLM 永远拿到精简版（仅 t/c/fk），无需 verbose 选项
       return JSON.stringify(await getTableSchema(tableNames));
     }
   }),
   new DynamicTool({
-    name: "get_table_ddl",
-    description: "获取指定表的DDL（short=1 仅列定义；short=0 含索引/外键）。",
-    params: {
-      type: 'object',
-      properties: {
-        table_names: { type: 'array', items: { type: 'string' }, description: '需要查询DDL的表名列表' },
-        short: { type: 'integer', description: '默认1只返回列定义；传0返回完整DDL含索引/主键/外键' }
-      },
-      required: ['table_names']
-    },
-    func: async (input) => {
-      let tableNames = [];
-      let short = 1;
-      try {
-        if (typeof input === 'object' && input !== null) {
-          tableNames = input.table_names || [];
-          short = input.short ?? 1;
-        } else if (typeof input === 'string') {
-          const parsed = JSON.parse(input);
-          tableNames = parsed.table_names || [];
-          short = parsed.short ?? 1;
-        }
-      } catch (e) { logger.debug('Parse tableNames failed', { error: e.message }); }
-      if (!Array.isArray(tableNames) || tableNames.length === 0) return '请提供 table_names 参数（表名数组）';
-      return await getTableDDL(tableNames, { short });
-    }
-  }),
-  new DynamicTool({
     name: "request_tag_confirmation",
-    description: "请求用户确认是否将术语添加到表的标签中。当用户纠正表名或提供新的术语-表关联时使用。返回带特殊标记的字符串，会触发前端确认框弹出。",
+    description: "当用户纠正表名或给出术语-表映射时，请求用户确认是否将该术语加入表标签。",
     params: {
       type: 'object',
       properties: {
@@ -549,25 +706,21 @@ export const tools = [
   //   位置：稳定工具组末尾，**严禁放首位**——会破坏 prefix cache
   new DynamicTool({
     name: "request_user_choice",
-    description: "【需要用户输入】当任务需要用户确认/选择/补充才能继续时调用。\n" +
-      "参数 questions: 1-3 个问题的数组，每个问题独立可答。\n" +
-      "  - question: 必填，问题文本，≤200 字\n" +
-      "  - options: 必填，1-4 个选项，每项 ≤100 字\n" +
-      "  - multi_select: 可选，true=多选(checkbox)，false=单选(radio)，默认 false\n" +
-      "  - header: 可选，问题分类标签，≤12 字\n" +
-      "调用后程序自动结束当前轮次并弹出对话框（链式展示 N 张卡片，按钮『下一个』→『完成』）。",
+    description: "当任务需要用户确认/选择/补充才能继续时调用。\n" +
+      "传 questions: 1-3 个独立问题（每题 question + options 1-4 项，字段约束见 schema）。" +
+      "调用后程序自动结束当前轮次并弹出对话框。",
     params: {
       type: 'object',
       properties: {
         questions: {
           type: 'array',
-          description: '1-3 个问题的数组',
+          description: '问题数组',
           minItems: 1, maxItems: 3,
           items: {
             type: 'object',
             properties: {
-              question: { type: 'string', description: '问题文本，≤200 字' },
-              options: { type: 'array', items: { type: 'string' }, description: '1-4 个选项，每项 ≤100 字', minItems: 1, maxItems: 4 },
+              question: { type: 'string', description: '问题，≤200 字' },
+              options: { type: 'array', items: { type: 'string' }, description: '选项，每项 ≤100 字', minItems: 1, maxItems: 4 },
               multi_select: { type: 'boolean', description: 'true=多选/checkbox，false=单选/radio，默认 false' },
               header: { type: 'string', description: '问题分类标签，≤12 字' }
             },
@@ -599,11 +752,13 @@ export const tools = [
     }
   }),
   // ===== 可变工具：调用一次后会被剪枝（见 llm.js 中的剪枝逻辑）=====
-  // 剪枝顺序：get_domain_index 先剪（Round 2 后），get_sliced_index 后剪（Round 3 后）
-  // 顺序必须按"调用顺序"排，先被调用的先剪
+  // 剪枝顺序：get_sliced_index 后剪（Round 3 后）
+  // 注：get_domain_index 已迁移至 system 消息内嵌（2026-08），不再作为 LLM 工具调用。
+  //     为兼容旧会话（history 中已存在 get_domain_index tool message）暂时保留，
+  //     description 显式标记"已废弃"，LLM 不应再调用。
   new DynamicTool({
     name: "get_domain_index",
-    description: "列出所有业务域（id + 名称 + 描述），用于域路由第一步。",
+    description: "【已废弃，请勿调用】业务域列表已嵌入系统提示词的「可用业务域」小节，根据问题直接选域后调用 get_sliced_index(domain_ids) 即可。调用本工具将浪费 token 且不会得到新信息。",
     params: {
       type: 'object',
       properties: {},
@@ -619,7 +774,7 @@ export const tools = [
   }),
   new DynamicTool({
     name: "get_sliced_index",
-    description: "【按域裁剪】传入 1-5 个 domain_id，返回这些域的候选表池（含标签/关联表/业务规则）。",
+    description: "传入domain_id，返回这些域的候选表。",
     params: {
       type: 'object',
       properties: {
@@ -652,16 +807,16 @@ export const tools = [
   // 详见 docs/superpowers/plans/2026-07-23-validate-sql-fields-tool-final.md
   new DynamicTool({
     name: "validate_sql_fields",
-    description: "【SQL 质量自检】最终输出 SQL 前必调，校验规则：\n" +
+    description: "【SQL 质量自检】输出 SQL 前必调，校验规则：\n" +
       "  R1 字段-表归属\n" +
       "  R2 字段别名反引号\n" +
       "  R3 MySQL 5.7 限制\n" +
-      "  R5 LIMIT 子句：SELECT 必须含 LIMIT\n" +
-      "返回 {valid, errors, summary}——valid=true 才可输出 SQL，拿到 errors 必须重写后再次校验。" ,
+      "  R5 必须含 LIMIT\n" +
+      "返回 {valid, errors, summary}。" ,
     params: {
       type: 'object',
       properties: {
-        sql: { type: 'string', description: '待校验的 SQL 语句' }
+        sql: { type: 'string', description: '待校验的SQL' }
       },
       required: ['sql']
     },
@@ -693,5 +848,63 @@ export const tools = [
         summary: result.summary,
       };
     }
+  }),
+  // ===== F23 (2026-08): get_call_history =====
+  // 由 llm.js 在每轮强制注入到 assistant.tool_calls 最前面的"系统工具"。
+  // 工具描述里**不写"避免重复调用"**——那是 SKILL.md / system 的事，
+  // description 字段写"无入参"避免 LLM 误传参数。
+  // 真正的返回内容由 llm.js 在执行阶段拦截、按当前 reg.callHistory 构造。
+  // 不放入 LLM_TOOLS（filter 已过滤），LLM 看不到该工具。
+  new DynamicTool({
+    name: "get_call_history",
+    description: "【系统工具，由程序自动注入】返回本会话已调用的工具历史。无入参。",
+    params: {
+      type: 'object',
+      properties: {},
+      required: []
+    },
+    func: async () => {
+      // 占位返回：实际值由 llm.js 工具执行循环拦截后构造
+      return '{"called_count":0,"called_tools":[],"_note":"interceptor-overridden"}';
+    }
   })
 ];
+
+// ============================================================
+// LLM_TOOLS：发送给 LLM 的工具列表（去掉已废弃工具和系统自动注入的工具）
+// F18 (2026-08)：get_domain_index 已迁移至 system 消息内嵌，LLM 不应再看到。
+//   - tools 数组保留 get_domain_index 定义（旧会话 history 兼容 + 兜底执行
+//     toolsMap 仍能命中，避免"未知工具"错误）
+// F23 (2026-08)：get_call_history 由 llm.js 在每轮强制注入到 assistant.tool_calls
+//   的最前面，无需 LLM 主动调用，也不应展示给 LLM（避免"要不要调"的决策延迟）。
+//   - tools 数组保留 get_call_history 定义（执行层 toolsMap 命中用）
+//   - LLM_TOOLS 过滤掉，让 LLM 看不到该工具
+//   - llm.js 强制注入时使用 synthetic tool_call_id
+// ============================================================
+export const LLM_TOOLS = tools.filter(
+  (t) => t.name !== "get_domain_index" && t.name !== "get_call_history"
+);
+
+// ============================================================
+// buildSystemMessage：CC path + Responses path 共用的 system message 装配函数
+// 单一来源（避免两处各写一份导致漂移）。
+// 输入：已加载的 SKILL.md 内容
+// 输出：完整 system message（身份前缀 + SKILL + 可用业务域清单）
+// ============================================================
+export async function buildSystemMessage(skillMd) {
+  // 每次请求重新读 domain_router_index.json（用户决策：保证热更新即时生效，
+  // 接受少量 IO 开销）。文件通常 <10KB，单次 readFile <1ms。
+  const domainIndex = await loadDomainRouterIndex();
+  // F19 (2026-08)：id 加反引号 + 中文名用全角括号，结构上让 id 更突出
+  //   降低模型把"name"误当成 id 传给 get_sliced_index 的概率
+  const domainList = (domainIndex?.domains || [])
+    .map((d) => `- \`${d.id}\`（${d.name}）: ${d.description}`)
+    .join("\n") || "（暂无业务域）";
+  return (
+    `你是XTSQLQueryAgent。严格遵守以下规则，随后根据用户问题生成SQL。\n` +
+    `${skillMd}\n\n` +
+    `## 可用业务域\n` +
+    `> 传给 get_sliced_index 的 domain_ids 必须是左侧 \`id\`（英文部分），不是括号里的中文名。\n` +
+    `${domainList}`
+  );
+}

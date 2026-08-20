@@ -7,7 +7,7 @@ import AppIcon from './AppIcon.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { getMarkdownRenderers } from './markdownRenderers.jsx';
 
-const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, onOpenSqlTab, onCopyAndExecute, onFavorite, favoriteState, userQuestion, userAvatar, interrupted }) {
+const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, onOpenSqlTab, onCopyAndExecute, onFavorite, favoriteState, userQuestion, userAvatar, interrupted, usage, toolName }) {
   const { theme: themeMode } = useTheme();
   const isUser = role === 'user';
   const isLog = role === 'log' || role === 'LLM' || role === 'tool' || role === 'tool_return';
@@ -47,9 +47,65 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
     return `${minutes}m ${remainder}s`;
   })();
 
+  // ★ v5.16：DeepSeek prefix cache 命中率
+  //   公式：cached_tokens / (cached_tokens + miss_tokens) = cached_tokens / prompt_tokens
+  //   prompt_tokens = cached + miss（DeepSeek API 约定）
+  //   只在 assistant 消息 + 有 usage 数据时显示
+  const hitRateInfo = (() => {
+    if (!usage || role === 'user' || role === 'log' || role === 'LLM' || role === 'tool' || role === 'tool_return') return null;
+    const prompt = usage.prompt_tokens || 0;
+    const cached = usage.cached_tokens || 0;
+    if (prompt <= 0) return null;
+    const miss = prompt - cached;
+    const hitRate = ((cached / (cached + miss)) * 100).toFixed(1);
+    // ★ 每轮命中率明细：来自 usage.rounds（流式 done / 历史回看两条路径都已附带）
+    //   仅用于 tooltip 展示，不参与累计命中率计算
+    const rounds = (usage.rounds && typeof usage.rounds === 'object')
+      ? Object.keys(usage.rounds)
+          .map(Number)
+          .filter(n => !Number.isNaN(n))
+          .sort((a, b) => a - b)
+          .map(r => {
+            const u = usage.rounds[r] || {};
+            const p = u.prompt_tokens || 0;
+            const c = u.cached_tokens || 0;
+            return {
+              round: r,
+              cached: c,
+              miss: Math.max(0, p - c),
+              prompt: p,
+              rate: p > 0 ? ((c / p) * 100).toFixed(1) : null,
+            };
+          })
+      : [];
+    return {
+      hitRate,
+      cached,
+      miss,
+      prompt,
+      completion: usage.completion_tokens || 0,
+      total: usage.total_tokens || 0,
+      rounds,
+    };
+  })();
+
   // 日志类型（工具调用 / 思考过程）
   if (isLog) {
-    const typeLabel = logType === 'return' ? '工具返回' : logType === 'llm' ? '思考过程' : '工具调用';
+    // ★ F23 v3 (2026-08)：始终隐藏 get_call_history 工具的调用和返回结果
+    //   该工具由系统自动注入（用于 LLM 上下文 cache 优化），用户无需感知
+    //   toolName 由后端 tool/tool_return 事件透传过来，get_call_history 对应的 call/return 都隐藏
+    if (toolName === 'get_call_history') return null;
+    // ★ 2026-08-17：工具调用 title 拼接工具名
+    //   例：原 "工具调用 2026/08/13 06:25" → 新 "工具调用 validate_sql_fields 2026/08/13 06:25"
+    //   仅 call 类型且有 toolName 时拼接；其他类型（return/llm）保持原样
+    let typeLabel;
+    if (logType === 'return') {
+      typeLabel = '工具返回';
+    } else if (logType === 'llm') {
+      typeLabel = '思考过程';
+    } else {
+      typeLabel = toolName ? `工具调用 ${toolName}` : '工具调用';
+    }
     const tagClass = logType === 'return' ? 'return' : (logType === 'llm' ? 'llm' : 'call');
     return (
       <div className="xtsql-log">
@@ -59,7 +115,16 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
             <span className={`xtsql-log-tag ${tagClass}`}>{typeLabel}</span>
             <span style={{ marginLeft: 'auto' }}>{timeStr}</span>
           </div>
-          {!collapsed && <div className="xtsql-log-body">{content}</div>}
+          {!collapsed && (
+            <div className="xtsql-log-body">
+              {/* ★ 2026-08-17：统一过滤"🔧 调用工具: ..."行（标题已拼工具名，body 再显示就重复）
+                  新数据 + 老数据 + 即使后端没重启跑旧代码 → 全部统一处理
+                  兜底：过滤后为空（如空参数工具）→ 显示"(无参数)"占位，避免节点"消失" */}
+              {logType === 'call' && content
+                ? (content.replace(/^🔧 调用工具:[^\n]*\n?/, '').trim() || '(无参数)')
+                : content}
+            </div>
+          )}
         </div>
       </div>
     );
@@ -126,6 +191,30 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
         </div>
         {!isUser && (isStreaming || elapsedStr || (sql && sql.trim())) && (
           <div className="xtsql-msg-actions">
+            {hitRateInfo && (
+              <Tooltip
+                title={
+                  <div style={{ fontSize: 12 }}>
+                    <div>prefix cache 命中率</div>
+                    <div>累计 命中 {hitRateInfo.cached} / 未命中 {hitRateInfo.miss} = {hitRateInfo.hitRate}%</div>
+                    <div>prompt {hitRateInfo.prompt} · completion {hitRateInfo.completion} · total {hitRateInfo.total}</div>
+                    {hitRateInfo.rounds.length > 0 && (
+                      <div style={{ marginTop: 4, maxHeight: 180, overflowY: 'auto', fontSize: 11, lineHeight: 1.7 }}>
+                        <div>各轮命中率：</div>
+                        {hitRateInfo.rounds.map(r => (
+                          <div key={r.round}>
+                            Round {r.round}: {r.rate !== null ? `${r.rate}%` : '—'}
+                            {r.rate !== null && `（命中 ${r.cached} / prompt ${r.prompt}）`}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                }
+              >
+                <span className="xtsql-msg-hitrate">缓存命中率 {hitRateInfo.hitRate}%</span>
+              </Tooltip>
+            )}
             {elapsedStr && (
               <Tooltip title="本次回答从发送到完成的耗时（流式期间实时更新）">
                 <span className="xtsql-msg-elapsed">耗时 {elapsedStr}</span>

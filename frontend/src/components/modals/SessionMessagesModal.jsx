@@ -26,7 +26,7 @@ export default function SessionMessagesModal({ open, onClose, content, tokens })
           fontSize: 12,
         }}
       >
-        <span style={{ color: '#666' }}>消息上下文长度：</span>
+        <span style={{ color: '#666' }}>当前上下文长度（本地估算，非计费值）：</span>
         <span style={{ color: '#1890ff', fontWeight: 500, marginLeft: 4 }}>{tokens}</span>
         <span style={{ color: '#666', marginLeft: 2 }}>tokens</span>
       </div>

@@ -14,5 +14,10 @@
   ],
   "calculated_fields": {},
   "business_constraints": {},
-  "business_rules": []
+  "business_rules": [
+    {
+      "name": "锁定教室",
+      "description": "type=2 的教室在排课冲突校验中会被跳过"
+    }
+  ]
 }

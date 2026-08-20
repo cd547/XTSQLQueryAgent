@@ -1,0 +1,27 @@
+{
+  "table_name": "edu_video",
+  "field_aliases": {
+    "id": ["视频ID"],
+    "edu_study_id": ["排课ID"]
+  },
+  "field_enums": {
+    "del": {"0": "正常", "1": "删除"}
+  },
+  "virtual_associations": [
+    {
+      "name": "关联排课",
+      "target_table": "edu_study",
+      "join_condition": "edu_study.id = edu_video.edu_study_id",
+      "type": "many_to_one"
+    },
+    {
+      "name": "关联视频地址",
+      "target_table": "edu_video_address",
+      "join_condition": "edu_video_address.edu_video_id = edu_video.id",
+      "type": "one_to_many"
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}

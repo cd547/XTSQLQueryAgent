@@ -62,5 +62,14 @@
   ],
   "calculated_fields": {},
   "business_constraints": {},
-  "business_rules": []
+  "business_rules": [
+    {
+      "name": "金额单位",
+      "description": "amount 单位是分（÷100 为元）"
+    },
+    {
+      "name": "状态流转",
+      "description": "排课结课时 status 由 1(预扣) → 2(实扣)"
+    }
+  ]
 }

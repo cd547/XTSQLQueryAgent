@@ -7,7 +7,9 @@ import { getDb } from '../db/sqlite.js';
 import { getConfig, getLlmConfig } from '../services/config.js';
 import { authRequired, adminRequired, sessionBelongsToUser } from '../services/auth.js';
 import { logger } from '../logger.js';
-import { generateSQLWithLangChainStreamGen_BAK, loadSkillMd, getLastMessages, loadMessagesFromDb, clearSessionRegistry } from '../services/llm.js';
+import { runSqlAgent, loadSkillMd, getLastMessages, loadMessagesFromDb, clearSessionRegistry } from '../services/llm.js';
+import { runSqlAgentResponsesHandler } from '../services/responsesApi.js';
+import { LLM_TOOLS, buildSystemMessage } from '../services/toolFuncs.js';
 import { validateReadOnlySql } from '../services/sqlValidator.js';
 import { poolQuery } from '../services/mysqlPool.js';
 import { config } from '../config.js';
@@ -247,6 +249,8 @@ router.get('/messages/:sessionId', async (req, res) => {
         messages: result.messages,
         count: result.messages.length,
         messageTokens: result.messageTokens,
+        // ★ v5.14：返回 api_mode 让前端展示实际使用的 API 类型
+        apiMode: result.apiMode,
         sessionId
       });
     } else {
@@ -331,7 +335,7 @@ router.post('/generate', async (req, res) => {
 
     // [DEAD-CODE 2026-07-15] historyText 当前未被 llm.js 消费（llm.js 用 llm_messages.messages JSON blob）
     // 保留这段代码以备未来"双上下文"设计（如：用 messages 表做更精细的 token 控制 / 摘要压缩 / 工具调用审计）
-    // 恢复方法：在 llm.js:677 generateSQLWithLangChainStreamGen_BAK 函数体内使用 history 形参
+    // 恢复方法：在 llm.js:1079 runSqlAgent 函数体内使用 history 形参
     let schema = '';
     let historyText = '';
     if (false && sessionId) {  // ← 临时禁用入口，避免无谓 SQL 查询
@@ -374,8 +378,70 @@ router.post('/generate', async (req, res) => {
 
       res.flushHeaders();
 
+      // ★ F9 修复：流开始即下发权威 sessionId，避免中断/异常路径下
+      //   前端永远拿不到后端 auto-create 的 sessionId → 下次提问又以 null
+      //   调 /generate → 后端再建一个新 session → 上下文断裂 + 孤儿会话。
+      //   三个失败场景：用户主动 stop / 5min OVERALL_TIMEOUT / 网络断连。
+      //   必须放在 flushHeaders 之后、for-await 之前：保证是流首事件、时序可预期。
+      res.write(`data: ${JSON.stringify({ type: 'meta', sessionId })}\n\n`);
+
+      // ★ F14 路由侧分流：按用户配置的 apiMode 选实现
+      //   - 'chat_completions'（默认）/ 未配置 / 旧配置 → 走原 runSqlAgent
+      //   - 'responses_api' → 委派给 responsesApi.js 的 runSqlAgentResponsesHandler
+      //     （与 CC path 1:1 对齐：abortController / requestStartTime / overallTimer /
+      //      streamCompleted 全部透传，handler 内部负责 generator + DB 持久化 + 流式分派）
+      //   位置：meta 之后、generator 创建之前 —— 不创建 generator 就不烧 LLM 配额
+      const llmCfgForDispatch = getLlmConfig();
+      if (llmCfgForDispatch?.apiMode === 'responses_api') {
+        logger.info('API mode dispatch → responses_api', {
+          sessionId,
+          username: req.user?.username,
+          apiMode: 'responses_api',
+        });
+        const requestStartTime = Date.now();
+        // ★ v5.11 修复：Responses path 不像 CC path 那样在 llm.js:1152 内部拼 system message
+        //   必须由路由层在委派前拼装（与 runSqlAgent L1152 1:1：loadSkillMd + 同前缀）
+        //   修复前没传 systemMessage → handler 内部 systemMessage=undefined → instructions 字段空字符串
+        //   → DeepSeek 报告 "instructions is empty" 或生成内容无 system 约束
+        // ★ F18：改用 toolFuncs.buildSystemMessage 共享函数（CC/RA 单一来源），
+        //   内部自动追加 "## 可用业务域" 小节
+        let systemMessage = '';
+        try {
+          const skillMd = await loadSkillMd();
+          systemMessage = await buildSystemMessage(skillMd);
+        } catch (e) {
+          logger.error('loadSkillMd/buildSystemMessage 失败，使用空 system message', { error: e.message });
+        }
+        await runSqlAgentResponsesHandler(req, res, {
+          abortController,
+          requestStartTime,
+          overallTimer,
+          streamCompleted: false,
+          sessionId,
+          question,
+          historyText,
+          username: req.user?.username,
+          tools: LLM_TOOLS,  // F18: RA 路径也用 LLM_TOOLS（已过滤 get_domain_index）
+          cfg: llmCfgForDispatch,
+          systemMessage,
+          // ★ Phase 2: max_tool_calls 从 DB agent_config 查（与 runSqlAgent L1182 1:1）
+          maxToolCalls: (() => {
+            try {
+              const db = getDb();
+              const row = db.prepare('SELECT value FROM configs WHERE key = ?').get('agent_max_tool_calls');
+              return row?.value || '30';
+            } catch (e) {
+              return '30';
+            }
+          })(),
+          logger,
+        });
+        return;
+      }
+      // apiMode === 'chat_completions' 或无配置（旧用户） → 原代码 0 改动
+
       try {
-        const generator = generateSQLWithLangChainStreamGen_BAK(question, historyText, abortController.signal, sessionId, req.user.username);
+        const generator = runSqlAgent(question, historyText, abortController.signal, sessionId, req.user.username);
         let fullContent = '';
         let sql = '';
         let message = '';
@@ -405,15 +471,23 @@ router.post('/generate', async (req, res) => {
             fullContent += chunk.content;
             res.write(`data: ${JSON.stringify({ type: 'chunk', content: chunk.content, round: chunk.round || 0 })}\n\n`);
           } else if (chunk.type === 'usage') {
+            // ★ v5.15：cached_tokens 透传（CC path 从 usage.prompt_cache_hit_tokens 取值，Responses path 走 handler）
+            const cachedTokens = chunk.usage.cached_tokens || 0;
             totalPromptTokens += chunk.usage.prompt_tokens;
             totalCompletionTokens += chunk.usage.completion_tokens;
             totalTokens += chunk.usage.total_tokens;
+            // ★ v5.18 真正修复：把 usage chunk 推给前端（之前漏写 → 前端 type: 'usage' 事件永远不会到达）
+            //   前端 App.jsx:1011-1031 的 `else if (data.type === 'usage')` 分支依赖此事件
+            //   修复前：路由层收到 usage chunk 后只累加 + 落库，没 res.write → 前端 roundUsagesRef 永远空
+            //   修复后：前端 roundUsagesRef.current[data.round] 真正存到，done 累积 _lastRoundUsage 非空
+            //   → `usage: {...}` 真正挂上 → 实时显示"缓存命中率 XX%"
+            res.write(`data: ${JSON.stringify({ type: 'usage', usage: chunk.usage, round: chunk.round || 0 })}\n\n`);
             // 每轮API调用都保存token记录（带 round 字段）
             if (sessionId) {
               try {
                 const db = getDb();
-                db.prepare('INSERT INTO messages (session_id, role, content, prompt_tokens, completion_tokens, total_tokens, round) VALUES (?, ?, ?, ?, ?, ?, ?)')
-                  .run(sessionId, 'usage', `Round token: ${chunk.usage.total_tokens} (prompt: ${chunk.usage.prompt_tokens}, completion: ${chunk.usage.completion_tokens})`, chunk.usage.prompt_tokens, chunk.usage.completion_tokens, chunk.usage.total_tokens, chunk.round || 0);
+                db.prepare('INSERT INTO messages (session_id, role, content, prompt_tokens, completion_tokens, total_tokens, cached_tokens, round) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+                  .run(sessionId, 'usage', `Round token: ${chunk.usage.total_tokens} (prompt: ${chunk.usage.prompt_tokens}, completion: ${chunk.usage.completion_tokens}, cached: ${cachedTokens})`, chunk.usage.prompt_tokens, chunk.usage.completion_tokens, chunk.usage.total_tokens, cachedTokens, chunk.round || 0);
               } catch (e) {
                 logger.error('保存usage失败', { error: e.message });
               }
@@ -827,6 +901,10 @@ router.post('/explain-analyze', async (req, res) => {
   let overallTimer = null;
   let abortController = null;
   let fullContent = '';
+  // ★ 修复 UTF-8 跨 chunk 截断（"AI 分析 EXPLAIN"字丢失 bug）：
+  //   - buffer 保留 SSE 残行，下一轮 read() 拿到剩余字节后拼起来再 split
+  //   - 与 /generate 路由（llm.js:1363）模式一致
+  let buffer = '';
 
   try {
     const config = getLlmConfig();
@@ -939,34 +1017,40 @@ ${JSON.stringify(explainResults, null, 2)}
         break;
       }
       const { done, value } = await reader.read();
-      if (done) break;
 
-      const text = decoder.decode(value);
-      const lines = text.split('\n');
+      // ★ 修复字丢失：非末段 stream:true 保留不完整 UTF-8 字节（防中文字符被切两半丢字），
+      //   末段 stream:false flush 剩余字节；buffer 保留 SSE 残行。
+      buffer += decoder.decode(value, { stream: !done });
+      const lines = buffer.split('\n');
+      // 非末段保留最后一行（可能不完整，等下一轮 read() 拼起来）；末段清空
+      buffer = done ? '' : (lines.pop() || '');
+
       for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          const dataStr = line.slice(6);
-          if (dataStr === '[DONE]') {
-            streamCompleted = true; clearTimeout(overallTimer);
+        if (!line.startsWith('data: ')) continue;
+        const dataStr = line.slice(6);
+        if (dataStr === '[DONE]') {
+          streamCompleted = true; clearTimeout(overallTimer);
+          if (!abortController.signal.aborted) {
+            res.write(`data: ${JSON.stringify({ type: 'done', analysis: fullContent })}\n\n`);
+          }
+          break;
+        }
+        try {
+          const data = JSON.parse(dataStr);
+          const content = data.choices?.[0]?.delta?.content || '';
+          if (content) {
+            fullContent += content;
             if (!abortController.signal.aborted) {
-              res.write(`data: ${JSON.stringify({ type: 'done', analysis: fullContent })}\n\n`);
+              res.write(`data: ${JSON.stringify({ type: 'chunk', content })}\n\n`);
             }
-            break;
           }
-          try {
-            const data = JSON.parse(dataStr);
-            const content = data.choices?.[0]?.delta?.content || '';
-            if (content) {
-                fullContent += content;
-                if (!abortController.signal.aborted) {
-                  res.write(`data: ${JSON.stringify({ type: 'chunk', content })}\n\n`);
-                }
-              }
-          } catch (e) {
-            // 忽略单行 JSON 解析错误（LLM 流中偶发），继续处理后续行
-          }
+        } catch (e) {
+          // 忽略单行 JSON 解析错误（LLM 流中偶发），继续处理后续行
         }
       }
+
+      // [DONE] 已收 / 流结束 / 客户端断开 → 退出 while
+      if (done || streamCompleted) break;
     }
 
     streamCompleted = true; clearTimeout(overallTimer);

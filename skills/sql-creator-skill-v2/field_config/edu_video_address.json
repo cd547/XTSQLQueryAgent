@@ -1,0 +1,27 @@
+{
+  "table_name": "edu_video_address",
+  "field_aliases": {
+    "id": ["视频地址ID"],
+    "original_url": ["原始地址"],
+    "new_url": ["新地址"]
+  },
+  "field_enums": {
+    "del": {"0": "正常", "1": "删除"}
+  },
+  "virtual_associations": [
+    {
+      "name": "关联视频",
+      "target_table": "edu_video",
+      "join_condition": "edu_video.id = edu_video_address.edu_video_id",
+      "type": "many_to_one"
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "取用优先级",
+      "description": "取用顺序 new_url 优先，缺失时回退 original_url"
+    }
+  ]
+}

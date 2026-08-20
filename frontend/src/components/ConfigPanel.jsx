@@ -4,13 +4,16 @@ import * as api from '../api';
 
 function ConfigPanel() {
   const [dbConfig, setDbConfig] = useState({ host: 'localhost', port: 3306, user: 'root', password: '', database: '' });
-  const [llmConfig, setLlmConfig] = useState({ provider: 'deepseek', apiKey: '', model: 'deepseek-chat' });
+  const [llmConfig, setLlmConfig] = useState({ provider: 'deepseek', apiKey: '', model: 'deepseek-chat', apiMode: 'chat_completions' });
   const [agentConfig, setAgentConfig] = useState({ max_tool_calls: '30', timeout_ms: '60000', token_warning_level: '30000' });
   const [testing, setTesting] = useState(false);
   const [testingLlm, setTestingLlm] = useState(false);
   const [savingAgent, setSavingAgent] = useState(false);
   const [availableModels, setAvailableModels] = useState([]);
   const [loadingModels, setLoadingModels] = useState(false);
+  // ★ 2026-08-17：DeepSeek 账户余额状态
+  //   loading: 拉取中；data: { is_available, balance_infos }；error: { message }
+  const [balance, setBalance] = useState({ loading: false, data: null, error: null });
 
   useEffect(() => {
     api.getAgentConfig().then(data => {
@@ -34,11 +37,16 @@ function ConfigPanel() {
           //   这样既支持"不改 key 也保存 model"的场景，又防止"保存未改动表单"
           //   误传空字符串（虽然后端已兜底保留旧值，但前端不该发脏数据）。
           apiKeyTouched: false,
-          model: data.model || ''
+          model: data.model || '',
+          // ★ apiMode：后端 GET 兜底 chat_completions（旧配置兼容）
+          apiMode: data.apiMode || 'chat_completions'
         });
         if (data.hasApiKey) {
           fetchModels();
         }
+        // ★ 2026-08-17：每次 Drawer 打开都拉一次最新余额（不论是否有 apiKey，
+        //   无 key 时后端会返回 success:false 提示用户"请先配置 API Key"）
+        fetchBalance();
       }
     });
   }, []);
@@ -56,6 +64,23 @@ function ConfigPanel() {
       message.error('获取模型列表失败');
     } finally {
       setLoadingModels(false);
+    }
+  };
+
+  // ★ 2026-08-17：拉取 DeepSeek 账户余额
+  //   触发：useEffect 初始化时（Drawer 打开首次渲染）+ 保存 LLM 配置后
+  //   状态：loading / data / error
+  const fetchBalance = async () => {
+    setBalance({ loading: true, data: null, error: null });
+    try {
+      const data = await api.getDeepseekBalance();
+      if (data.success) {
+        setBalance({ loading: false, data, error: null });
+      } else {
+        setBalance({ loading: false, data: null, error: { message: data.message || '获取余额失败' } });
+      }
+    } catch (e) {
+      setBalance({ loading: false, data: null, error: { message: e.message || '网络错误' } });
     }
   };
 
@@ -89,7 +114,7 @@ function ConfigPanel() {
       //   旧逻辑把 llmConfig.apiKey（可能为空字符串）无条件提交，
       //   会导致"打开页面 → 不动任何东西 → 点保存"反而把 DB 里的 key 覆盖成空。
       //   现在前端过滤 + 后端兜底（POST /config/llm 收到空也保留旧值）双保险。
-      const payload = { provider: 'deepseek', model: llmConfig.model };
+      const payload = { provider: 'deepseek', model: llmConfig.model, apiMode: llmConfig.apiMode };
       if (llmConfig.apiKeyTouched && llmConfig.apiKey) {
         payload.apiKey = llmConfig.apiKey;
       }
@@ -103,12 +128,16 @@ function ConfigPanel() {
             provider: fresh.provider,
             apiKey: fresh.maskedKey || '',
             apiKeyTouched: false,
-            model: fresh.model || ''
+            model: fresh.model || '',
+            // ★ apiMode：保存后用后端归一化后的值（防御非法值被前端自动修成默认）
+            apiMode: fresh.apiMode || 'chat_completions'
           });
         }
         if (fresh.hasApiKey) {
           fetchModels();
         }
+        // ★ 2026-08-17：apiKey 可能改了 → 重新拉一次余额
+        fetchBalance();
       } else {
         message.error('保存失败');
       }
@@ -163,6 +192,56 @@ function ConfigPanel() {
           <span style={{ width: 70 }}>Provider</span>
           <span style={{ fontSize: 12 }}>DeepSeek</span>
         </Space>
+        {/* ★ 2026-08-17：DeepSeek 账户余额显示（Provider 下面）
+            状态：
+              loading  → "加载中..."
+              success  → "CNY 110.00（赠金 10.00 / 充值 100.00）" + 账户状态 ✓/✗
+              error    → "获取失败: {msg}"（点重试按钮可重拉）
+            currency: CNY / USD
+        */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, minHeight: 24 }}>
+          <span style={{ width: 70, fontSize: 12 }}>余额</span>
+          {balance.loading && (
+            <span style={{ fontSize: 12, color: '#999' }}>加载中...</span>
+          )}
+          {!balance.loading && balance.data && (
+            <span style={{ fontSize: 12 }}>
+              {balance.data.balance_infos && balance.data.balance_infos.length > 0 ? (
+                balance.data.balance_infos.map((b, i) => (
+                  <span key={i} style={{ marginRight: 12 }}>
+                    <strong>{b.currency}</strong>{' '}
+                    {parseFloat(b.total_balance).toFixed(2)}
+                    <span style={{ color: '#888', fontSize: 11, marginLeft: 4 }}>
+                      （赠金 {parseFloat(b.granted_balance).toFixed(2)} / 充值 {parseFloat(b.topped_up_balance).toFixed(2)}）
+                    </span>
+                  </span>
+                ))
+              ) : (
+                <span style={{ color: '#999' }}>无余额信息</span>
+              )}
+              <span style={{
+                marginLeft: 8,
+                color: balance.data.is_available ? '#52c41a' : '#ff4d4f',
+                fontSize: 12
+              }}>
+                {balance.data.is_available ? '✓ 可用' : '✗ 不可用'}
+              </span>
+            </span>
+          )}
+          {!balance.loading && balance.error && (
+            <span style={{ fontSize: 12, color: '#ff4d4f' }}>
+              {balance.error.message}
+            </span>
+          )}
+          <Button
+            size="small"
+            onClick={fetchBalance}
+            loading={balance.loading}
+            style={{ fontSize: 11, marginLeft: 'auto' }}
+          >
+            刷新
+          </Button>
+        </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
           <span style={{ width: 70, fontSize: 12 }}>API Key</span>
           <Input.Password placeholder="API Key" value={llmConfig.apiKey} onChange={handleApiKeyChange} style={{ fontSize: 12, flex: 1 }} />
@@ -178,6 +257,18 @@ function ConfigPanel() {
             style={{ fontSize: 12, flex: 1, minWidth: 200 }}
             showSearch
             allowClear
+          />
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+          <span style={{ width: 70, fontSize: 12 }}>API 名称</span>
+          <Select
+            value={llmConfig.apiMode}
+            onChange={v => setLlmConfig({ ...llmConfig, apiMode: v })}
+            style={{ fontSize: 12, flex: 1, minWidth: 200 }}
+            options={[
+              { value: 'chat_completions', label: 'Chat Completions API（推荐）' },
+              { value: 'responses_api', label: 'Responses API（Beta，暂未启用）' }
+            ]}
           />
         </div>
         <Button onClick={saveLlm} loading={testingLlm} style={{ fontSize: 12 }}>保存LLM配置</Button>

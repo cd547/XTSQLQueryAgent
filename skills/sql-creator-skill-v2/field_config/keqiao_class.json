@@ -32,7 +32,7 @@
       "target_table": "edu_course_exam_subject",
       "join_condition": "edu_course_exam_subject.id = keqiao_class.edu_course_exam_subject_id",
       "type": "many_to_one",
-      "description": "通过科目ID关联三级科目表",
+      "description": "",
       "business_rule": ""
     },
     {
@@ -48,7 +48,7 @@
       "target_table": "admin_user",
       "join_condition": "admin_user.id = keqiao_class.admin_user_id",
       "type": "many_to_one",
-      "description": "通过操作人ID关联后台用户表",
+      "description": "",
       "business_rule": ""
     }
   ],

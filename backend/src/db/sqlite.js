@@ -113,6 +113,7 @@ export async function initDatabase() {
       prompt_tokens INTEGER DEFAULT 0,
       completion_tokens INTEGER DEFAULT 0,
       total_tokens INTEGER DEFAULT 0,
+      cached_tokens INTEGER DEFAULT 0,
       elapsed_ms INTEGER DEFAULT 0,
       round INTEGER DEFAULT 0,
       interrupted INTEGER DEFAULT 0,
@@ -165,6 +166,17 @@ export async function initDatabase() {
   // 创建索引提升查询性能
   db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_session_id ON messages(session_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_messages_session_role ON messages(session_id, role)`);
+  // ★ v5.15 迁移：老库补 cached_tokens 列（已存在则跳过）
+  try {
+    const msgCols = db.prepare("PRAGMA table_info(messages)").all();
+    const hasCached = msgCols.some((c) => c.name === 'cached_tokens');
+    if (!hasCached) {
+      db.exec("ALTER TABLE messages ADD COLUMN cached_tokens INTEGER DEFAULT 0");
+      logger.info('Migration: added cached_tokens column to messages');
+    }
+  } catch (e) {
+    logger.warn('Failed to migrate cached_tokens column', { error: e.message });
+  }
   db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_sort_order ON sessions(sort_order)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_sessions_user_id ON sessions(user_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_table_schemas_table_name ON table_schemas(table_name)`);
@@ -176,10 +188,22 @@ export async function initDatabase() {
       session_id INTEGER,
       messages TEXT,
       message_tokens INTEGER DEFAULT 0,
+      api_mode TEXT DEFAULT 'chat_completions',
       updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
       FOREIGN KEY (session_id) REFERENCES sessions(id)
     )
   `);
+  // ★ v5.14 迁移：老库补 api_mode 列（已存在则跳过）
+  try {
+    const cols = db.prepare("PRAGMA table_info(llm_messages)").all();
+    const hasApiMode = cols.some((c) => c.name === 'api_mode');
+    if (!hasApiMode) {
+      db.exec("ALTER TABLE llm_messages ADD COLUMN api_mode TEXT DEFAULT 'chat_completions'");
+      logger.info('Migration: added api_mode column to llm_messages');
+    }
+  } catch (e) {
+    logger.warn('Failed to migrate api_mode column', { error: e.message });
+  }
 
   db.exec(`CREATE INDEX IF NOT EXISTS idx_llm_messages_session_id ON llm_messages(session_id)`);
 

@@ -1,0 +1,11 @@
+{
+  "table_name": "edu_study_feedback_type",
+  "field_aliases": {
+    "name": ["反馈类型名称", "反馈名称"]
+  },
+  "field_enums": {},
+  "virtual_associations": [],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}

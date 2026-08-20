@@ -4,8 +4,10 @@ import {
   loadTableIndex,
   loadSkillMd,
   tools,
+  LLM_TOOLS,
   formatTableInfoCompact,
   sliceTableIndexByDomains,
+  buildSystemMessage,
 } from "./toolFuncs.js";
 import { getDb } from "../db/sqlite.js";
 import { countMessagesTokens } from "./tokenizer.js";
@@ -50,7 +52,8 @@ function sanitizeUsername(name) {
  *
  * 仅在 JSON.parse 失败的 catch 块内调用，正常情况不动原始字符串。
  */
-function fixBareQuotesInJsonArgs(s) {
+// ★ Phase 2 Step 2: 纯加法 export（供 agentHelpers.js 复用，不动实现）
+export function fixBareQuotesInJsonArgs(s) {
   let result = '';
   let inString = false;
   let i = 0;
@@ -286,7 +289,8 @@ function writeLlmLog(content, username) {
  * @param {string} responseText - 流式累积的 content 字段
  * @returns {{ content: string, extraThinking: string }}
  */
-function splitThinkingFromContent(responseText) {
+// ★ Phase 2 Step 3: 纯加法 export
+export function splitThinkingFromContent(responseText) {
   if (
     !responseText ||
     typeof responseText !== "string" ||
@@ -314,7 +318,7 @@ function splitThinkingFromContent(responseText) {
 const LOG_BUFFER = [];
 let flushTimer = null;
 
-function flushLogs() {
+export function flushLogs() {
   if (LOG_BUFFER.length === 0) return;
   const flushing = LOG_BUFFER.splice(0);
   // 按 username 分组聚合后批量写盘，减少 appendFileSync 次数（系统级合并到 _system）
@@ -338,6 +342,15 @@ export function getLastMessages() {
   return lastMessages;
 }
 
+// ★ Phase 2 B1: setter（与 getLastMessages 对偶，供 responsesApi.js 同步 lastMessages 全局缓存）
+//   ★ 深拷贝原因（与 CC path L1558 `lastMessages = JSON.parse(JSON.stringify(messages))` 1:1 对齐）：
+//     CC 路径不深拷贝会让调试接口 GET /api/query/messages 返回"未来轮次"消息
+//     （因为 messages 后续会被 push 新 tool 消息，原引用 lastMessages 也跟着变），
+//     深拷贝隔离让 GET 始终返回"调用 setter 那一刻的快照"
+export function setLastMessages(messages) {
+  lastMessages = JSON.parse(JSON.stringify(messages));
+}
+
 // ============================================================
 // 工具调用注册表（用于程序化拦截重复调用，规则 10）
 // ============================================================
@@ -346,17 +359,19 @@ export function getLastMessages() {
 // 会话删除或 llm_messages 清空时通过 clearSessionRegistry 释放。
 const sessionToolRegistries = new Map();
 
-function getOrCreateRegistry(sessionId) {
+export function getOrCreateRegistry(sessionId) {
   if (!sessionId) return null;
   if (!sessionToolRegistries.has(sessionId)) {
     sessionToolRegistries.set(sessionId, {
       getTablesCalled: false,
-      getDomainIndexCalled: false,
+      // F18 (2026-08): get_domain_index 已迁移至 system 消息内嵌，不再作为 LLM 工具调用。
+      //   - 工具本身在 toolFuncs.js 仍保留为"已废弃"定义，用于兼容旧会话 history
+      //   - 剪枝 / 重复调用拦截 / checklist 均已移除（域清单在 system 中永久可见）
       slicedDomains: new Set(), // 已通过 get_sliced_index 加载过的域 ID
       tableSchema: new Set(),
-      // get_table_ddl 注册表：v4 起改为 Set<tableName>,只按表名去重
-      // 关联/外键信息应通过 get_table_schema (virtual_associations) 获取,不应重复查 ddl 补充
-      tableDdl: new Set(),
+      // F10: get_table_ddl 已合并到 get_table_schema（v4 起 DDL 物理结构 +
+      //   索引/外键 全部并入 schema 的 fields 子结构），工具本身从 registry
+      //   中移除。LLM 只需调用一次 get_table_schema 即可获得物理+语义全量信息。
       termConfirmed: new Set(),
       // request_user_choice 注册表：key = id (uc_xxx) —— 记录已问过哪些问题
       // 用于 checklist 显示 + 拦截完全相同 (question, options) 组合的重复调用（Q-09 = B）
@@ -374,6 +389,18 @@ function getOrCreateRegistry(sessionId) {
       validateSqlFieldsCalled: false,
       validateSqlFieldsPassed: false,
       validateSqlFieldsErrorCount: 0,
+      // F23 (2026-08): get_call_history 累积的"已调用工具"快照。
+      //   - 由 llm.js 工具执行循环自动写入（每调一个非 get_call_history 工具就 push）
+      //   - 由 get_call_history 工具拦截器读取并返回给 LLM
+      //   - 持久化到 history 避免 prefix cache 中断（每轮 LLM 看到稳定的累积 tool 消息）
+      //   - resetRegistryForNewQuestion 在新问题时清空
+      //   - 防重复：同工具同参数不重复登记（即使 LLM 误调重复也只记录一次）
+      callHistory: [],
+      // F23 (2026-08): get_call_history 循环检测计数器。
+      //   - LLM 看到历史里的 synthetic get_call_history 后可能模仿调用；
+      //   - 若连续两轮 LLM 只调用 get_call_history（无其他工具），强制 break 跳出循环。
+      //   - resetRegistryForNewQuestion 在新问题时清零。
+      gchLoopCount: 0,
     });
   }
   return sessionToolRegistries.get(sessionId);
@@ -382,19 +409,84 @@ function getOrCreateRegistry(sessionId) {
 /**
  * 重置注册表里的"问题级独立"标志。
  *
- * 调用时机：每次新 user 消息到来时（即 generateSQLWithLangChainStreamGen_BAK 入口）。
- * 不重置会话级持久状态（getDomainIndexCalled / slicedDomains / tableSchema /
- * tableDdl / termConfirmed / userChoiceAsked / getTablesCalled），因为这些
+ * 调用时机：每次新 user 消息到来时（即 runSqlAgent 入口）。
+ * 不重置会话级持久状态（slicedDomains / tableSchema /
+ * termConfirmed / userChoiceAsked / getTablesCalled），因为这些
  * 跟踪的是"已加载到 history 的数据"，数据本身跨问题仍然有效，重取会浪费 token。
+ * （getDomainIndexCalled 已在 F18 移除：域清单已嵌入 system 永久可见）
  *
  * 历史 Bug 2026-07-28：未做此重置时，Q1 校验通过的"✓passed"会残留在 Q2/Q3 的
  * checklist 里，误导 LLM 跳过本轮 SQL 校验。
  */
-function resetPerQuestionRegistryFlags(reg) {
+// ★ Phase 2 Step 3: 纯加法 export
+export function resetPerQuestionRegistryFlags(reg) {
   if (!reg) return;
   reg.validateSqlFieldsCalled = false;
   reg.validateSqlFieldsPassed = false;
   reg.validateSqlFieldsErrorCount = 0;
+}
+
+/**
+ * 检测"本次 user 消息是否是 request_user_choice 中断后的续问"。
+ *
+ * 判定依据：加载的历史消息中，最后一条 user 消息（即本次问题）紧邻的前一条
+ * 必须是 tool 消息且内容含 `<!--user_choice:` 标记 —— 表示上一轮以
+ * `request_user_choice` 中断（用户作答后前端合成一条 user 消息继续同一问题）。
+ *
+ * @param {Array} messages - 已加载并追加本次 user 消息后的 messages 数组
+ * @returns {boolean}
+ */
+export function detectUserChoiceContinuation(messages) {
+  if (!Array.isArray(messages) || messages.length < 2) return false;
+  let lastUserIdx = -1;
+  for (let i = messages.length - 1; i >= 0; i--) {
+    if (messages[i] && messages[i].role === "user") {
+      lastUserIdx = i;
+      break;
+    }
+  }
+  if (lastUserIdx <= 0) return false;
+  const prev = messages[lastUserIdx - 1];
+  if (!prev || prev.role !== "tool") return false;
+  const content = typeof prev.content === "string" ? prev.content : "";
+  return content.includes("<!--user_choice:");
+}
+
+/**
+ * 每次新 user 消息（= 一次 /generate 调用）时重置"问题级"状态。
+ *
+ * - validateSqlFields* 始终重置（本问题内的校验计数）。
+ * - 域路由相关状态（slicedDomains / tableSchema /
+ *   termConfirmed / userChoiceAsked / getTablesCalled）：
+ *   * 新问题 → 全部清空，允许模型重新 get_sliced_index 路由新域；
+ *   * request_user_choice 中断后的续问 → 保留（同一问题继续，无需重新路由）。
+ *   （F18: getDomainIndexCalled 已移除，域清单永久在 system 中可见）
+ *
+ * @param {object|null} reg - 会话工具调用注册表
+ * @param {Array} messages - 已加载并追加本次 user 消息后的 messages 数组
+ */
+export function resetRegistryForNewQuestion(reg, messages) {
+  if (!reg) return;
+  resetPerQuestionRegistryFlags(reg);
+  if (detectUserChoiceContinuation(messages)) {
+    logger.info("user_choice 续问：保留域路由状态", {
+      slicedDomains: [...reg.slicedDomains],
+    });
+    return;
+  }
+  // 新问题：清空域路由相关"问题级"状态，允许重新路由新业务域
+  // （F18: getDomainIndexCalled 不再维护；新问题由"可用业务域"在 system 永久可见，
+  //   模型不会重复调用 get_domain_index）
+  reg.slicedDomains.clear();
+  reg.tableSchema.clear();
+  reg.termConfirmed.clear();
+  reg.userChoiceAsked.clear();
+  reg.getTablesCalled = false;
+  // F23 (2026-08): get_call_history 累积清空（新问题历史从零开始）
+  reg.callHistory = [];
+  // F23 (2026-08): get_call_history 循环计数器清零
+  reg.gchLoopCount = 0;
+  logger.info("新问题：已清空域路由状态");
 }
 
 function normalizeTableNames(arr) {
@@ -406,17 +498,15 @@ function normalizeTableNames(arr) {
 
 function buildChecklist(reg) {
   if (!reg) return "（空）";
-  const domainIndexFlag = reg.getDomainIndexCalled ? "已调用" : "未调用";
+  // F18: get_domain_index 已从 registry 移除（域清单内嵌 system），
+  //   checklist 不再展示该条目。
   const slicedDomainsList = [...reg.slicedDomains].sort().join(", ") || "无";
   const schemaList = [...reg.tableSchema].sort().join(", ") || "无";
-  const ddlList = [...reg.tableDdl].sort().join(", ") || "无";
   const tablesFlag = reg.getTablesCalled ? "已调用" : "未调用";
   return [
-    `- get_domain_index: ${domainIndexFlag}`,
     `- get_sliced_index 已覆盖的域: ${slicedDomainsList}`,
     `- get_tables: ${tablesFlag}`,
-    `- 已获取 field_config 的表: ${schemaList}`,
-    `- 已获取 DDL 的表: ${ddlList}`,
+    `- 已获取 schema（含 DDL/索引/外键）的表: ${schemaList}`,
   ].join("\n");
 }
 
@@ -429,19 +519,16 @@ function buildChecklist(reg) {
  * @param {object|null} reg - 会话工具调用注册表
  * @returns {{role: 'system', content: string} | null} 没有已调用工具时返回 null
  */
-function buildToolCallChecklistMessage(reg) {
+// ★ Phase 2 Step 3: 纯加法 export
+export function buildToolCallChecklistMessage(reg) {
   if (!reg) return null;
   const parts = [];
-  if (reg.getDomainIndexCalled) parts.push("get_domain_index:✓");
+  // F18: get_domain_index 不再追踪（域清单在 system 中永久可见）
   if (reg.getTablesCalled) parts.push("get_tables:✓");
   if (reg.slicedDomains.size > 0)
     parts.push(`get_sliced_index:[${[...reg.slicedDomains].sort().join(",")}]`);
   if (reg.tableSchema.size > 0)
     parts.push(`get_table_schema:[${[...reg.tableSchema].sort().join(",")}]`);
-  if (reg.tableDdl.size > 0) {
-    // v4: 不再区分 short,只列已查询表名
-    parts.push(`get_table_ddl:[${[...reg.tableDdl].sort().join(",")}]`);
-  }
   if (reg.termConfirmed.size > 0) {
     const items = [...reg.termConfirmed].map((s) => s.replace("::", "@"));
     parts.push(`request_tag_confirmation:[${items.join(",")}]`);
@@ -463,7 +550,7 @@ function buildToolCallChecklistMessage(reg) {
   //   called=false: LLM 还没调用 → 应在输出 SQL 前调用
   //   注：本工具**不被剪枝**也不被"重复调用"拦截，是稳定工具（不剪枝，可反复调用）
   //   状态范围：per-question（由 resetPerQuestionRegistryFlags 在每次新 user
-  //   消息时重置），与上面的会话级持久状态（getDomainIndexCalled 等）不同。
+  //   消息时重置），与上面的会话级持久状态（slicedDomains 等）不同。
   if (reg.validateSqlFieldsCalled) {
     const status = reg.validateSqlFieldsPassed
       ? "✓passed"
@@ -473,13 +560,9 @@ function buildToolCallChecklistMessage(reg) {
   if (parts.length === 0) return null;
   return {
     role: "system",
-    content:
-      `🚫 【冻结工具清单 - 绝对禁止重复调用】\n` +
-      `[已调用] ${parts.join(" | ")}\n\n` +
-      `【铁律】以上工具的结果已在你的上下文中。\n` +
-      `【禁止】任何"为了保险再调一次"、"再确认"、"重新看看"等重复调用。\n` +
-      `【禁止】在 SQL 生成阶段再次调用这些工具——会被程序拦截并造成 token 浪费。\n` +
-      `【判定】若信息已全 → 立即输出 SQL，不要再调用任何工具。`,
+    // 精简版 checklist：只列出已调用工具，重复调用约束交给 SKILL.md 第 9 节
+    // + checkAndFilterDuplicateCall 程序拦截。约 30 tokens（原 200 tokens）
+    content: `🔁 已调用: ${parts.join(" | ")}`,
   };
 }
 
@@ -489,7 +572,7 @@ function buildToolCallChecklistMessage(reg) {
  *   - block=true: 整次调用被拦截，message 为返回给 LLM 的提示
  *   - block=false: 允许调用；args 为（可能过滤后的）参数；notice 为可选的附加提示
  */
-function checkAndFilterDuplicateCall(toolName, args, sessionId) {
+export function checkAndFilterDuplicateCall(toolName, args, sessionId) {
   const reg = getOrCreateRegistry(sessionId);
   if (!reg) return { block: false, args };
 
@@ -506,18 +589,9 @@ function checkAndFilterDuplicateCall(toolName, args, sessionId) {
     return { block: false, args };
   }
 
-  if (toolName === "get_domain_index") {
-    if (reg.getDomainIndexCalled) {
-      return {
-        block: true,
-        message:
-          `⚠️ 【重复调用已被程序拦截】get_domain_index 在本会话中已被调用过一次，业务域列表已存在于你的上下文中。\n\n` +
-          `📋 已有信息清单:\n${buildChecklist(reg)}\n\n` +
-          `请直接复用已有域列表，禁止再次调用 get_domain_index。`,
-      };
-    }
-    return { block: false, args };
-  }
+  // F18: get_domain_index 已废弃（description 显式标记），
+  //   不再拦截重复调用（registry 中也无对应标志位）。
+  //   若 LLM 仍调用本工具 → 正常执行返回域列表（无害，等价于 system 中已有内容）。
 
   if (toolName === "get_sliced_index") {
     const requestedDomains = normalizeTableNames(args.domain_ids);
@@ -570,37 +644,6 @@ function checkAndFilterDuplicateCall(toolName, args, sessionId) {
         args: { ...args, table_names: fresh },
         notice:
           `ℹ️ 自动过滤重复表（已在清单中）: ${dupes.join(", ")}。仅对 [${fresh.join(", ")}] 执行 get_table_schema。\n` +
-          `📋 已有信息清单:\n${buildChecklist(reg)}`,
-      };
-    }
-    return { block: false, args };
-  }
-
-  if (toolName === "get_table_ddl") {
-    // v4: 去掉 short 维度,只按表名去重
-    // 关联/外键信息应通过 get_table_schema (virtual_associations) 获取,
-    // 不应通过重复 get_table_ddl 来补充
-    const requested = normalizeTableNames(args.table_names);
-    if (requested.length === 0) return { block: false, args };
-    const dupes = requested.filter((n) => reg.tableDdl.has(n));
-    const fresh = requested.filter((n) => !reg.tableDdl.has(n));
-
-    if (dupes.length === requested.length) {
-      return {
-        block: true,
-        message:
-          `⚠️ 【重复调用已被程序拦截】工具 get_table_ddl 中所有表在本会话中都已被获取过: ${dupes.join(", ")}。\n\n` +
-          `📋 已有信息清单:\n${buildChecklist(reg)}\n\n` +
-          `请直接复用已有信息，禁止重复调用 get_table_ddl。\n` +
-          `如需关联/外键信息，请使用 get_table_schema（其返回的 virtual_associations 含 join_condition）。`,
-      };
-    }
-    if (dupes.length > 0) {
-      return {
-        block: false,
-        args: { ...args, table_names: fresh },
-        notice:
-          `ℹ️ 自动过滤重复表（已在清单中）: ${dupes.join(", ")}。仅对 [${fresh.join(", ")}] 执行 get_table_ddl。\n` +
           `📋 已有信息清单:\n${buildChecklist(reg)}`,
       };
     }
@@ -671,13 +714,12 @@ function checkAndFilterDuplicateCall(toolName, args, sessionId) {
  * @param {string|null} [overrideId=null] - 覆盖 id（request_user_choice 用，从 tool.func 返回的 {id, marker, payload} 中提取）
  *   用于保证 registry 内 id 与 marker 内 id 一致（reviewer #2 修复）
  */
-function recordToolCall(toolName, args, sessionId, overrideId = null) {
+// ★ Phase 2 Step 2: 纯加法 export
+export function recordToolCall(toolName, args, sessionId, overrideId = null) {
   const reg = getOrCreateRegistry(sessionId);
   if (!reg) return;
   if (toolName === "get_tables") {
     reg.getTablesCalled = true;
-  } else if (toolName === "get_domain_index") {
-    reg.getDomainIndexCalled = true;
   } else if (toolName === "get_sliced_index") {
     normalizeTableNames(args.domain_ids).forEach((d) =>
       reg.slicedDomains.add(d),
@@ -686,9 +728,6 @@ function recordToolCall(toolName, args, sessionId, overrideId = null) {
     normalizeTableNames(args.table_names).forEach((n) =>
       reg.tableSchema.add(n),
     );
-  } else if (toolName === "get_table_ddl") {
-    // v4: 改为只存表名,不再区分 short
-    normalizeTableNames(args.table_names).forEach((n) => reg.tableDdl.add(n));
   } else if (toolName === "request_tag_confirmation") {
     const termsRaw = args.term;
     const terms = Array.isArray(termsRaw)
@@ -805,7 +844,8 @@ export function getSessionChecklist(sessionId) {
  * @param {Map} foldedCache - 折叠缓存（单请求级，由调用方创建并传入）
  * @returns {Array} 折叠后的新数组（不修改原数组）
  */
-async function compactConsumedToolResults(messages, foldedCache) {
+// ★ Phase 2 Step 3: 纯加法 export
+export async function compactConsumedToolResults(messages, foldedCache) {
   if (!Array.isArray(messages) || messages.length === 0 || !foldedCache)
     return messages;
 
@@ -858,6 +898,15 @@ async function compactConsumedToolResults(messages, foldedCache) {
       continue;
     }
 
+    // ★ 2026-08-13 修复（A19）：折叠前跳过"被拦截/失败"的 tool 消息。
+    //   原逻辑只看参数 domain_ids 就重新生成真实表列表，会把"已剪枝/重复拦截"等
+    //   错误消息"复活"成真实结果，让 LLM 误以为工具调用成功。
+    const rawContent = typeof m.content === "string" ? m.content.trim() : "";
+    if (/^(Error:|🚫)/.test(rawContent)) {
+      result.push(m);
+      continue;
+    }
+
     // cache-aside: 命中直接用
     if (foldedCache.has(m.tool_call_id)) {
       result.push({ ...m, content: foldedCache.get(m.tool_call_id) });
@@ -903,8 +952,9 @@ async function compactConsumedToolResults(messages, foldedCache) {
   return result;
 }
 
-function queueLog(content, immediate = false, username = null) {
-  // username 由调用方（generateSQLWithLangChainStreamGen_BAK）注入，
+// ★ Phase 2 Step 2: 纯加法 export
+export function queueLog(content, immediate = false, username = null) {
+  // username 由调用方（runSqlAgent）注入，
   // 写到 LOG_BUFFER 时一起打包，flushLogs 按用户分组聚合后再写盘
   LOG_BUFFER.push({ username, content });
   if (immediate) {
@@ -918,7 +968,11 @@ function queueLog(content, immediate = false, username = null) {
   }
 }
 
-function getProviderConfig(provider, model) {
+// ★ Phase 2 修复（Step 3 偏差遗漏）：纯加法 export
+//   原因：getLlmConfig() 返回的 config 不含 baseURL 字段（DB 只存 provider/apiKey/model）
+//   原 runSqlAgent L1115 调 getProviderConfig(provider, model) 从静态表派生 baseURL，
+//   responsesApi.js 同样需要这个函数。1 行 export 关键词，无实现改动。
+export function getProviderConfig(provider, model) {
   const configs = {
     openai: { baseURL: "https://api.openai.com/v1", model: "gpt-4o" },
     deepseek: {
@@ -936,7 +990,8 @@ function getProviderConfig(provider, model) {
   };
 }
 
-function saveMessagesToDb(sessionId, messages) {
+// ★ Phase 2 Step 2: 纯加法 export
+export function saveMessagesToDb(sessionId, messages, apiMode = "chat_completions") {
   try {
     const db = getDb();
     const messagesJson = JSON.stringify(messages);
@@ -948,13 +1003,15 @@ function saveMessagesToDb(sessionId, messages) {
       .prepare("SELECT id FROM llm_messages WHERE session_id = ?")
       .get(sessionId);
     if (existing) {
+      // ★ v5.14：只在新 apiMode 与现有不同时更新（保留历史会话的首次模式）
+      //   避免每次 save 都覆盖、让前端看到稳定值
       db.prepare(
-        "UPDATE llm_messages SET messages = ?, message_tokens = ?, updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
-      ).run(messagesJson, messageTokens, sessionId);
+        "UPDATE llm_messages SET messages = ?, message_tokens = ?, api_mode = CASE WHEN api_mode IS NULL OR api_mode = '' THEN ? ELSE api_mode END, updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
+      ).run(messagesJson, messageTokens, apiMode, sessionId);
     } else {
       db.prepare(
-        "INSERT INTO llm_messages (session_id, messages, message_tokens) VALUES (?, ?, ?)",
-      ).run(sessionId, messagesJson, messageTokens);
+        "INSERT INTO llm_messages (session_id, messages, message_tokens, api_mode) VALUES (?, ?, ?, ?)",
+      ).run(sessionId, messagesJson, messageTokens, apiMode);
     }
     logger.debug("Saved messages to database", {
       sessionId,
@@ -971,7 +1028,7 @@ export function loadMessagesFromDb(sessionId) {
     const db = getDb();
     const record = db
       .prepare(
-        "SELECT messages, message_tokens FROM llm_messages WHERE session_id = ?",
+        "SELECT messages, message_tokens, api_mode FROM llm_messages WHERE session_id = ?",
       )
       .get(sessionId);
     if (record && record.messages) {
@@ -986,6 +1043,7 @@ export function loadMessagesFromDb(sessionId) {
       return {
         messages: sanitizeMessagesForLLM(rawMessages),
         messageTokens: record.message_tokens || 0,
+        apiMode: record.api_mode || "chat_completions",  // ★ v5.14：返回 api_mode 供前端展示
       };
     }
     return null;
@@ -1103,26 +1161,32 @@ function sanitizeMessagesForLLM(messages) {
 //   - 真实 LLM context 历史来自 llm_messages.messages（loadMessagesFromDb）
 //   - 恢复方法：在本函数体内把 history 注入到 system message 或 user message 之前
 //     （注意：会影响 DeepSeek prefix cache，因为 system 变了）
-export async function* generateSQLWithLangChainStreamGen_BAK(
+//
+// ★ F16 重命名（原名：generateSQLWithLangChainStreamGen_BAK，2026-08）
+//   改名原因：
+//     1. 原名含 "LangChain" 误导 —— 本函数不依赖 LangChain 框架
+//        （无 AgentExecutor / ChatModel / langchain 运行时），仅 toolFuncs.js
+//        的工具声明用 @langchain/core/tools 的 DynamicTool schema。
+//     2. 原名含 "_BAK" 误导 —— "BAK" 后缀是 2026-06 阶段性优化清理的历史包袱，
+//        原非 BAK 版本（generateSQLWithLangChainStreamGen / V2）当时被删除，
+//        留下的 _BAK 才是唯一活跃入口，但"备份"语义早已名存实亡。
+//   名称选择："runSqlAgent" —— 动词在前（匹配 loadSkillMd / validateSqlFields
+//   项目惯例），"Agent" 反映多轮 tool-calling 循环本质，"Sql" 标注领域。
+//   历史可追溯：原名仍出现在 git log / docs/执行流程.md / docs/superpowers/
+//   reviews/ 与 plans/ 中（本注释作为锚点，git blame 可定位到此处）。
+export async function* runSqlAgent(
   question,
   history = "",
   signal,
   sessionId = null,
   username = null,
 ) {
-  logger.info("generateSQLWithLangChainStreamGen_BAK called (backup)", {
+  logger.info("runSqlAgent called", {
     question,
     historyLength: history?.length,
     sessionId,
     username,
   });
-
-  // ★ 每次新 user 消息（= 一次 invoke）重置"问题级独立"标志。
-  //   validateSqlFields* 属于此范畴：避免上一问题的"✓passed"残留在本问题
-  //   的 checklist 里误导 LLM。会话级持久状态（getDomainIndexCalled /
-  //   slicedDomains / tableSchema / tableDdl / termConfirmed / userChoiceAsked）
-  //   保持不变，因为 history 已包含其结果。
-  resetPerQuestionRegistryFlags(getOrCreateRegistry(sessionId));
 
   let config;
   try {
@@ -1139,7 +1203,10 @@ export async function* generateSQLWithLangChainStreamGen_BAK(
 
   const skillMd = await loadSkillMd();
 
-  const toolsDefinition = tools.map((t) => ({
+  // F18: 发送给 LLM 的 tools 用 LLM_TOOLS（已过滤 get_domain_index）。
+  //   toolsMap 用完整 tools 构建（兜底执行：旧会话 history 中若有 get_domain_index
+  //   tool_call，toolsMap 仍能命中执行函数，避免"未知工具"错误）。
+  const toolsDefinition = LLM_TOOLS.map((t) => ({
     type: "function",
     function: {
       name: t.name,
@@ -1155,8 +1222,9 @@ export async function* generateSQLWithLangChainStreamGen_BAK(
   const toolsMap = new Map(tools.map((t) => [t.name, t]));
   //const tableIndex = loadTableIndex();
 
-  const systemMessage = `你是XTSQLQueryAgent。严格遵守以下规则，随后根据用户问题生成SQL。
-${skillMd}`;
+  // ★ F18：system 拼接走 toolFuncs.buildSystemMessage 共享函数（CC/RA 单一来源）
+  //   内部会重新读 domain_router_index.json，拼接 "## 可用业务域" 小节。
+  const systemMessage = await buildSystemMessage(skillMd);
 
   let messages;
 
@@ -1191,6 +1259,14 @@ ${skillMd}`;
     ];
   }
 
+  // ★ 每次新 user 消息（= 一次 invoke）重置"问题级"状态：
+  //   - validateSqlFields* 始终重置，避免上一问题的"✓passed"残留在 checklist 误导 LLM；
+  //   - 域路由状态（get_sliced_index / schema / tag / choice 计数）
+  //     仅在新问题时清空（允许重新路由新业务域）；request_user_choice 中断后的
+  //     续问（用户作答）保留状态，同一问题继续无需重新路由。
+  //     （F18: get_domain_index 已不在 registry 跟踪；域清单在 system 中永久可见）
+  resetRegistryForNewQuestion(getOrCreateRegistry(sessionId), messages);
+
   const agentConfig = getAgentConfig();
   let maxToolCalls = parseInt(agentConfig.agent_max_tool_calls || "30", 10);
   // ★ 记录初始 maxToolCalls 用于 Round 编号：Round = 已用掉多少轮（从 0 开始递增）
@@ -1216,34 +1292,16 @@ ${skillMd}`;
     //   从 0 开始递增；maxToolCallsInitial 是入口处记录的初始值
     //   每轮 LLM 入口处计算一次，整轮内复用
     const currentRound = maxToolCallsInitial - maxToolCalls;
-    // 每轮 LLM 请求前，临时向 messages 追加"已调用工具清单"消息（仅用于本轮请求，不持久化）。
-    // 目的：让 LLM 在生成 tool_call 决策前明确看到本会话已调用的工具 + 参数，
-    //       避免因长上下文注意力衰减造成的重复调用（详见 project_memory.md）。
-    // 不持久化：清单消息只放在 requestMessages，原始 messages 数组不被修改，
-    //           避免污染 history / DB / 调试接口的 lastMessages。
-    const checklistMsg = sessionId
-      ? buildToolCallChecklistMessage(getOrCreateRegistry(sessionId))
-      : null;
-
-    // 明确记录『当时调用情况』到 log（仅本轮 LLM 请求使用，不存 DB，不累积到 messages）：
-    //   - 没有 checklistMsg 时记录『(无)』，便于知道本轮没有清单消息
-    //   - 有 checklistMsg 时用 BEGIN/END 标记包裹，便于 grep 抓取
-    if (checklistMsg) {
-      queueLog(
-        `📋 [Round ${maxToolCallsInitial - maxToolCalls}] 本轮 LLM 请求末尾追加的『已调用工具清单』消息（仅本轮使用，不存 DB）:\n` +
-          `--- BEGIN checklist (requestMessages 末尾) ---\n` +
-          `${checklistMsg.content}\n` +
-          `--- END checklist ---`,
-        true,
-        username,
-      );
-    } else {
-      queueLog(
-        `📋 [Round ${maxToolCallsInitial - maxToolCalls}] 本轮 LLM 请求无『已调用工具清单』（首轮或无 sessionId）`,
-        true,
-        username,
-      );
-    }
+    // F23 (2026-08): get_call_history 工具由系统在每轮 LLM 响应后强制注入到
+    //   assistant.tool_calls 最前面（见下方"强制注入"段）。它作为 tool 消息
+    //   持久化在 messages 数组中，每轮新增的 tool message 字节稳定，prefix
+    //   cache 可跨轮命中（之前用 checklistMsg 临时追加在末尾，每轮字节变导致
+    //   末尾 prefix cache 中断，命中率从 90% 跌到 22%）。这里不再构造临时
+    //   checklistMsg，buildToolCallChecklistMessage 函数保留为兼容旧历史/日志
+    //   解析的旁路导出。
+    // 旧 checklist 路径（2026-08-20 之前）：临时向 messages 末尾追加 role:system
+    //   消息，每次内容都变 → 末尾 prefix cache 必中断 → 命中率 22.6%。
+    // 新 get_call_history 路径：作为 tool 消息按顺序累积，字节稳定 → 命中率高。
 
     // 剥离"无工具调用"的 assistant 消息中的 reasoning_content
     //
@@ -1264,9 +1322,7 @@ ${skillMd}`;
       messages,
       foldedCache,
     );
-    const requestMessages = (
-      checklistMsg ? [...compactedMessages, checklistMsg] : compactedMessages
-    ).map((m) => {
+    const requestMessages = compactedMessages.map((m) => {
       if (m.role === "assistant" && m.reasoning_content && !m.tool_calls) {
         const { reasoning_content, ...rest } = m;
         return rest;
@@ -1275,8 +1331,9 @@ ${skillMd}`;
     });
 
     // 工具剪枝：一次性工具调用过后，从 LLM 请求的 tools 数组中移除以节省 token
-    // - get_domain_index：调用后业务域列表已在 history 中，后续不需要
     // - get_sliced_index：调用后已加载的域在 history 中，后续不需要
+    //   （F18：get_domain_index 已从剪枝列表移除——域清单永久在 system 中可见，
+    //     不需要"调用后剪枝"，且工具本身已标"已废弃"）
     // 注意：toolsMap（用于执行工具的查找）保持不变，仅影响 LLM 看到哪些工具可选
     //
     // ★ validate_sql_fields：不再剪枝（含 Round 0）
@@ -1286,25 +1343,14 @@ ${skillMd}`;
     //   修复：始终携带 validate_sql_fields，让 LLM 在任何轮次可自由调用。token 代价
     //   ~600 字符（工具定义），相对正确性收益可接受。
     // 关联：项目记忆 project_memory.md 'Engineering Conventions' 需要更新。
-    const pruneReg = sessionId ? getOrCreateRegistry(sessionId) : null;
-    const prunedTools = pruneReg
-      ? toolsDefinition.filter((t) => {
-          if (
-            t.function.name === "get_domain_index" &&
-            pruneReg.getDomainIndexCalled
-          )
-            return false;
-          if (
-            t.function.name === "get_sliced_index" &&
-            pruneReg.slicedDomains.size > 0
-          )
-            return false;
-          return true;
-        })
-      : toolsDefinition;
-    const prunedNames = toolsDefinition
-      .filter((t) => !prunedTools.includes(t))
-      .map((t) => t.function.name);
+    // ★ 工具剪枝已禁用（2026-08-18）：DeepSeek prefix cache 要求 requestParams
+    //   字节级稳定才能跨轮命中。"已调过的工具下次不传"的设计虽然省 ~200 tokens 定义，
+    //   但让 tools 数组从 5 → 4 → 3 递减，每轮 cache hash 都变。
+    //   禁掉剪枝后，5 个工具永远不变，cache 完美命中，多花的 ~200 tokens 在 cache 命中后
+    //   实际是 0 cost（已缓存部分不重复计费）。
+    //   关联：project_memory.md "F22: 禁掉 tools 数组剪枝以稳定 prefix cache"
+    const prunedTools = toolsDefinition;
+    const prunedNames = [];
     if (prunedNames.length > 0) {
       queueLog(
         `✂️ [Round ${maxToolCallsInitial - maxToolCalls}] 本轮 LLM 请求已剪枝工具（不再传入）: ${prunedNames.join(", ")}`,
@@ -1330,7 +1376,7 @@ ${skillMd}`;
     }
 
     queueLog(
-      "generateSQLWithLangChainStreamGen_BAK Round " +
+      "runSqlAgent Round " +
         (maxToolCallsInitial - maxToolCalls) +
         " Request:\n" +
         JSON.stringify(requestParams, null, 2),
@@ -1439,6 +1485,10 @@ ${skillMd}`;
                     prompt_tokens: usage.prompt_tokens || 0,
                     completion_tokens: usage.completion_tokens || 0,
                     total_tokens: usage.total_tokens || 0,
+                    // ★ v5.15：cached_tokens 透传（CC path 来自 usage.prompt_cache_hit_tokens）
+                    //   Responses path 来自 usage.input_tokens_details.cached_tokens（已在 responsesApi.js:228 提取）
+                    //   前端用 cached_tokens / prompt_tokens 计算 prefix cache 命中率
+                    cached_tokens: cacheHit,
                   },
                   round: currentRound,
                 };
@@ -1541,31 +1591,58 @@ ${skillMd}`;
       // 流式响应结束，输出工具调用日志
       for (const tc of validToolCalls) {
         const toolName = tc.function.name;
+        // 后端日志保留完整信息（admin 看后端日志仍可见"🔧 调用工具 + 参数"）
         queueLog(
           `🔧 调用工具: ${toolName} 参数:${JSON.stringify(tc.function.arguments)}`,
           true,
         );
+        // ★ 2026-08-17：yield log 恢复两行格式（"🔧 调用工具: xxx\n参数: {...}"）
+        //   工具名走独立 toolName 字段给前端（title 拼接用）
+        //   前端 ChatMessage 渲染 body 时统一过滤第一行（去掉"🔧 调用工具: xxx"行）
+        //   原因：① 即使后端没重启（跑旧代码）也能正常工作 ② 老数据历史回看格式一致 ③ 空参数时仍保留"🔧 调用工具: xxx"行不丢节点
         let logMsg = `🔧 调用工具: ${toolName}`;
         try {
           const parsedArgs = JSON.parse(tc.function.arguments || "{}");
-          if (Object.keys(parsedArgs).length > 0) {
-            logMsg += `\n参数: ${JSON.stringify(parsedArgs)}`;
-          }
+          logMsg += `\n参数: ${JSON.stringify(parsedArgs)}`;
         } catch (e) {
           logger.debug("JSON parse/split failed", { error: e.message });
         }
-        yield { type: "tool", log: logMsg, round: currentRound };
+        yield { type: "tool", log: logMsg, toolName, round: currentRound };
       }
 
       // 保存 assistant 消息，需要包含 tool_calls
       // 使用清理后的 finalResponseText（剥离了 thinking）和 finalReasoningContent（追加了被剥离的 thinking）
+      // F23 v3 (2026-08): 在 push 前先把 get_call_history 合成到 tool_calls 头部。
+      //   - 字节稳定的关键：synthetic tool_call_id 必须是常量字符串（不能含时间戳/随机数），
+      //     跨轮同一位置出现相同字节，prefix cache 才能命中。
+      //   - LLM_TOOLS 已过滤掉 get_call_history，LLM 看不到此工具（不会主动调），保证 synthetic 是唯一来源。
+      //   - F23 v3 条件式注入：仅当 LLM 本轮实际调用了非 get_call_history 工具时才注入。
+      //     LLM 不调任何工具（直接回答）时不注入 — 避免 history 中"每轮都调 get_call_history"
+      //     的示例让 LLM 模仿调用。LLM 看到"调工具时才出现"会知道这是程序行为不是必调。
+      //   - 防重复：若 LLM 因旧 history 误调 get_call_history，跳过注入避免 id 冲突。
+      const hasCallHistory = validToolCalls.some(
+        (tc) => tc.function?.name === "get_call_history",
+      );
+      const hasRealToolCall = validToolCalls.some(
+        (tc) => tc.function?.name !== "get_call_history",
+      );
+      if (hasRealToolCall && !hasCallHistory) {
+        validToolCalls.unshift({
+          id: "synthetic_get_call_history",
+          type: "function",
+          function: {
+            name: "get_call_history",
+            arguments: "{}",
+          },
+        });
+      }
       const assistantMsg = {
         role: "assistant",
         content: finalResponseText || "",
         reasoning_content: finalReasoningContent || "",
       };
       if (validToolCalls.length > 0) {
-        // 为每个 tool_call 确保有 id
+        // 为每个 tool_call 确保有 id（get_call_history 已自带常量 id，跳过）
         validToolCalls.forEach((tc, idx) => {
           if (!tc.id) {
             tc.id = `call_${Date.now()}_${idx}`;
@@ -1585,6 +1662,7 @@ ${skillMd}`;
       lastMessages = JSON.parse(JSON.stringify(messages));
 
       // 保存到数据库（如果有 sessionId）
+      // ★ v5.14：CC path 不传 apiMode → 用默认值 'chat_completions'
       if (sessionId) {
         saveMessagesToDb(sessionId, messages);
       }
@@ -1593,11 +1671,16 @@ ${skillMd}`;
         // 阶段 1：同步预处理（参数解析 + 重复调用检查）
         // 必须在并行执行前一次性完成，避免同一会话内两个相同工具的检查互相穿透
         // ★ 本轮可用的工具名集合（来自本轮实际发给 LLM 的 prunedTools）
-        //   一次性工具（get_domain_index / get_sliced_index）调用后被剪枝，从这里消失。
+        //   一次性工具（get_sliced_index）调用后被剪枝，从这里消失。
         //   LLM 若仍"幻觉"调用被剪枝的工具 → 立即拦截，不进入执行阶段。
-        const availableToolNames = new Set(
-          prunedTools.map((t) => t.function.name),
-        );
+        //   （F18: get_domain_index 已移至 system，不在剪枝列表）
+        // F23: 显式补入 get_call_history —— 该工具由系统在每轮强制注入，LLM_TOOLS
+        //   故意过滤掉（避免 LLM 主动调），因此也不在 prunedTools 中。如果不补入，
+        //   后续的"工具已被剪枝"拦截会把它误判为非法调用。
+        const availableToolNames = new Set([
+          ...prunedTools.map((t) => t.function.name),
+          "get_call_history",
+        ]);
         const prepared = validToolCalls.map((toolCall) => {
           const toolName = toolCall.function.name;
           const toolArgs = toolCall.function.arguments || "{}";
@@ -1698,6 +1781,34 @@ ${skillMd}`;
         //   同步工具也会被 await 正确处理（Promise.resolve 包装）
         const execResults = await Promise.all(
           prepared.map(async (p) => {
+            // F23: get_call_history 拦截器 —— 跳过 tool.func 调用，直接构造稳定 JSON。
+            //   tool.func 的占位返回 ("{called_count:0,...}") 是固定字符串，
+            //   而本拦截器构造的内容依赖 reg.callHistory（已调用工具列表），更有意义。
+            //   字节稳定性：JSON.stringify 的字段顺序固定（callHistory push 时序固定），
+            //   跨轮同位置同内容，prefix cache 命中。
+            // F23 v2: 加入 _instruction 字段明确告诉 LLM：
+            //   ① 这是系统自动注入的工具（LLM 不需要主动调）
+            //   ② 如已掌握所有信息请直接输出最终答案
+            //   ③ 防止 LLM 看到历史中的 synthetic tool_call 后模仿进入死循环
+            if (p.toolName === "get_call_history") {
+              const reg = getOrCreateRegistry(sessionId);
+              const callHistory = reg?.callHistory || [];
+              const stableContent = JSON.stringify({
+                called_count: callHistory.length,
+                called_tools: callHistory,
+                _instruction:
+                  "本工具由系统自动注入，每轮 LLM 响应后程序强制调用一次，LLM 不需要主动调用。" +
+                  "如已掌握所有信息请直接输出最终答案；如需继续推理可调用其它工具。" +
+                  "重复调用本工具不会获得新信息。",
+              });
+              return {
+                ...p,
+                rawResult: stableContent,
+                toolMessageContent: stableContent,
+                userChoiceId: null,
+                execError: null,
+              };
+            }
             if (!p.tool || (p.dupCheck && p.dupCheck.block)) {
               return {
                 ...p,
@@ -1824,6 +1935,8 @@ ${skillMd}`;
             yield {
               type: "tool_return",
               log: `🚫 拦截重复调用: ${toolName}\n参数: ${toolArgs}\n${p.dupCheck.message}`,
+              // F23 v3: tool_return 透传 toolName — 前端用其判断是否隐藏 get_call_history
+              toolName: p.toolName,
               round: currentRound,
             };
             messages.push({
@@ -1844,6 +1957,8 @@ ${skillMd}`;
             yield {
               type: "tool_return",
               log: `🚫 ${errLabel}: ${p.toolName}\n${p.execError.message}`,
+              // F23 v3: tool_return 透传 toolName — 前端用其判断是否隐藏 get_call_history
+              toolName: p.toolName,
               round: currentRound,
             };
             messages.push({
@@ -1865,12 +1980,16 @@ ${skillMd}`;
             yield {
               type: "tool_return",
               log: `✅ ${toolName} 参数已自动修复（裸 ASCII 双引号 → 中文右引号）。后续请直接使用中文引号 \`""\` 或 \`「」\`，或反斜杠转义 \`\\"\`；禁止裸 ASCII 双引号。`,
+              // F23 v3: tool_return 透传 toolName
+              toolName: p.toolName,
               round: currentRound,
             };
           }
           yield {
             type: "tool_return",
             log: `📋 工具 ${toolName} 返回:\n${typeof resultContent === "string" ? resultContent : JSON.stringify(resultContent)}`,
+            // F23 v3: tool_return 透传 toolName — 前端用其判断是否隐藏 get_call_history
+            toolName: p.toolName,
             round: currentRound,
           };
           messages.push({
@@ -1958,6 +2077,110 @@ ${skillMd}`;
             }
             // error case: 不动 pendingUserChoiceList, 让 LLM 修正重试
           }
+        }
+
+        // F23: 登记本轮成功调用的工具到 reg.callHistory（用于 get_call_history 拦截器读取）。
+        //   - 仅登记"成功执行"的工具（execError/dupCheck.block 跳过）—— 失败的调用不应进
+        //     callHistory，否则 LLM 下一轮会看到"已调过"假阳性，导致误判"功能不可用"。
+        //   - 同 tool_name + args 不重复登记（防御性 dedup，虽然 LLM_TOOLS 已过滤重复调用工具，
+        //     但同会话内 LLM 仍可能因 history 残留重调同名工具）。
+        //   - 跳过 get_call_history 自身 —— 它的"已调"状态对 LLM 决策无意义。
+        //   - 字节稳定：先按 toolName 排序再 dedup，再按时间顺序 push；JSON.stringify 字段
+        //     顺序固定 → 跨轮同位置同字节 → prefix cache 命中。
+        (() => {
+          const reg = getOrCreateRegistry(sessionId);
+          if (!reg) return;
+          for (const p of execResults) {
+            if (!p.toolName || p.toolName === "get_call_history") continue;
+            if (p.execError) continue;
+            if (p.dupCheck && p.dupCheck.block) continue;
+            const sig = `${p.toolName}::${p.toolCall?.function?.arguments || "{}"}`;
+            if (reg.callHistory.some((h) => h.sig === sig)) continue;
+            let parsedArgs = {};
+            try {
+              parsedArgs = JSON.parse(p.toolCall?.function?.arguments || "{}");
+            } catch {
+              parsedArgs = p.toolCall?.function?.arguments || "";
+            }
+            reg.callHistory.push({
+              sig,
+              tool: p.toolName,
+              args: parsedArgs,
+              called_at_round: currentRound,
+            });
+          }
+        })();
+
+        // F23 v2: get_call_history 循环检测 —— LLM 看到历史中 synthetic tool_call 后
+        //   可能模仿调用，若连续两轮 LLM 仅调用 get_call_history（无任何其他工具），
+        //   强制 break 跳出循环。
+        //   关键：必须判断 LLM "实际调用"（validToolCalls）而非 execution 后的
+        //   execResults —— execResults 永远会包含 synthetic get_call_history，
+        //   不能用作判断依据。
+        //   设计：连续两轮 LLM "只调" get_call_history 才 break（计数 1→2 时 break）。
+        //   - 第一轮仅调 get_call_history：仅递增计数（1），仍允许下一轮（给 LLM 看
+        //     _instruction 提示的机会）。
+        //   - 第二轮仍仅调：计数到 2，push 一条 system 提示后设 gchLoopBreak=true，
+        //     外层检查后 break。
+        //   - 中间 LLM 调用了其它工具：计数清零（正常流程）。
+        let gchLoopBreak = false;
+        (() => {
+          // LLM 实际调用的工具名（不含 synthetic，因为 synthetic 是在 hasCallHistory
+          // 检查后由我们 unshift 的，不在 LLM 原始决策里）
+          const llmActualCalls = validToolCalls.filter(
+            (tc) => tc.function?.name !== "get_call_history",
+          );
+          const llmOnlyCalledGch =
+            validToolCalls.length > 0 && llmActualCalls.length === 0;
+
+          const reg = getOrCreateRegistry(sessionId);
+          if (!reg) return;
+
+          if (llmOnlyCalledGch) {
+            reg.gchLoopCount = (reg.gchLoopCount || 0) + 1;
+            logger.info("get_call_history loop detection", {
+              sessionId,
+              currentRound,
+              gchLoopCount: reg.gchLoopCount,
+            });
+            if (reg.gchLoopCount >= 2) {
+              logger.warn(
+                "LLM stuck in get_call_history loop, forcing end",
+                { sessionId, currentRound, gchLoopCount: reg.gchLoopCount },
+              );
+              // 推一条强提示到 messages（虽然即将 break，但保留语义完整性，
+              // 万一上层有兜底逻辑能看到这条 system 消息）
+              messages.push({
+                role: "system",
+                content:
+                  "⚠️ [系统提示] 检测到你连续多轮只调用 get_call_history。" +
+                  "该工具由系统自动注入，你不需要主动调用它。" +
+                  "请直接输出最终答案。",
+              });
+              pendingUserChoiceList.length = 0; // 清空 user_choice 避免干扰 break
+              gchLoopBreak = true;
+            }
+          } else {
+            // LLM 调了其它工具（或没调任何工具），重置计数
+            if (reg.gchLoopCount !== 0) {
+              logger.info("get_call_history loop reset (LLM called other tool)", {
+                sessionId,
+                currentRound,
+              });
+            }
+            reg.gchLoopCount = 0;
+          }
+        })();
+
+        // F23 v2: 命中循环且需 break 时，先 yield 一条终止事件给前端再退出
+        if (gchLoopBreak) {
+          yield {
+            type: "error",
+            content:
+              "检测到 LLM 重复调用 get_call_history，已强制终止。",
+            round: currentRound,
+          };
+          break;
         }
 
         // ★ 跳出 while 循环：检测到至少一个 request_user_choice 后 TURN 1 终止

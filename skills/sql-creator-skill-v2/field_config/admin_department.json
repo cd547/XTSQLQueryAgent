@@ -2,9 +2,7 @@
   "table_name": "admin_department",
   
   "field_aliases": {
-    "name": ["一级部门名称"],
-    "platform": ["平台"],
-    "org": ["org"]
+    "name": ["一级部门名称"]
   },
   
   "field_enums": {

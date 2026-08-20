@@ -1,0 +1,20 @@
+{
+  "table_name": "edu_room",
+  "field_aliases": {
+    "id": ["班级ID", "教室ID"],
+    "name": ["班级名称", "教室名称"]
+  },
+  "field_enums": {},
+  "virtual_associations": [
+    {
+      "name": "关联排课",
+      "target_table": "edu_room_study",
+      "join_condition": "edu_room_study.edu_room_id = edu_room.id",
+      "type": "one_to_many",
+      "description": "一个班级可有多个排课记录"
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}

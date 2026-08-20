@@ -1,0 +1,29 @@
+{
+  "id": "course_edu",
+  "name": "课程（学通）",
+  "tables": [
+    "edu_course",
+    "edu_course_exam",
+    "edu_course_exam_subject",
+    "edu_course_exam_subject_name",
+    "edu_course_exam_module",
+    "edu_course_exam_subject_name_price",
+    "edu_course_exam_subject_name_price_list",
+    "tk_knowledge_new",
+    "tk_knowledge_course",
+    "tk_paper_new",
+    "edu_study",
+    "edu_study_student",
+    "edu_activities",
+    "edu_activities_student",
+    "edu_teacher_work",
+    "edu_class_type",
+    "edu_room",
+    "edu_room_study",
+    "edu_video",
+    "edu_video_address",
+    "edu_study_feedback",
+    "edu_study_feedback_type",
+    "edu_adjust_study"
+  ]
+}

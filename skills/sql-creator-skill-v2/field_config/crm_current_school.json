@@ -1,0 +1,18 @@
+{
+  "table_name": "crm_current_school",
+  "field_aliases": {},
+  "field_enums": {},
+  "virtual_associations": [
+    {
+      "name": "所属国家字典编码 关联字典表",
+      "target_table": "sys_dict_item",
+      "join_condition": "sys_dict_item.code = crm_current_school.country_code and sys_dict_item.dict_type = 'SCHOOL_LIBRARY_CURRENT_SCHOOL_COUNTRY'",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}

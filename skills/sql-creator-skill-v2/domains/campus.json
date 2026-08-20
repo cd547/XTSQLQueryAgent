@@ -5,6 +5,9 @@
     "edu_campus",
     "edu_campus_school",
     "edu_campus_school_class",
-    "admin_category"
+    "admin_category",
+    "crm_tag_definition",
+    "crm_target_school",
+    "crm_current_school"
   ]
 }

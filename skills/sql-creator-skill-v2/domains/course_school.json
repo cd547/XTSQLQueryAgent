@@ -1,0 +1,31 @@
+{
+  "id": "course_school",
+  "name": "课程（科桥/克勒）",
+  "tables": [
+    "edu_course",
+    "edu_course_exam",
+    "edu_course_exam_subject",
+    "edu_course_exam_subject_name",
+    "edu_course_exam_module",
+    "edu_course_exam_subject_name_price",
+    "edu_course_exam_subject_name_price_list",
+    "tk_knowledge_new",
+    "tk_knowledge_course",
+    "tk_paper_new",
+    "keqiao_class",
+    "keqiao_class_student",
+    "keqiao_class_teacher",
+    "keqiao_class_type",
+    "keqiao_study",
+    "keqiao_study_student",
+    "keqiao_preschool_examination",
+    "keqiao_surface",
+    "keqiao_time_table",
+    "keqiao_time_table_section",
+    "keqiao_surface_subject",
+    "keqiao_surface_table",
+    "keqiao_surface_subject_teacher",
+    "keqiao_class_grade",
+    "keqiao_grade"
+  ]
+}

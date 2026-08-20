@@ -1,0 +1,30 @@
+{
+  "table_name": "edu_adjust_study",
+  "field_aliases": {
+    "id": ["调课申请ID"],
+    "old_study_id": ["原排课ID"],
+    "adjust_status": ["调整状态"],
+    "valid": ["审核状态"]
+  },
+  "field_enums": {
+    "adjust_status": {"1": "待调整", "2": "系统调整成功", "3": "系统调整失败", "4": "手动调整成功"},
+    "valid": {"1": "审核中", "2": "通过", "3": "驳回", "4": "撤销"},
+    "del": {"0": "正常", "1": "删除"}
+  },
+  "virtual_associations": [
+    {
+      "name": "关联原排课",
+      "target_table": "edu_study",
+      "join_condition": "edu_study.id = edu_adjust_study.old_study_id",
+      "type": "many_to_one"
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "多对一关系",
+      "description": "1 条排课记录可对应多条调课申请（1:N）"
+    }
+  ]
+}

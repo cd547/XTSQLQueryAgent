@@ -1,0 +1,33 @@
+{
+  "table_name": "edu_study_feedback",
+  "field_aliases": {
+    "id": ["反馈ID"],
+    "edu_study_id": ["排课ID"],
+    "edu_study_feedback_type_id": ["反馈类型ID"],
+    "admin_user_id": ["反馈人ID"]
+  },
+  "field_enums": {},
+  "virtual_associations": [
+    {
+      "name": "关联排课",
+      "target_table": "edu_study",
+      "join_condition": "edu_study.id = edu_study_feedback.edu_study_id",
+      "type": "many_to_one"
+    },
+    {
+      "name": "关联反馈类型",
+      "target_table": "edu_study_feedback_type",
+      "join_condition": "edu_study_feedback_type.id = edu_study_feedback.edu_study_feedback_type_id",
+      "type": "many_to_one"
+    },
+    {
+      "name": "关联反馈人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_study_feedback.admin_user_id",
+      "type": "many_to_one"
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}

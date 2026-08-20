@@ -18,6 +18,10 @@
       "4": {
         "label": "顾问",
         "description": "规划顾问 ADVISER"
+      },
+      "5": {
+        "label": "家长",
+        "description": ""
       }
     }
   },

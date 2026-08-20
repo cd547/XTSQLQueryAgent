@@ -19,7 +19,7 @@ import ExplainAnalyzeModal from './components/modals/ExplainAnalyzeModal.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { useTheme } from './context/ThemeContext.jsx';
 import * as api from './api/index.js';
-import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined, MoreOutlined, DeleteOutlined, LoadingOutlined, LogoutOutlined, UserOutlined, BulbOutlined, BulbFilled } from '@ant-design/icons';
+import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined, MoreOutlined, DeleteOutlined, LoadingOutlined, LogoutOutlined, UserOutlined, BulbOutlined, BulbFilled, ClockCircleOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
@@ -133,6 +133,12 @@ function AuthenticatedApp({ user, logout }) {
   const contentRef = useRef('');
   const messageCountRef = useRef(0);
   const messagesEndRef = useRef(null);
+  // ★ 修复：用户是否停留在聊天区底部附近（阈值 100px）。
+  //   流式输出时仅当用户贴近底部才自动跟随滚动；用户上翻查看历史时不得被实时输出拉回底部。
+  //   初始为 true：进入会话时自动滚到最新消息。
+  const isNearBottomRef = useRef(true);
+  // 记录上一次自动滚动的会话 id，用于区分"切换会话"与"同会话流式增长"
+  const lastScrollSessionRef = useRef(null);
   // Per-session scrollTop 记忆：sessionId -> scrollTop。
   // 用 ref 而非 state，避免 onScroll 频繁触发重渲染。
   // 切换会话时优先恢复该会话上次的位置；无记忆时回退到"滚到最新消息"。
@@ -167,6 +173,10 @@ function AuthenticatedApp({ user, logout }) {
   //   in-flight 的 readSSEStream onEvent 回调顶部比对，失效则丢弃写入。
   const streamRequestIdRef = useRef(0);
   const siderListRef = useRef(null);
+  // ★ v5.16：缓存本轮 SSE usage 数据，done 事件时挂到当前 assistant 消息
+  //   数据结构：{ [round]: { prompt_tokens, completion_tokens, total_tokens, cached_tokens } }
+  //   用途：在 ChatMessage 耗时左边展示"缓存命中率"
+  const roundUsagesRef = useRef({});
   
   const handleTabChange = (key) => {
     if (activeTabKey === 'chat' && chatContentRef.current) {
@@ -384,15 +394,105 @@ function AuthenticatedApp({ user, logout }) {
       const data = await getSessionMessages(sessionId);
       if (loadingRef.current.messagesVersion !== myVersion) return; // 已被新请求覆盖，丢弃
       if (data.messages) {
+        // ★ 修复：空会话（0 条消息）直接清空返回。
+        //   原逻辑在下方"按问题分段"的第二遍扫描里会访问 data.messages[0] → undefined.role 抛错，
+        //   导致 setMessages(loaded) 永远不执行，切回空会话时残留上一个会话的消息。
+        if (data.messages.length === 0) {
+          setMessages([]);
+          setFavoriteStates({});
+          return;
+        }
         const filtered = data.messages.filter(m => m.role !== 'usage');
+        // ★ v5.19 修复：按"问题边界"分桶 — 每条 assistant 消息只算自己问题段的 round 0..mRound
+        //   之前全局 roundUsages + 覆盖式：3 个问题都 round 0 → Q3 覆盖 Q1/Q2 → asst1 显示 Q3 命中率
+        //   现在 segmentUsages 在 user 消息时重置，每条 assistant 用自己段的 segmentUsages 累积
+        //
+        // ★ v5.19b 修复：assistant 消息在 DB 顺序里**在** usage 消息**之前**（流式期间**只**创建一条 assistant，usage 是 LLM 调用结束 yield 追加的）
+        //   → 第一遍扫到 assistant 时 segmentUsages 还是空 → assistantUsages[id] = undefined
+        //   修法：两遍扫描：① 切分 segments + 段内累积 usage；② 每条 assistant 用本段 segmentUsages 算累积
+        // 第一遍：按 user 切分 segments + 段内累积 usage
+        const segments = [];
+        let currentSeg = { start: 0, end: 0, usages: {} };
+        for (let i = 0; i < data.messages.length; i++) {
+          const m = data.messages[i];
+          if (!m) continue; // 防御：跳过异常/空元素
+          if (m.role === 'user' && i > 0) {
+            segments.push(currentSeg);
+            currentSeg = { start: i, end: i, usages: {} };
+          } else if (m.role === 'usage') {
+            const r = typeof m.round === 'number' ? m.round : 0;
+            if (!currentSeg.usages[r]) {
+              currentSeg.usages[r] = { cached: 0, prompt: 0, completion: 0, total: 0 };
+            }
+            currentSeg.usages[r].cached += m.cached_tokens || 0;
+            currentSeg.usages[r].prompt += m.prompt_tokens || 0;
+            currentSeg.usages[r].completion += m.completion_tokens || 0;
+            currentSeg.usages[r].total += m.total_tokens || 0;
+          }
+          currentSeg.end = i;
+        }
+        segments.push(currentSeg);
+        // 第二遍：每条 assistant 用本段 segmentUsages 算累积
+        const assistantUsages = {};
+        for (const seg of segments) {
+          for (let i = seg.start; i <= seg.end; i++) {
+            const m = data.messages[i];
+            if (!m) continue; // 防御：跳过异常/空元素
+            if (m.role === 'assistant') {
+              const mRound = typeof m.round === 'number' ? m.round : 0;
+              let sumCached = 0, sumPrompt = 0, sumCompletion = 0, sumTotal = 0;
+              let hasAny = false;
+              // ★ 每轮命中率明细（round → {prompt/completion/total/cached}），供 tooltip 按轮展示
+              const rounds = {};
+              for (let r = 0; r <= mRound; r++) {
+                const u = seg.usages[r];
+                if (u) {
+                  sumCached += u.cached;
+                  sumPrompt += u.prompt;
+                  sumCompletion += u.completion;
+                  sumTotal += u.total;
+                  hasAny = true;
+                  rounds[r] = {
+                    prompt_tokens: u.prompt,
+                    completion_tokens: u.completion,
+                    total_tokens: u.total,
+                    cached_tokens: u.cached,
+                  };
+                }
+              }
+              if (hasAny) {
+                assistantUsages[m.id] = {
+                  prompt_tokens: sumPrompt,
+                  completion_tokens: sumCompletion,
+                  total_tokens: sumTotal,
+                  cached_tokens: sumCached,
+                  rounds,
+                };
+              }
+            }
+          }
+        }
         // 老数据兜底：没有 elapsed_ms 时按 user/assistant 成对消息的 created_at 差值补算
         // 一次性扫描，按"相邻 user/assistant 配对"得到回显耗时
-        const loaded = filtered.map(m => {
+        // 过滤 checklist 汇总行（content 以 "🔁 已调用:" 开头）
+        //   DB 仍写入（用于后续审计 / 缓存命中率分析），仅在历史 UI 中隐藏
+        //   旧数据 "🚫 冻结工具清单" 也用同一前缀判断一并隐藏
+        const loaded = filtered
+          .filter(m => !(m.content || '').startsWith('🔁 已调用:'))
+          .map(m => {
           let elapsedMs = m.elapsed_ms || null;
           // 历史 DB 行的 role 是 LLM/tool/tool_return，与流式 SSE 实时态的 'log' role 不同
           // 这里统一归一化为 'log'，否则 groupMessagesByRound 不会把它们当 log 分组
           // → 历史会话回看时无法渲染轮次轴
           const normalizedRole = ['LLM', 'tool', 'tool_return'].includes(m.role) ? 'log' : m.role;
+          // ★ v5.17 修复：累积 0..mRound 的所有 round usage（之前只取当前 round）
+          //   公式：sum_cached(0..R) / sum_prompt(0..R) * 100
+          //   理由：单看当前 round 命中率有失偏颇；多轮对话下整轮累计命中率更能反映 prefix cache 效果
+          //   与 SSE 流式 done 事件路径一致（v5.17 同样的累积公式）
+          // ★ v5.19：直接查 assistantUsages（按问题边界分桶后的累积结果）
+          //   跨段 round 编号不互相影响（之前是全局 map 覆盖 → 同 round 互相覆盖）
+          //   asst1 看到的永远是"本问题"内 round 0..mRound 累积，不会被后续问题覆盖
+          const usage = normalizedRole === 'assistant' ? assistantUsages[m.id] : undefined;
           return {
             id: `db-${m.id}`,
             role: normalizedRole,
@@ -400,6 +500,36 @@ function AuthenticatedApp({ user, logout }) {
             sql: m.sql || '',
             timestamp: m.created_at,
             logType: m.role === 'LLM' ? 'llm' : m.role === 'tool_return' ? 'return' : 'call',
+            // ★ 2026-08-17：历史回看抽取 toolName
+            //   老数据：m.content 含 "🔧 调用工具: {toolName}\n参数: ..." → regex 抽
+            //   新数据：m.content 只含 "参数: ..."（无"🔧 调用工具"行）→ regex 抽不到，toolName=null
+            //     历史回看新数据 title 退化为"工具调用"（无工具名），可接受
+            //   实时流式不受影响（新数据通过 data.toolName 字段传入，逻辑在 L1000-1015 logMsg 构段）
+            // F23 v3: tool_return 也需要抽 toolName（用于隐藏 get_call_history）
+            //   tool_return 的 content 格式有 4 种（参考后端 llm.js / responsesApi.js yield）：
+            //     ① "📋 工具 {name} 返回: ..."
+            //     ② "🚫 拦截重复调用: {name}\n..."
+            //     ③ "🚫 {errLabel}: {name}\n..."
+            //     ④ "✅ {name} 参数已自动修复..."
+            toolName: (() => {
+              const c = m.content || '';
+              if (m.role === 'tool') {
+                // 工具调用：🔧 调用工具: {name}\n参数: ...
+                const match = c.match(/🔧 调用工具:\s*(\S+)/);
+                return match ? match[1] : null;
+              }
+              if (m.role === 'tool_return') {
+                // 工具返回：①/②/③/④ 多种前缀格式
+                let match = c.match(/📋 工具 (\S+) 返回/);
+                if (match) return match[1];
+                match = c.match(/✅ (\S+) 参数已自动修复/);
+                if (match) return match[1];
+                match = c.match(/🚫 (?:拦截重复调用:|[^:\n]+:)\s*(\S+)/);
+                if (match) return match[1];
+                return null;
+              }
+              return null;
+            })(),
             // 历史回看：所有日志类型（LLM思考 / 工具调用 / 工具返回）默认折叠，
             // 与流式实时态（collapsed: true）保持一致，避免历史消息全展开
             collapsed: ['LLM', 'tool', 'tool_return'].includes(m.role),
@@ -412,6 +542,8 @@ function AuthenticatedApp({ user, logout }) {
             // ★ 2026-07-29：透传 interrupted 字段，用于渲染"已中断" badge
             //   老数据（无 interrupted 列）默认 0/false，行为兼容
             interrupted: m.interrupted === 1 || m.interrupted === true,
+            // ★ v5.17：挂 usage（仅 assistant 消息，0..mRound 累积），用于渲染"缓存命中率" Tooltip
+            usage,
           };
         });
         // 老数据回填：相邻 user → assistant 配对，差值作为 elapsedMs
@@ -452,25 +584,36 @@ function AuthenticatedApp({ user, logout }) {
     if (messages.length > messageCountRef.current && currentSessionId) {
       const saved = sessionScrollTopsRef.current.get(currentSessionId);
       messageCountRef.current = messages.length;
+      // 区分"切换会话"（恢复该会话浏览位置）与"同会话流式增长"（仅在贴近底部时跟随）
+      const sessionChanged = lastScrollSessionRef.current !== currentSessionId;
+      lastScrollSessionRef.current = currentSessionId;
       // rAF 等 DOM 更新完成再操作 scrollTop，避免消息尚未渲染时 scrollHeight 还是旧值
       requestAnimationFrame(() => {
         if (!chatContentRef.current) return;
-        if (saved !== undefined) {
-          // 有记忆：恢复该会话上次浏览的位置（用户可能在中间/顶部/底部）
-          chatContentRef.current.scrollTop = saved;
-        } else {
-          // 无记忆（首次访问该会话）：滚到最新消息位置
+        if (sessionChanged) {
+          // 切换会话：有记忆则恢复该会话上次浏览位置，无记忆则滚到最新消息
+          if (saved !== undefined) {
+            chatContentRef.current.scrollTop = saved;
+          } else {
+            messagesEndRef.current?.scrollIntoView({ behavior: 'instant' });
+          }
+        } else if (isNearBottomRef.current) {
+          // 同会话流式增长：仅当用户贴近底部时跟随输出
           messagesEndRef.current?.scrollIntoView({ behavior: 'instant' });
         }
+        // 用户已上翻查看历史（!isNearBottomRef.current）：保持当前位置，不滚动
       });
     }
   }, [messages.length, currentSessionId]);
 
   // onScroll 实时记录当前会话的 scrollTop
+  // 同时更新"是否贴近底部"标记，供流式自动滚动判断
   // 用 ref.set 不触发重渲染，性能开销可忽略
   const handleChatScroll = useCallback(() => {
     if (currentSessionId && chatContentRef.current) {
-      sessionScrollTopsRef.current.set(currentSessionId, chatContentRef.current.scrollTop);
+      const el = chatContentRef.current;
+      sessionScrollTopsRef.current.set(currentSessionId, el.scrollTop);
+      isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
     }
   }, [currentSessionId]);
   
@@ -813,6 +956,31 @@ function AuthenticatedApp({ user, logout }) {
         // ★ F2 修复：会话切换后版本号已自增，过期回调直接丢弃
         //   否则旧会话的 chunk/log 会继续被写进新会话消息数组
         if (streamRequestIdRef.current !== myStreamVersion) return;
+        // ★ F9 修复：流首事件 meta 携带后端权威 sessionId。
+        //   之前只在 done 事件里取 → 用户主动 stop / 5min OVERALL_TIMEOUT /
+        //   网络断连 三个路径下 done 永远不到达，currentSessionId 持续为 null，
+        //   下一条消息又以 null 调 /generate，后端再建一个新 session → 上下文断裂
+        //   + 数据库多个孤儿 session（每条带一条孤儿 user message）。
+        //   meta 是后端在 flushHeaders 后立即 res.write 的第一个事件，时序可预期。
+        if (data.type === 'meta') {
+          if (data.sessionId && data.sessionId !== currentSessionId) {
+            const newId = data.sessionId;
+            setCurrentSessionId(newId);
+            // 把新 session 插到左侧列表（避免下次刷新才看到）。
+            // 幂等：若已存在（同会话切回/重复 meta）则直接跳过。
+            setSessions(prev => {
+              if (prev.some(s => s.id === newId)) return prev;
+              return [{
+                id: newId,
+                name: '新对话',
+                created_at: new Date().toISOString(),
+                total_tokens: 0
+              }, ...prev];
+            });
+            setSessionsTotal(prev => prev + 1);
+          }
+          return;  // meta 不参与消息体渲染
+        }
         if (data.type === 'chunk') {
           fullContent += data.content;
           setMessages(prev => {
@@ -828,7 +996,10 @@ function AuthenticatedApp({ user, logout }) {
           if (!streamingScrollRafRef.current) {
             streamingScrollRafRef.current = requestAnimationFrame(() => {
               streamingScrollRafRef.current = 0;
-              messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+              // ★ 修复：仅当用户贴近底部时才跟随实时输出；上翻查看历史时保持当前位置
+              if (isNearBottomRef.current) {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+              }
             });
           }
         } else if (data.type === 'LLM' || data.type === 'tool' || data.type === 'tool_return') {
@@ -868,6 +1039,34 @@ function AuthenticatedApp({ user, logout }) {
                 timestamp: new Date().toISOString(),
                 collapsed: true,
                 logType: logType,
+                // ★ 2026-08-17：透传工具名（仅 tool 类型有值）
+                //   前端 ChatMessage 用它拼接 title "工具调用 {toolName} {date}"
+                //   来源：后端 llm.js:1627 yield { type: "tool", toolName, ... }
+                // F23 v3: tool_return 也透传 toolName — 用于前端 ChatMessage 隐藏 get_call_history 的返回
+                //   优先 data.toolName（新后端会 yield toolName），未传时用 regex 兜底（兼容旧后端/历史回看）
+                toolName: (() => {
+                  const log = data.log || '';
+                  if (data.type === 'tool' || data.type === 'tool_return') {
+                    // 优先用后端 yield 的 toolName 字段（新数据）
+                    if (data.toolName) return data.toolName;
+                    // 兜底 1：tool 类型 log 格式 "🔧 调用工具: xxx\n参数: {...}"
+                    let match = log.match(/🔧 调用工具:\s*(\S+)/);
+                    if (match) return match[1];
+                    // 兜底 2：tool_return 的 4 种格式
+                    //   ① "📋 工具 {name} 返回: ..."
+                    //   ② "🚫 拦截重复调用: {name}\n..."
+                    //   ③ "🚫 {errLabel}: {name}\n..."
+                    //   ④ "✅ {name} 参数已自动修复..."
+                    match = log.match(/📋 工具 (\S+) 返回/);
+                    if (match) return match[1];
+                    match = log.match(/✅ (\S+) 参数已自动修复/);
+                    if (match) return match[1];
+                    match = log.match(/🚫 (?:拦截重复调用:|[^:\n]+:)\s*(\S+)/);
+                    if (match) return match[1];
+                    return null;
+                  }
+                  return null;
+                })(),
                 // ★ LLM 工具调用轮次编号（用于前端"数轴式"轮次展示）
                 //   后端 llm.js 在每个 yield 时附带 round 字段
                 //   同 assistant 消息内多条 log 可能共享同一 round（思考→调用→返回属于同一轮）
@@ -929,8 +1128,37 @@ function AuthenticatedApp({ user, logout }) {
           if (!streamingScrollRafRef.current) {
             streamingScrollRafRef.current = requestAnimationFrame(() => {
               streamingScrollRafRef.current = 0;
-              messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+              // ★ 修复：仅当用户贴近底部时才跟随实时输出；上翻查看历史时保持当前位置
+              if (isNearBottomRef.current) {
+                messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+              }
             });
+          }
+        } else if (data.type === 'usage') {
+          // ★ v5.18 真正修复：把本轮 usage 存到 roundUsagesRef
+          //   根因：v5.16 第一版 + v5.16b + v5.16c + v5.17 全部没真正工作！
+          //   后端 SSE `type: "usage"` 事件（[responsesApi.js:238-251](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/responsesApi.js#L238-L251)）
+          //   yield 出来后**没有**任何 else if 分支处理它 → 静默丢弃
+          //   → roundUsagesRef.current 永远 {} → done 累积 null → `usage: undefined` → 不显示
+          //   切走再回来能看：走历史回看路径，roundUsages 重新从 DB 构造（与 ref 无关）
+          //   修法：在 chunk 之后 / reasoning_done 之前加 `else if (data.type === 'usage')`
+          if (data.usage) {
+            const r = typeof data.round === 'number' ? data.round : 0;
+            // ★ 健壮性：同 round 累加而非覆盖，与历史回看路径（loadMessages 的 segmentUsages `+=`）
+            //   及 DB（每条 usage 事件落一行）保持一致。
+            //   当前每轮恰好一条 usage（一次 LLM 调用一条），覆盖/累加结果相同，行为无变化；
+            //   若未来同轮出现多条 usage（如重试/多次计费事件），累加才能保证"流式显示 == 刷新后回看"。
+            if (!roundUsagesRef.current[r]) {
+              roundUsagesRef.current[r] = { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cached_tokens: 0 };
+            }
+            roundUsagesRef.current[r].prompt_tokens += data.usage.prompt_tokens || 0;
+            roundUsagesRef.current[r].completion_tokens += data.usage.completion_tokens || 0;
+            roundUsagesRef.current[r].total_tokens += data.usage.total_tokens || 0;
+            roundUsagesRef.current[r].cached_tokens += data.usage.cached_tokens || 0;
+            // ★ v5.18 调试开关：默认开启；用户可手动注释
+            if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+              console.log('[v5.18 debug] usage 事件 round=' + r + ':', JSON.stringify(roundUsagesRef.current[r]));
+            }
           }
         } else if (data.type === 'reasoning_done') {
           // ★ 思考过程结束：保留用户已选的 collapsed 状态（之前强制 true 会把用户展开的内容又折叠回去）
@@ -975,43 +1203,101 @@ function AuthenticatedApp({ user, logout }) {
             return newMsgs;
           });
         } else if (data.type === 'done') {
+          // ★ v5.16c 修复：同步捕获 lastRoundUsage 到本地变量
+          //   根因：setMessages(prev => ...) 的 prev 回调是 React 18 batched 异步执行，
+          //   如果在 setMessages 之后**立即** `roundUsagesRef.current = {}`，等 React flush 闭包时
+          //   ref 已经被清空 → 闭包内读 `roundUsagesRef.current[lastRound]` 拿到 undefined
+          //   → `usage: undefined` → 命中率不显示
+          //   切走再回来能看：走历史回看路径，roundUsages 重新从 DB 构造（与 ref 无关）
+          //   修法：① setMessages **前**同步读 ref 到本地变量 ② setMessages 闭包内用本地变量
+          //   ③ 清空 ref 放在 setMessages **之后**（已存在，顺序正确）
+          // ★ v5.17 修复：累积 0..lastRound 的所有 round usage（之前只取最后 round）
+          //   公式：sum_cached(0..R) / sum_prompt(0..R) * 100
+          //   理由：单看当前 round 命中率有失偏颇；多轮对话下整轮累计命中率更能反映 prefix cache 效果
+          const _roundKeys = Object.keys(roundUsagesRef.current);
+          const _lastRound = _roundKeys.length > 0
+            ? Math.max(..._roundKeys.map(Number).filter(n => !Number.isNaN(n)))
+            : null;
+          let _lastRoundUsage = null;
+          if (_lastRound !== null) {
+            // 累积 0.._lastRound 之间的所有 round usage
+            let _sumCached = 0, _sumPrompt = 0, _sumCompletion = 0, _sumTotal = 0;
+            let _hasAny = false;
+            // ★ 每轮命中率明细（round → {prompt/completion/total/cached}），供 tooltip 按轮展示
+            const _rounds = {};
+            for (let r = 0; r <= _lastRound; r++) {
+              const u = roundUsagesRef.current[r];
+              if (u) {
+                _sumCached += u.cached_tokens || 0;
+                _sumPrompt += u.prompt_tokens || 0;
+                _sumCompletion += u.completion_tokens || 0;
+                _sumTotal += u.total_tokens || 0;
+                _hasAny = true;
+                _rounds[r] = {
+                  prompt_tokens: u.prompt_tokens || 0,
+                  completion_tokens: u.completion_tokens || 0,
+                  total_tokens: u.total_tokens || 0,
+                  cached_tokens: u.cached_tokens || 0,
+                };
+              }
+            }
+            if (_hasAny) {
+              _lastRoundUsage = {
+                prompt_tokens: _sumPrompt,
+                completion_tokens: _sumCompletion,
+                total_tokens: _sumTotal,
+                cached_tokens: _sumCached,
+                rounds: _rounds,
+              };
+            }
+          }
+          // ★ v5.18 调试开关：dev 模式才打印（user 可以打开后端 debug 看到完整链路）
+          if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+            console.log('[v5.18 debug] done event: data.message.len=', (data.message || '').length, ', data.usage=', data.usage, ', data.round=', data.round, ', roundUsagesRef.current=', JSON.stringify(roundUsagesRef.current));
+          }
           setMessages(prev => {
             const newMsgs = [...prev];
             const lastIdx = newMsgs.findLastIndex(m => m.role === 'assistant');
+            if (typeof window !== 'undefined' && window.location.hostname === 'localhost') {
+              console.log('[v5.18 debug] setMessages: lastIdx=', lastIdx, ', _lastRoundUsage=', JSON.stringify(_lastRoundUsage));
+            }
             if (lastIdx !== -1) {
               const startTime = newMsgs[lastIdx].startTime || Date.now();
               // 优先用后端权威耗时（含网络/工具调用），fallback 到前端本地计时
               const elapsedMs = (typeof data.elapsedMs === 'number' && data.elapsedMs >= 0)
                 ? data.elapsedMs
                 : Date.now() - startTime;
-              newMsgs[lastIdx] = { ...newMsgs[lastIdx], content: data.message || '', sql: data.sql || '', isStreaming: false, elapsedMs };
+              newMsgs[lastIdx] = {
+                ...newMsgs[lastIdx],
+                content: data.message || '',
+                sql: data.sql || '',
+                isStreaming: false,
+                elapsedMs,
+                // ★ v5.17：用闭包外同步捕获的累积 _lastRoundUsage
+                usage: _lastRoundUsage || undefined,
+              };
             }
             return newMsgs;
           });
+          // done 后清空本轮 usage 缓存（避免下一轮污染）
+          roundUsagesRef.current = {};
           // 更新 token 显示
           if (data.totalTokens) {
             setCurrentTokens(prev => prev + data.totalTokens);
           }
-          // ★ 关键修复：后端 SSE done 事件返回的 sessionId 是权威值。
-          //   场景：用户清空日志后第一次问时前端 currentSessionId=null，
-          //   后端会 auto-create 一个 session；若前端不捕获并回写，
-          //   下次（user_choice 答案/重发）handleSend 还会以 null 调 /generate，
-          //   后端又会 auto-create 一个新 session → 上下文丢失、registry 重置、
-          //   LLM 重新调 get_domain_index/get_sliced_index。
+          // ★ v5.18：删掉 done 块末尾的 `if (data.usage)` 兜底
+          //   原因：后端 yield done 不带 data.usage 字段（[responsesApi.js:682](file:///d:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/responsesApi.js#L682)）
+          //   兜底块永远不进，纯粹是无效死代码
+          //   真正的 usage 处理已搬到 L1011-1028 的 `else if (data.type === 'usage')` 分支
+          // ★ 兜底：done 事件也带 sessionId，做最后一层防御。
+          //   正常路径 meta 已先到，currentSessionId 已被回写，
+          //   这里的 if 短路为 false（React 闭包拿到的是 meta 之前的旧值，
+          //   但 setCurrentSessionId 同值不重渲，setSessions 幂等跳过）。
+          //   唯一会真正生效的场景：后端协议回退到不带 meta 的老版本（不会发生）。
+          // ★ F9 修复：sessions 插列表 + sessionsTotal 自增已搬到 meta 事件，
+          //   done 这里只做 currentSessionId 兜底回写，避免双计。
           if (data.sessionId && data.sessionId !== currentSessionId) {
-            const newId = data.sessionId;
-            setCurrentSessionId(newId);
-            // 把新 session 插到左侧列表（避免下次刷新才看到）
-            setSessions(prev => {
-              if (prev.some(s => s.id === newId)) return prev;
-              return [{
-                id: newId,
-                name: '新对话',
-                created_at: new Date().toISOString(),
-                total_tokens: data.totalTokens || 0
-              }, ...prev];
-            });
-            setSessionsTotal(prev => prev + 1);
+            setCurrentSessionId(data.sessionId);
           }
           // ★ 检测 user_choice_request 弹窗（来自 llm.js 终止分支）
           // v2 链式弹窗：后端 yield 的是数组（1-3 个问题）；兼容旧版单值 fallback
@@ -1666,7 +1952,7 @@ const explainColumns = useMemo(() => explainResults.length > 0
               {activeTabKey === 'chat' ? (
                 messages.length === 0 ? (
                   <div className="xtsql-empty">
-                    <div className="xtsql-empty-icon"><AppIcon size={64} circle /></div>
+                    <div className="xtsql-empty-icon"><AppIcon size={64} style={{ borderRadius: 0 }} /></div>
                     <div className="xtsql-empty-title">开始新对话</div>
                     <div className="xtsql-empty-desc">用自然语言描述你想要的查询，AI 会自动生成 SQL 并执行</div>
                     <div className="xtsql-suggestion-list">
@@ -1711,9 +1997,17 @@ const explainColumns = useMemo(() => explainResults.length > 0
                           collapsed={msg.collapsed !== undefined ? msg.collapsed : true}
                           onToggleCollapse={handleToggleCollapse}
                           logType={msg.logType}
+                          // ★ 2026-08-17：透传 toolName（single log 消息也需要）
+                          //   历史回看：从 msg.toolName（regex 抽过）透传
+                          //   实时流式：单条 log 走 roundGroup 分支，但若 single 也走这里则从 msg.toolName 拿
+                          toolName={msg.toolName}
                           sql={msg.sql}
                           startTime={msg.startTime}
                           elapsedMs={msg.elapsedMs}
+                          // ★ v5.16：single 消息（user/assistant/单 log）也透传 usage（v5.16 修复）
+                          //   之前 v5.16 第一版只改了 RoundGroup 内的 ChatMessage，遗漏了 single 分支的 assistant 消息
+                          //   → assistant 消息不走 roundGroup，usage 一直未传 → 缓存命中率不显示
+                          usage={msg.usage}
                           onOpenSqlTab={handleOpenSqlTab}
                           onCopyAndExecute={handleCopyAndExecute}
                           userQuestion={userQuestion}
@@ -2040,20 +2334,28 @@ children: currentResults.length > 0 ? (
                   <div className="xtsql-input-footer">
                     <div className="xtsql-input-meta">
                       {currentModel && <span className="xtsql-input-model-tag">{currentModel}</span>}
-                      {currentTokens > 0 && <span>{currentTokens} tokens</span>}
-                      <div
-                        className="xtsql-token-bar"
-                        onClick={handleViewMessages}
-                        title="查看消息详情"
-                      >
+                      {currentTokens > 0 && (
+                        <Tooltip title="该会话累计消耗的 token（含输出，按 API usage 计）">
+                          <span className="xtsql-input-tokens">
+                            <ClockCircleOutlined style={{ fontSize: 11, marginRight: 4 }} />
+                            {currentTokens.toLocaleString()} tokens
+                          </span>
+                        </Tooltip>
+                      )}
+                      <Tooltip title={`当前上下文 ${sessionMessagesTokens.toLocaleString()} tokens / 警告阈值 ${tokenWarningLevel.toLocaleString()}（点击查看详情）`}>
                         <div
-                          className="xtsql-token-bar-fill"
-                          style={{
-                            width: `${Math.min((sessionMessagesTokens / tokenWarningLevel) * 100, 100)}%`,
-                            backgroundColor: sessionMessagesTokens > tokenWarningLevel ? 'var(--xtsql-danger)' : 'var(--xtsql-accent)'
-                          }}
-                        />
-                      </div>
+                          className="xtsql-token-bar"
+                          onClick={handleViewMessages}
+                        >
+                          <div
+                            className="xtsql-token-bar-fill"
+                            style={{
+                              width: `${Math.min((sessionMessagesTokens / tokenWarningLevel) * 100, 100)}%`,
+                              backgroundColor: sessionMessagesTokens > tokenWarningLevel ? 'var(--xtsql-danger)' : 'var(--xtsql-accent)'
+                            }}
+                          />
+                        </div>
+                      </Tooltip>
                     </div>
                     {loading ? (
                       <Button

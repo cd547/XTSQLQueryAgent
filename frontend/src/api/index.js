@@ -87,6 +87,12 @@ export function getDeepseekModels() {
   return api.get('/config/llm/models').then(r => r.data);
 }
 
+// ★ 2026-08-17：查询 DeepSeek 账户余额
+//   返回：{ success, is_available, balance_infos: [{ currency, total_balance, granted_balance, topped_up_balance }] }
+export function getDeepseekBalance() {
+  return api.get('/config/llm/balance').then(r => r.data);
+}
+
 export function queryGenerate(data) {
   return api.post('/query/generate', data).then(r => r.data);
 }

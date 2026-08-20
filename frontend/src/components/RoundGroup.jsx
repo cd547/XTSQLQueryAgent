@@ -44,9 +44,13 @@ const RoundGroup = memo(function RoundGroup({
             collapsed={log.collapsed !== undefined ? log.collapsed : true}
             onToggleCollapse={onToggleCollapse}
             logType={log.logType}
+            // ★ 2026-08-17：透传 toolName（用于 ChatMessage 标题拼接）
+            toolName={log.toolName}
             sql={log.sql}
             startTime={log.startTime}
             elapsedMs={log.elapsedMs}
+            // ★ v5.16：透传 usage（assistant 消息才有），用于在耗时左边展示"缓存命中率"
+            usage={log.usage}
             userQuestion={userQuestion}
             favoriteState={favoriteStates?.[log.id]}
             onFavorite={userQuestion ? ({ userQuestion: uq, sqlOutput }) => onFavorite?.({ msgId: log.id, userQuestion: uq, sqlOutput }) : undefined}
