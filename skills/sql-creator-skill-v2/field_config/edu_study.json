@@ -108,5 +108,49 @@
       "name": "调课状态派生",
       "description": "EXISTS (SELECT 1 FROM edu_adjust_study WHERE old_study_id = a.id AND del = 0 AND ((adjust_status = 3) OR (adjust_status = 1 AND valid = 1)))"
     }
+  ],
+  "common_sqls": [
+    {
+      "id": "study_campus_3_levels",
+      "title": "排课→校区/教室/分校（三层）",
+      "main_table": "edu_study",
+      "tables": ["edu_campus_school_class", "edu_campus_school", "edu_campus"],
+      "sql": "LEFT JOIN edu_campus_school_class b ON a.edu_campus_school_class_id = b.id\nLEFT JOIN edu_campus_school c ON b.campus_school_id = c.id\nLEFT JOIN edu_campus d ON c.campus_id = d.id"
+    },
+    {
+      "id": "study_subject_4_levels",
+      "title": "排课→科目（四层）",
+      "main_table": "edu_study",
+      "tables": ["edu_course_exam_subject_name", "edu_course_exam_subject", "edu_course_exam", "edu_course"],
+      "sql": "LEFT JOIN edu_course_exam_subject_name e ON a.edu_course_exam_subject_name_id = e.id\nLEFT JOIN edu_course_exam_subject f ON e.subject_id = f.id\nLEFT JOIN edu_course_exam g ON f.exam_id = g.id\nLEFT JOIN edu_course h ON g.course_id = h.id"
+    },
+    {
+      "id": "study_student",
+      "title": "排课→学员（仅 type=1）",
+      "main_table": "edu_study",
+      "tables": ["edu_study_student", "edu_student"],
+      "sql": "LEFT JOIN edu_study_student x ON x.edu_study_id = a.id\nLEFT JOIN edu_student y ON x.edu_student_id = y.id AND y.del = 0 AND y.type = 1"
+    },
+    {
+      "id": "study_teacher_creator",
+      "title": "排课→老师/创建人",
+      "main_table": "edu_study",
+      "tables": ["edu_teacher", "admin_user"],
+      "sql": "LEFT JOIN edu_teacher m ON a.edu_admin_user_id = m.admin_user_id\nLEFT JOIN admin_user u ON a.admin_user_id = u.id"
+    },
+    {
+      "id": "study_room",
+      "title": "排课→班课",
+      "main_table": "edu_study",
+      "tables": ["edu_room_study", "edu_room"],
+      "sql": "LEFT JOIN edu_room_study r ON r.edu_study_id = a.id\nLEFT JOIN edu_room r2 ON r.edu_room_id = r2.id"
+    },
+    {
+      "id": "study_video",
+      "title": "排课→视频",
+      "main_table": "edu_study",
+      "tables": ["edu_video", "edu_video_address"],
+      "sql": "LEFT JOIN edu_video v ON a.id = v.edu_study_id AND v.del = 0\nLEFT JOIN edu_video_address va ON v.id = va.edu_video_id AND va.del = 0"
+    }
   ]
 }
