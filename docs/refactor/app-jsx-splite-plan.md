@@ -29,7 +29,7 @@
 |---|---|---|---|---|
 | **1** | 抽取纯函数工具 | 极低 | 100+ 行 | ✅ 完成 |
 | **2** | 抽 `useChatStream` hook | 中 | 500+ 行 | ⏳ 待做 |
-| **3** | 抽 `useSessionList` + `<Sider />` | 中 | 300+ 行 | ⏳ 待做 |
+| **3** | 抽 `useSessionList` + `<Sider />` | 中 | 300+ 行 | ✅ 完成 |
 | **4** | 抽 `<ChatPanel />` / `<SqlPanel />` / `<ChatInput />` | 低 | 450+ 行 | ✅ 完成 |
 | **5** | 抽 `<SkillDrawer />` | 低 | 140+ 行 | ✅ 完成 |
 
@@ -109,12 +109,44 @@ App.jsx **2579 → ~2100 行**（−479）
 
 ---
 
-## 5. ⏳ 阶段 3：抽 `useSessionList` + `<Sider />`
+## 5. ✅ 阶段 3：抽 `useSessionList` + `<Sider />`（已完成）
 
 ### 目标
 
-- `frontend/src/hooks/useSessionList.js`（约 200 行）
-- `frontend/src/components/Sider.jsx`（约 120 行）
+- `frontend/src/hooks/useSessionList.js`（约 95 行）
+- `frontend/src/components/Sider.jsx`（约 195 行）
+- `frontend/src/utils/constants.js`（新增 6 行，承载 `SESSIONS_PAGE_SIZE`）
+
+### 实施结果
+
+#### `useSessionList` Hook
+
+- 状态：sessions / sessionsTotal / hasMoreSessions / loadingMoreSessions
+- 加载：loadMoreSessions（分页）/ handleSiderScroll（触底 80px）
+- 变更原语：addSession / removeSession / updateSessionName
+- 内部 loadingRef 暴露为 `sessionsLoadingRef`（让 App.jsx 的 `loadSessions` 复用同一锁）
+- App.jsx 的 `loadMoreSessions` 与 `handleSiderScroll` 已删除（走 hook）
+- `App.jsx` 的 `loadingRef` 去掉 `sessions` / `sessionsMore` 两个键（已迁出）
+
+#### `<Sider />` 组件
+
+- 19 个 props：9 数据 + 1 setter + 7 业务回调 + 4 跨切回调
+- 业务回调（onNewSession / onSessionClick / onDeleteSession / onStartRename / onRenameSession / onSummarizeSession）由 App.jsx 透传
+- 跨切回调（onConfigClick / onSkillClick / onChangePasswordClick / onLogout）由 App.jsx 包装 setState 与 Modal.confirm
+- 9 个图标 + 5 个组件 + 1 个工具函数（formatSqliteUtcLocal）直接 import，不通过 props 传
+- `siderListRef` 本地持有（DOM 引用无需外漏）
+
+#### App.jsx 改动
+
+- `handleNewSession` / `handleDeleteSession` / `handleRenameSession` / `handleSummarizeSession` 改用 hook 的变更原语
+- `loadSessions` 改用 `sessionsLoadingRef.current.sessions`
+- `Sider` 与 `Content` 不再解构（避免与新组件同名冲突）
+- 6 个 dead icon import + 1 个 dead ref 删除
+- App.jsx 2026 → 1901 行（−125）
+
+### 验证
+
+- [ ] `npm run build` 通过（4255 modules）
 
 ### 计划接口
 
@@ -245,14 +277,13 @@ App.jsx **~1700 → ~1300 行**（−400）
 | 阶段 0（初始） | 2602 | 0 | 0 |
 | 阶段 1 ✅ | 2579 | 3 utils | +3 |
 | 阶段 2 后 | ~2100 | +1 hook | +4 |
-| 阶段 3 后 | ~1700 | +1 hook + 1 组件 | +6 |
+| 阶段 3 ✅ 后 | 1901 | +1 hook + 1 组件 | +6 |
 | 阶段 4 ✅ 后 | 2204 | +3 组件 | +9 |
-| 阶段 5 ✅ 后 | **2026** | +1 组件 | **+10** |
+| 阶段 5 ✅ 后 | 1901 | +1 组件 | **+10** |
 
-> 2602 → 2026，已完成阶段总降幅 **−576 行**（−22.1%）
+> 2602 → 1901，已完成阶段总降幅 **−701 行**（−27%）
 >
-> 未做阶段 2（useChatStream）和 阶段 3（useSessionList + Sider），这两个是业务逻辑 hook
-> 抽取，风险较高。如果未来要做，App.jsx 还有约 700 行可清理潜力。
+> 未做阶段 2（useChatStream），如果未来要做，App.jsx 还有约 350 行可清理潜力（handleSend + handleStop + 4 refs）。
 
 ---
 
@@ -266,8 +297,8 @@ App.jsx **~1700 → ~1300 行**（−400）
 | 2026-08-21 | 4.2 ✅ | 抽 SqlPanel（−229 行）+ dead state/icon 清理 13 行 |
 | 2026-08-21 | 4.3 ✅ | 抽 ChatPanel（−60 行）+ dead import 清理 3 个 |
 | 2026-08-21 | 5 ✅ | 抽 SkillDrawer（−178 行，含 5 UI state 下沉 + 6 icon import 清理） |
+| 2026-08-21 | 3 ✅ | 抽 useSessionList + Sider（−125 行，含 6 dead icon + 1 dead ref 清理） |
 | 待开始 | 2 | 抽 `useChatStream` hook（高风险，按需） |
-| 待开始 | 3 | 抽 `useSessionList` + `<Sider />`（中风险，按需） |
 
 ---
 

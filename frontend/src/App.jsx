@@ -10,6 +10,7 @@ import ChatInput from './components/ChatInput';
 import ChatPanel from './components/ChatPanel';
 import SqlPanel from './components/SqlPanel';
 import SkillDrawer from './components/SkillDrawer';
+import Sider from './components/Sider';
 import ConfigPanel from './components/ConfigPanel';
 import LoginPage from './components/LoginPage';
 import SessionMessagesModal from './components/modals/SessionMessagesModal.jsx';
@@ -19,7 +20,7 @@ import ExplainAnalyzeModal from './components/modals/ExplainAnalyzeModal.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { useTheme } from './context/ThemeContext.jsx';
 import * as api from './api/index.js';
-import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, CheckOutlined, EditOutlined, SendOutlined, MoreOutlined, DeleteOutlined, LoadingOutlined, LogoutOutlined, UserOutlined, LockOutlined, BulbOutlined, BulbFilled, ClockCircleOutlined } from '@ant-design/icons';
+import { CloseOutlined, MenuOutlined, CheckOutlined, SendOutlined, LoadingOutlined, BulbOutlined, BulbFilled, ClockCircleOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
@@ -28,10 +29,12 @@ import { readSSEStream } from './utils/sseStream';
 import { sqliteUtcToIso, formatSqliteUtcLocal } from './utils/formatTime';
 import { exportToExcel } from './utils/excel';
 import { extractToolName } from './utils/toolName';
+import { SESSIONS_PAGE_SIZE } from './utils/constants.js';
+import { useSessionList } from './hooks/useSessionList.js';
 import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages, saveFavoriteQuery, checkFavorites, unfavoriteQuery, getFavoriteSuggestions } from './api';
 
 const { TextArea } = Input;
-const { Sider, Content } = Layout;
+const { Content } = Layout;
 const { defaultAlgorithm, darkAlgorithm } = theme;
 
 function App() {
@@ -62,10 +65,12 @@ function AuthenticatedApp({ user, logout }) {
   //   注意：必须先于任何条件 return 调用（hook 规则）
   //   antd 的 App 与本文件默认导出的 App 同名，import 时用 as 别名避坑
   const { message: messageApi } = AntdApp.useApp();
-  const [sessions, setSessions] = useState([]);
-  const [sessionsTotal, setSessionsTotal] = useState(0);
-  const [hasMoreSessions, setHasMoreSessions] = useState(false);
-  const [loadingMoreSessions, setLoadingMoreSessions] = useState(false);
+  const {
+    sessions, sessionsTotal, hasMoreSessions, loadingMoreSessions,
+    setSessions, setSessionsTotal, setHasMoreSessions,
+    addSession, removeSession, updateSessionName,
+    loadMoreSessions, handleSiderScroll, sessionsLoadingRef,
+  } = useSessionList();
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -181,11 +186,10 @@ function AuthenticatedApp({ user, logout }) {
   // - sessionsMore: 滚动加载更多会话（boolean）
   // - messagesId: 加载某 sessionId 的消息（sessionId 或 null）
   // - messagesVersion: F2 修复，每次 loadMessages 入口自增，用于丢弃过期响应
-  const loadingRef = useRef({ model: false, sessions: false, sessionsMore: false, messagesId: null, messagesVersion: 0 });
+  const loadingRef = useRef({ model: false, messagesId: null, messagesVersion: 0 });
   // ★ F2 修复：SSE 流式请求版本号。handleSessionClick 切会话时 abort 并自增，
   //   in-flight 的 readSSEStream onEvent 回调顶部比对，失效则丢弃写入。
   const streamRequestIdRef = useRef(0);
-  const siderListRef = useRef(null);
   // ★ v5.16：缓存本轮 SSE usage 数据，done 事件时挂到当前 assistant 消息
   //   数据结构：{ [round]: { prompt_tokens, completion_tokens, total_tokens, cached_tokens } }
   //   用途：在 ChatMessage 耗时左边展示"缓存命中率"
@@ -269,12 +273,12 @@ function AuthenticatedApp({ user, logout }) {
     }
   };
 
-  const SESSIONS_PAGE_SIZE = 20;
-
   // 首次加载会话列表（分页第一页）
+  //   数据层走 useSessionList hook；本函数只保留"加载后自动选第一会话"的副作用
+  //   （需 setCurrentSessionId / setCurrentTokens / setCurrentSessionName 等跨切关注点）
   const loadSessions = async () => {
-    if (loadingRef.current.sessions) return;
-    loadingRef.current.sessions = true;
+    if (sessionsLoadingRef.current.sessions) return;
+    sessionsLoadingRef.current.sessions = true;
     try {
       const data = await getSessions({ limit: SESSIONS_PAGE_SIZE, offset: 0 });
       const list = data.sessions || [];
@@ -306,41 +310,9 @@ function AuthenticatedApp({ user, logout }) {
     } catch (e) {
       console.error('加载会话失败:', e);
     } finally {
-      loadingRef.current.sessions = false;
+      sessionsLoadingRef.current.sessions = false;
     }
   };
-
-  // 滚动触底：加载下一页会话
-  const loadMoreSessions = async () => {
-    if (loadingRef.current.sessionsMore) return;
-    if (!hasMoreSessions) return;
-    loadingRef.current.sessionsMore = true;
-    setLoadingMoreSessions(true);
-    try {
-      const data = await getSessions({ limit: SESSIONS_PAGE_SIZE, offset: sessions.length });
-      const list = data.sessions || [];
-      // 去重防御：相同 id 不重复入列
-      setSessions(prev => {
-        const seen = new Set(prev.map(s => s.id));
-        return [...prev, ...list.filter(s => !seen.has(s.id))];
-      });
-      setSessionsTotal(typeof data.total === 'number' ? data.total : sessions.length + list.length);
-      setHasMoreSessions(!!data.hasMore);
-    } catch (e) {
-      console.error('加载更多会话失败:', e);
-    } finally {
-      loadingRef.current.sessionsMore = false;
-      setLoadingMoreSessions(false);
-    }
-  };
-
-  // 侧边栏列表滚动监听：距底 80px 内触发加载更多
-  const handleSiderScroll = useCallback((e) => {
-    const el = e.currentTarget;
-    if (el.scrollHeight - el.scrollTop - el.clientHeight < 80) {
-      loadMoreSessions();
-    }
-  }, [hasMoreSessions, sessions.length]);
 
   /**
    * 把扁平 messages 列表按 round 分组，输出渲染层直接消费的"组"列表。
@@ -646,8 +618,7 @@ function AuthenticatedApp({ user, logout }) {
         total_tokens: 0
       };
       // 新会话插到列表最前，分页计数 +1
-      setSessions(prev => [newSession, ...prev]);
-      setSessionsTotal(prev => prev + 1);
+      addSession(newSession);
       setCurrentSessionId(data.id);
       setCurrentSessionName(`${sessionName}#${data.id}`);
       setCurrentTokens(0);
@@ -736,8 +707,7 @@ function AuthenticatedApp({ user, logout }) {
         try {
           await deleteSession(sessionId);
           // 本地移除并同步分页计数
-          setSessions(prev => prev.filter(s => s.id !== sessionId));
-          setSessionsTotal(prev => Math.max(0, prev - 1));
+          removeSession(sessionId);
           if (currentSessionId === sessionId) {
             setCurrentSessionId(null);
             setMessages([]);
@@ -754,7 +724,7 @@ function AuthenticatedApp({ user, logout }) {
     if (!editingSessionName.trim()) return;
     try {
       await updateSession(sessionId, editingSessionName.trim());
-      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, name: editingSessionName.trim() } : s));
+      updateSessionName(sessionId, editingSessionName.trim());
       if (currentSessionId === sessionId) {
         setCurrentSessionName(`${editingSessionName.trim()}#${sessionId}`);
       }
@@ -777,7 +747,7 @@ function AuthenticatedApp({ user, logout }) {
       if (res.error) {
         messageApi.error({ content: res.error, key: 'summarize' });
       } else {
-        setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, name: res.name } : s));
+        updateSessionName(sessionId, res.name);
         if (currentSessionId === sessionId) {
           setCurrentSessionName(`${res.name}#${sessionId}`);
         }
@@ -1696,123 +1666,28 @@ const explainColumns = useMemo(() => explainResults.length > 0
       <div className="xtsql-app-bg" style={{ display: 'flex', flexDirection: 'column', height: '100vh' }}>
         <Layout style={{ flex: 1, background: 'transparent', overflow: 'hidden' }}>
           <Sider
-            width={260}
-            className="xtsql-sider"
-            style={{ background: 'var(--xtsql-bg-sider)', borderRight: '1px solid var(--xtsql-border)' }}
+            sessions={sessions}
+            sessionsTotal={sessionsTotal}
+            hasMoreSessions={hasMoreSessions}
+            loadingMoreSessions={loadingMoreSessions}
+            currentSessionId={currentSessionId}
+            editingSessionId={editingSessionId}
+            editingSessionName={editingSessionName}
+            user={user}
             collapsed={siderCollapsed}
-            collapsible
-            collapsedWidth={0}
-            trigger={null}
-          >
-          <div className="xtsql-sider-inner">
-            <div className="xtsql-sider-header">
-              <Button className="xtsql-new-chat-btn" icon={<PlusOutlined />} onClick={handleNewSession}>
-                新建对话
-              </Button>
-            </div>
-            <div className="xtsql-sider-list" ref={siderListRef} onScroll={handleSiderScroll}>
-              <div className="xtsql-sider-section">
-                <span>最近对话</span>
-                <span style={{ color: 'var(--xtsql-text-tertiary)' }}>{sessionsTotal || sessions.length}</span>
-              </div>
-              {sessions.length === 0 ? (
-                <div style={{ padding: '24px 8px', textAlign: 'center', fontSize: 12, color: 'var(--xtsql-text-tertiary)' }}>
-                  暂无对话
-                </div>
-              ) : (
-                <>
-                  {sessions.map(item => (
-                    <div
-                      key={item.id}
-                      className={`xtsql-session-item ${currentSessionId === item.id ? 'active' : ''}`}
-                      onClick={() => handleSessionClick(item)}
-                    >
-                      <div className="xtsql-session-meta">
-                        {editingSessionId === item.id ? (
-                          <Input
-                            size="small"
-                            value={editingSessionName}
-                            onChange={(e) => setEditingSessionName(e.target.value)}
-                            onPressEnter={() => handleRenameSession(item.id)}
-                            onBlur={() => handleRenameSession(item.id)}
-                            onClick={(e) => e.stopPropagation()}
-                            autoFocus
-                          />
-                        ) : (
-                          <>
-                            <div className="xtsql-session-name">{item.name}</div>
-                            <div className="xtsql-session-desc">
-                              {formatSqliteUtcLocal(item.created_at, { hour12: false })}
-                            </div>
-                          </>
-                        )}
-                      </div>
-                      <div className="xtsql-session-actions" onClick={(e) => e.stopPropagation()}>
-                        <Dropdown
-                          menu={{
-                            items: [
-                              { key: 'summarize', label: '总结聊天', icon: <FileTextOutlined style={{ fontSize: 13 }} />, onClick: () => handleSummarizeSession(item.id) },
-                              { key: 'rename', label: '重命名', icon: <EditOutlined style={{ fontSize: 13 }} />, onClick: () => handleStartRename(item) },
-                              { key: 'delete', label: '删除', icon: <DeleteOutlined style={{ fontSize: 13 }} />, danger: true, onClick: () => handleDeleteSession(item.id) }
-                            ]
-                          }}
-                          trigger={['click']}
-                        >
-                          <button className="xtsql-icon-btn" title="更多操作">
-                            <MoreOutlined />
-                          </button>
-                        </Dropdown>
-                      </div>
-                    </div>
-                  ))}
-                  {loadingMoreSessions && (
-                    <div className="xtsql-sider-loading">加载中...</div>
-                  )}
-                  {!hasMoreSessions && sessions.length > 0 && sessions.length >= sessionsTotal && sessionsTotal > 0 && (
-                    <div className="xtsql-sider-end">— 已显示全部 {sessionsTotal} 条对话 —</div>
-                  )}
-                </>
-              )}
-            </div>
-            <div className="xtsql-sider-footer">
-              <div className="xtsql-sider-actions">
-                {user?.role === 'admin' && (
-                  <Button icon={<SettingOutlined />} onClick={() => setConfigOpen(true)}>配置</Button>
-                )}
-                <Button icon={<FolderOutlined />} onClick={() => { if (skillTree.length === 0) loadSkillsList(); setSkillOpen(true); }}>Skill</Button>
-              </div>
-              <div className="xtsql-user-card">
-                <div className="xtsql-user-avatar">
-                  {(user?.display_name || user?.username || 'U').slice(0, 1).toUpperCase()}
-                </div>
-                <div className="xtsql-user-info">
-                  <div className="xtsql-user-name">{user?.display_name || user?.username || '用户'}</div>
-                  <div className="xtsql-user-role">{user?.role === 'admin' ? '管理员' : '普通用户'}</div>
-                </div>
-                <Tooltip title="修改密码">
-                  <Button type="text" size="small" icon={<LockOutlined />} onClick={() => setChangePwdOpen(true)} style={{ color: 'var(--xtsql-text-tertiary)' }} />
-                </Tooltip>
-                <Tooltip title="退出登录">
-                  <Button
-                    type="text"
-                    size="small"
-                    icon={<LogoutOutlined />}
-                    onClick={() => {
-                      Modal.confirm({
-                        title: '确认退出登录？',
-                        content: '退出后需要重新登录才能使用。',
-                        okText: '退出',
-                        cancelText: '取消',
-                        onOk: () => logout()
-                      });
-                    }}
-                    style={{ color: 'var(--xtsql-text-tertiary)' }}
-                  />
-                </Tooltip>
-              </div>
-            </div>
-          </div>
-        </Sider>
+            setEditingSessionName={setEditingSessionName}
+            onNewSession={handleNewSession}
+            onSessionClick={handleSessionClick}
+            onDeleteSession={handleDeleteSession}
+            onStartRename={handleStartRename}
+            onRenameSession={handleRenameSession}
+            onSummarizeSession={handleSummarizeSession}
+            onSiderScroll={handleSiderScroll}
+            onConfigClick={() => setConfigOpen(true)}
+            onSkillClick={() => { if (skillTree.length === 0) loadSkillsList(); setSkillOpen(true); }}
+            onChangePasswordClick={() => setChangePwdOpen(true)}
+            onLogout={logout}
+          />
 
         <Layout>
           <Content className="xtsql-content">
