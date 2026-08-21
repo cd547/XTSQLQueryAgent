@@ -6,13 +6,11 @@ const { Panel } = Collapse;
 
 import ConfirmDialog from './components/ConfirmDialog';
 import UserChoiceDialog from './components/UserChoiceDialog';
-import ChatMessage from './components/ChatMessage';
 import ChatInput from './components/ChatInput';
+import ChatPanel from './components/ChatPanel';
 import SqlPanel from './components/SqlPanel';
-import RoundGroup from './components/RoundGroup';
 import ConfigPanel from './components/ConfigPanel';
 import LoginPage from './components/LoginPage';
-import AppIcon from './components/AppIcon.jsx';
 import SessionMessagesModal from './components/modals/SessionMessagesModal.jsx';
 import ChangePasswordModal from './components/modals/ChangePasswordModal.jsx';
 import AddTableModal from './components/modals/AddTableModal.jsx';
@@ -1870,76 +1868,18 @@ const explainColumns = useMemo(() => explainResults.length > 0
 
             <div ref={chatContentRef} className="xtsql-chat-area" onScroll={handleChatScroll}>
               {activeTabKey === 'chat' ? (
-                messages.length === 0 ? (
-                  <div className="xtsql-empty">
-                    <div className="xtsql-empty-icon"><AppIcon size={64} style={{ borderRadius: 0 }} /></div>
-                    <div className="xtsql-empty-title">开始新对话</div>
-                    <div className="xtsql-empty-desc">用自然语言描述你想要的查询，AI 会自动生成 SQL 并执行</div>
-                    <div className="xtsql-suggestion-list">
-                      {(chatSuggestions.length > 0
-                        ? chatSuggestions
-                        : ['查询2024年的销售额', '统计每个分类的商品数量', '查找销售额最高的10个客户', '分析最近30天的订单趋势']
-                      ).map(s => (
-                        <div key={s} className="xtsql-suggestion" onClick={() => setInput(s)}>
-                          {s}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                ) : (
-                  <div className="xtsql-chat-inner">
-                    {groupedMessages.map((group, idx) => {
-                      const userQuestion = group.userQuestion;
-                      if (group.type === 'roundGroup') {
-                        return (
-                          <RoundGroup
-                            key={group.id}
-                            round={group.round}
-                            logs={group.logs}
-                            onToggleCollapse={handleToggleCollapse}
-                            onFavorite={handleFavorite}
-                            userQuestion={userQuestion}
-                            userAvatar={(user?.display_name || user?.username || 'U').slice(0, 1).toUpperCase()}
-                            favoriteStates={favoriteStates}
-                          />
-                        );
-                      }
-                      // single message (user / assistant / 单条 log)
-                      const msg = group.msg;
-                      return (
-                        <ChatMessage
-                          key={msg.id}
-                          msgId={msg.id}
-                          role={msg.role}
-                          content={msg.content}
-                          isStreaming={msg.isStreaming}
-                          timestamp={msg.timestamp}
-                          collapsed={msg.collapsed !== undefined ? msg.collapsed : true}
-                          onToggleCollapse={handleToggleCollapse}
-                          logType={msg.logType}
-                          // ★ 2026-08-17：透传 toolName（single log 消息也需要）
-                          //   历史回看：从 msg.toolName（regex 抽过）透传
-                          //   实时流式：单条 log 走 roundGroup 分支，但若 single 也走这里则从 msg.toolName 拿
-                          toolName={msg.toolName}
-                          sql={msg.sql}
-                          startTime={msg.startTime}
-                          elapsedMs={msg.elapsedMs}
-                          // ★ v5.16：single 消息（user/assistant/单 log）也透传 usage（v5.16 修复）
-                          //   之前 v5.16 第一版只改了 RoundGroup 内的 ChatMessage，遗漏了 single 分支的 assistant 消息
-                          //   → assistant 消息不走 roundGroup，usage 一直未传 → 缓存命中率不显示
-                          usage={msg.usage}
-                          onOpenSqlTab={handleOpenSqlTab}
-                          onCopyAndExecute={handleCopyAndExecute}
-                          userQuestion={userQuestion}
-                          favoriteState={favoriteStates[msg.id]}
-                          onFavorite={userQuestion ? ({ userQuestion: uq, sqlOutput }) => handleFavorite({ msgId: msg.id, userQuestion: uq, sqlOutput }) : undefined}
-                          userAvatar={(user?.display_name || user?.username || 'U').slice(0, 1).toUpperCase()}
-                          interrupted={msg.interrupted}  // ★ 2026-07-29：从 DB 或 SSE error 传入，渲染"已中断" badge
-                        />
-                      );
-                    })}
-                  </div>
-                )
+                <ChatPanel
+                  messages={messages}
+                  chatSuggestions={chatSuggestions}
+                  groupedMessages={groupedMessages}
+                  favoriteStates={favoriteStates}
+                  user={user}
+                  setInput={setInput}
+                  onToggleCollapse={handleToggleCollapse}
+                  onFavorite={handleFavorite}
+                  onOpenSqlTab={handleOpenSqlTab}
+                  onCopyAndExecute={handleCopyAndExecute}
+                />
               ) : (
                 <SqlPanel
                   sqlInput={sqlInput}
