@@ -358,6 +358,18 @@ html.xtsql-dark .xtsql-log-tag.return { color: #fbbf24; }
   padding: 2px 6px;
   border-radius: 4px;
   background: var(--xtsql-bg-elevated, rgba(0, 0, 0, 0.04));
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+/* ★ 2026-08-21：缓存命中率小饼图（14×14，圆环效果用 conic-gradient 实现） */
+.xtsql-msg-hitrate-pie {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  flex-shrink: 0;
 }
 .xtsql-action-btn {
   height: 28px;

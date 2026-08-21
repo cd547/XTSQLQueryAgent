@@ -1180,6 +1180,7 @@ export async function* runSqlAgent(
   signal,
   sessionId = null,
   username = null,
+  reasoningConfig,  // ★ 用户控件：{ enabled: boolean, effort: 'low'|'medium'|'high' }。undefined → 向后兼容 (enabled)
 ) {
   logger.info("runSqlAgent called", {
     question,
@@ -1358,6 +1359,14 @@ export async function* runSqlAgent(
       );
     }
 
+    // ★ 用户控件：Chat Completions API 的 thinking 字段只支持 type= 开关，不支持 effort
+    //   - undefined: 向后兼容旧调用 (enabled)
+    //   - enabled=false: type=disabled
+    //   - enabled=true:  type=enabled（effort 字段如果 API 支持会忽略，不传避免歧义）
+    const buildThinking = (cfg) => {
+      if (cfg === null || cfg === undefined) return { type: "enabled" };
+      return { type: cfg.enabled === false ? "disabled" : "enabled" };
+    };
     const requestParams = {
       model: llmModel,
       messages: requestMessages,
@@ -1365,9 +1374,7 @@ export async function* runSqlAgent(
       stream: true,
       stream_options: { include_usage: true },
       tools: prunedTools,
-      thinking: {
-        type: "enabled",
-      },
+      thinking: buildThinking(reasoningConfig),
     };
 
     if (signal?.aborted) {

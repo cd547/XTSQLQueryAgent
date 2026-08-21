@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
-import { Layout, Input, Button, Table, message, Spin, Drawer, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, Modal, Dropdown, Tooltip, theme } from 'antd';
+import { Layout, Input, Button, Table, message, Spin, Drawer, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, Modal, Dropdown, Tooltip, theme, Segmented, Space } from 'antd';
 import 'react-resizable/css/styles.css';
 import './App.css';
 const { Panel } = Collapse;
@@ -89,6 +89,23 @@ function AuthenticatedApp({ user, logout }) {
   const [sqlPreviewHeight, setSqlPreviewHeight] = useState(200);
   const [resultTableHeight, setResultTableHeight] = useState(800);
   const [currentTokens, setCurrentTokens] = useState(0);
+  // ★ 用户控件：思考模式
+  //   默认 high（与后端 history 行为一致，老用户感知差异最小）
+  //   持久化到 localStorage，避免每次刷新重置
+  const [reasoningEnabled, setReasoningEnabled] = useState(() => {
+    try {
+      const v = localStorage.getItem('xtsql.reasoning.enabled');
+      return v === null ? true : v === 'true';
+    } catch (e) { return true; }
+  });
+  const [reasoningEffort, setReasoningEffort] = useState(() => {
+    try {
+      const v = localStorage.getItem('xtsql.reasoning.effort');
+      return ['low', 'medium', 'high'].includes(v) ? v : 'high';
+    } catch (e) { return 'high'; }
+  });
+  useEffect(() => { try { localStorage.setItem('xtsql.reasoning.enabled', String(reasoningEnabled)); } catch (e) {} }, [reasoningEnabled]);
+  useEffect(() => { try { localStorage.setItem('xtsql.reasoning.effort', reasoningEffort); } catch (e) {} }, [reasoningEffort]);
   const [skillTreeCollapsed, setSkillTreeCollapsed] = useState(false);
   const [skillContentCollapsed, setSkillContentCollapsed] = useState(false);
   const [skillLocked, setSkillLocked] = useState(true);
@@ -517,7 +534,10 @@ function AuthenticatedApp({ user, logout }) {
             role: normalizedRole,
             content: m.content || m.sql || '',
             sql: m.sql || '',
-            timestamp: m.created_at,
+            // ★ 2026-08-21：历史回显的时间来自 SQLite CURRENT_TIMESTAMP（UTC 无时区字符串），
+            //   前端 new Date() 会按本地时区错解析（少 8 小时），
+            //   此处加 replace(' ','T')+'Z' 显式标记为 UTC ISO 格式，让 ChatMessage 正确显示本地时区
+            timestamp: m.created_at ? m.created_at.replace(' ', 'T') + 'Z' : m.created_at,
             logType: m.role === 'LLM' ? 'llm' : m.role === 'tool_return' ? 'return' : 'call',
             // ★ 2026-08-17：历史回看抽取 toolName
             //   老数据：m.content 含 "🔧 调用工具: {toolName}\n参数: ..." → regex 抽
@@ -960,7 +980,13 @@ function AuthenticatedApp({ user, logout }) {
     const myStreamVersion = ++streamRequestIdRef.current;
 
     try {
-      const response = await api.queryGenerateStream({ question: userMessage, schemaMode: 'stream', sessionId: currentSessionId }, abortController.signal);
+      const response = await api.queryGenerateStream({
+        question: userMessage,
+        schemaMode: 'stream',
+        sessionId: currentSessionId,
+        // ★ 用户控件：思考模式（每次请求透传当前 UI 选择）
+        reasoning: { enabled: reasoningEnabled, effort: reasoningEffort },
+      }, abortController.signal);
 
       if (!response.ok) {
         throw new Error('请求失败');
@@ -1850,7 +1876,7 @@ const explainColumns = useMemo(() => explainResults.length > 0
                           <>
                             <div className="xtsql-session-name">{item.name}</div>
                             <div className="xtsql-session-desc">
-                              {item.created_at ? new Date(item.created_at).toLocaleString() : ''}
+                              {item.created_at ? new Date(item.created_at.replace(' ', 'T') + 'Z').toLocaleString('zh-CN', { hour12: false }) : ''}
                             </div>
                           </>
                         )}
@@ -2355,6 +2381,36 @@ children: currentResults.length > 0 ? (
                   <div className="xtsql-input-footer">
                     <div className="xtsql-input-meta">
                       {currentModel && <span className="xtsql-input-model-tag">{currentModel}</span>}
+                      {/* ★ 用户控件：思考模式
+                          - 位置：模型名称 与 累计 tokens 之间
+                          - 持久化：localStorage（刷新后保留）
+                          - Segmented 单控件表达「关/低/中/高」4 档，比 Switch+Select 更紧凑
+                          - Chat Completions 模式下强度选择无效（API 不支持），仅开关生效
+                          - label + Segmented 用 Space size=2 收紧（meta 容器 gap:10px 太大） */}
+                      <Space size={2}>
+                        <span className="xtsql-input-meta-label">思考模式：</span>
+                        <Tooltip title="思考模式：高=深度推理（耗 token），低=轻度推理，关=不推理">
+                          <Segmented
+                            size="small"
+                            className="xtsql-reasoning-segmented"
+                            value={reasoningEnabled ? reasoningEffort : 'off'}
+                            onChange={(v) => {
+                              if (v === 'off') {
+                                setReasoningEnabled(false);
+                              } else {
+                                setReasoningEnabled(true);
+                                setReasoningEffort(v);
+                              }
+                            }}
+                            options={[
+                              { value: 'off', label: '关' },
+                              { value: 'low', label: '低' },
+                              { value: 'medium', label: '中' },
+                              { value: 'high', label: '高' },
+                            ]}
+                          />
+                        </Tooltip>
+                      </Space>
                       {currentTokens > 0 && (
                         <Tooltip title="该会话累计消耗的 token（含输出，按 API usage 计）">
                           <span className="xtsql-input-tokens">

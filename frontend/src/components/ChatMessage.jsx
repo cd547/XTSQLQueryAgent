@@ -3,6 +3,7 @@ import { Button, Spin, Tooltip } from 'antd';
 import { CaretRightOutlined, DownOutlined, UserOutlined, CopyOutlined, ThunderboltOutlined, CheckOutlined, StarOutlined, StarFilled } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
 import AppIcon from './AppIcon.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { getMarkdownRenderers } from './markdownRenderers.jsx';
@@ -193,26 +194,119 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
           <div className="xtsql-msg-actions">
             {hitRateInfo && (
               <Tooltip
-                title={
-                  <div style={{ fontSize: 12 }}>
+                  styles={{
+                    root: { maxWidth: 'none' },
+                    container: { maxWidth: 'none' },
+                    body: { maxWidth: 400 },
+                  }}
+                  title={
+                    // ★ 2026-08-21：固定 width 撑开 Tooltip
+                    <div style={{ fontSize: 12, width: 360 }}>
                     <div>prefix cache 命中率</div>
                     <div>累计 命中 {hitRateInfo.cached} / 未命中 {hitRateInfo.miss} = {hitRateInfo.hitRate}%</div>
                     <div>prompt {hitRateInfo.prompt} · completion {hitRateInfo.completion} · total {hitRateInfo.total}</div>
-                    {hitRateInfo.rounds.length > 0 && (
-                      <div style={{ marginTop: 4, maxHeight: 180, overflowY: 'auto', fontSize: 11, lineHeight: 1.7 }}>
-                        <div>各轮命中率：</div>
-                        {hitRateInfo.rounds.map(r => (
-                          <div key={r.round}>
-                            Round {r.round}: {r.rate !== null ? `${r.rate}%` : '—'}
-                            {r.rate !== null && `（命中 ${r.cached} / prompt ${r.prompt}）`}
+                    {hitRateInfo.rounds.length > 0 && (() => {
+                      // ★ 2026-08-21：各轮命中率折线图（Recharts）
+                      //   y轴 0-100 表示命中率百分比，x轴为轮次
+                      //   Tooltip 内嵌定宽图表；hover 数据点显示该轮的命中/未命中/prompt
+                      const roundsData = hitRateInfo.rounds
+                        .map((r) => ({
+                          round: `R${r.round}`,
+                          rawRound: r.round,
+                          rate: r.rate !== null ? parseFloat(r.rate) : null,
+                          cached: r.cached,
+                          miss: r.miss,
+                          prompt: r.prompt,
+                        }))
+                        .filter((d) => d.rate !== null);
+                      if (roundsData.length === 0) return null;
+                      const tickStyle = { fontSize: 10, fill: 'rgba(255,255,255,0.65)' };
+                      // ★ 2026-08-21：图表宽度留足余量（Tooltip 内边距 + Recharts 内部 margin）
+                      //   轮次 > 6 时 x 轴标签 -30° 旋转避免重叠
+                      const chartW = 320;
+                      const chartH = 140;
+                      const xAngle = roundsData.length > 6 ? -30 : 0;
+                      const xTickProps = xAngle
+                        ? { angle: xAngle, textAnchor: 'end', dy: 4, height: 36 }
+                        : { height: 24 };
+                      return (
+                        <div style={{ marginTop: 8 }}>
+                          <div style={{ fontSize: 11, opacity: 0.85, marginBottom: 4 }}>各轮命中率：</div>
+                          <div style={{ background: 'rgba(255,255,255,0.04)', borderRadius: 4, padding: '4px 2px 0' }}>
+                            <LineChart
+                              width={chartW}
+                              height={chartH}
+                              data={roundsData}
+                              margin={{ top: 8, right: 8, bottom: 4, left: -12 }}
+                            >
+                              <CartesianGrid stroke="rgba(255,255,255,0.10)" strokeDasharray="3 3" vertical={false} />
+                              <XAxis
+                                dataKey="round"
+                                interval={0}
+                                tick={tickStyle}
+                                axisLine={{ stroke: 'rgba(255,255,255,0.25)' }}
+                                tickLine={{ stroke: 'rgba(255,255,255,0.25)' }}
+                                {...xTickProps}
+                              />
+                              <YAxis
+                                domain={[0, 100]}
+                                ticks={[0, 25, 50, 75, 100]}
+                                tickFormatter={(v) => `${v}%`}
+                                tick={tickStyle}
+                                axisLine={{ stroke: 'rgba(255,255,255,0.25)' }}
+                                tickLine={{ stroke: 'rgba(255,255,255,0.25)' }}
+                                width={40}
+                              />
+                              <ReTooltip
+                                cursor={{ stroke: 'rgba(255,255,255,0.25)', strokeWidth: 1 }}
+                                contentStyle={{
+                                  background: 'rgba(20,20,20,0.95)',
+                                  border: '1px solid rgba(255,255,255,0.15)',
+                                  borderRadius: 4,
+                                  padding: '6px 9px',
+                                  fontSize: 11,
+                                  color: 'rgba(255,255,255,0.92)',
+                                }}
+                                labelStyle={{ color: 'rgba(255,255,255,0.92)', fontWeight: 600, marginBottom: 2 }}
+                                itemStyle={{ color: 'rgba(255,255,255,0.92)', padding: 0 }}
+                                formatter={(value, _name, props) => {
+                                  const p = props && props.payload;
+                                  if (!p) return [`${value}%`, '命中率'];
+                                  return [
+                                    `${value}%  ·  命中 ${p.cached} / 未命中 ${p.miss} / prompt ${p.prompt}`,
+                                    '命中率',
+                                  ];
+                                }}
+                              />
+                              <ReferenceLine y={50} stroke="rgba(255,255,255,0.18)" strokeDasharray="2 3" />
+                              <Line
+                                type="monotone"
+                                dataKey="rate"
+                                name="命中率"
+                                stroke="#69b1ff"
+                                strokeWidth={1.8}
+                                dot={{ r: 3.5, fill: '#69b1ff', stroke: 'rgba(255,255,255,0.85)', strokeWidth: 1 }}
+                                activeDot={{ r: 5, fill: '#69b1ff', stroke: '#fff', strokeWidth: 1.5 }}
+                                isAnimationActive={false}
+                              />
+                            </LineChart>
                           </div>
-                        ))}
-                      </div>
-                    )}
+                        </div>
+                      );
+                    })()}
                   </div>
                 }
               >
-                <span className="xtsql-msg-hitrate">缓存命中率 {hitRateInfo.hitRate}%</span>
+                <span className="xtsql-msg-hitrate">
+                  缓存命中率：
+                  {/* ★ 2026-08-21：缓存命中率小饼图（14×14 灰色系：深灰命中 / 浅灰未命中） */}
+                  <span
+                    className="xtsql-msg-hitrate-pie"
+                    style={{
+                      background: `conic-gradient(#4a4a4a 0% ${hitRateInfo.hitRate}%, #d9d9d9 ${hitRateInfo.hitRate}% 100%)`,
+                    }}
+                  />
+                </span>
               </Tooltip>
             )}
             {elapsedStr && (

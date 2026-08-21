@@ -83,6 +83,25 @@
   border-radius: var(--xtsql-radius-pill);
   transition: width 0.3s ease, background 0.3s;
 }
+/* ★ 思考模式控件：左侧 label 文字 + 右侧 Segmented */
+.xtsql-input-meta-label {
+  font-size: 10.5px;
+  color: var(--xtsql-text-tertiary);
+  flex-shrink: 0;
+  white-space: nowrap;
+}
+.xtsql-reasoning-segmented.ant-segmented {
+  font-size: 10.5px;
+}
+.xtsql-reasoning-segmented .ant-segmented-item-label {
+  padding: 0 8px;
+  line-height: 22px;
+}
+.xtsql-reasoning-segmented .ant-segmented-item-selected {
+  background: var(--xtsql-accent-soft) !important;
+  color: var(--xtsql-accent) !important;
+  font-weight: 600;
+}
 .xtsql-send-btn {
   width: 34px;
   height: 34px;

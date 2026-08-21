@@ -337,6 +337,7 @@ async function updateSessionTokens({ sessionId, totalTokens }) {
 async function* _runSqlAgentResponsesStreamGen({
   question, historyText, signal, sessionId, username,
   allTools, systemMessage, cfg, maxToolCalls: maxToolCallsInput,
+  reasoningConfig,  // ★ 用户控件：{ enabled: boolean, effort: 'low'|'medium'|'high' }。undefined → 保持向后兼容 (high)
 }) {
   logger.info("runSqlAgentResponses called", {
     question, historyLength: historyText?.length, sessionId, username,
@@ -451,6 +452,16 @@ async function* _runSqlAgentResponsesStreamGen({
     //     - model / stream / temperature / max_output_tokens / tools / instructions 全部支持
     //     - parallel_tool_calls / max_tool_calls / previous_response_id / store / stream_options 静默忽略（保留无害）
     const inputItems = convertMessagesToInputItems(requestMessages);
+    // ★ 用户控件：reasoning 字段根据 reasoningConfig 动态生成
+    //   - undefined: 向后兼容旧调用（保持 'high'）
+    //   - enabled=false: 完全不发 reasoning 字段（让 API 默认行为生效）
+    //   - enabled=true: 按 effort 透传（low/medium/high）
+    const buildReasoning = (cfg) => {
+      if (cfg === null || cfg === undefined) return { effort: "high" };
+      if (cfg.enabled === false) return undefined;  // 不传 reasoning 字段
+      return { effort: cfg.effort || "high" };
+    };
+    const reasoningParam = buildReasoning(reasoningConfig);
     const requestParams = {
       model: llmModel,
       input: inputItems,
@@ -459,8 +470,8 @@ async function* _runSqlAgentResponsesStreamGen({
       stream: true,
       max_output_tokens: 20000,
       tools: prunedTools,
-      reasoning: { effort: "high" },
       parallel_tool_calls: true,
+      ...(reasoningParam ? { reasoning: reasoningParam } : {}),
     };
 
     queueLog(
@@ -723,6 +734,7 @@ export async function runSqlAgentResponsesHandler(req, res, ctx) {
     const generator = _runSqlAgentResponsesStreamGen({
       question, historyText, signal: abortController.signal, sessionId, username,
       allTools, systemMessage, cfg: llmCfg || cfg,
+      reasoningConfig,  // ★ 用户控件：透传
     });
 
     for await (const chunk of generator) {

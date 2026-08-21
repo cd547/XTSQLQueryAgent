@@ -301,7 +301,20 @@ router.delete('/messages/:sessionId', async (req, res) => {
 });
 
 router.post('/generate', async (req, res) => {
-  let { question, sessionId, schemaMode } = req.body;
+  let { question, sessionId, schemaMode, reasoning } = req.body;
+
+  // ★ 用户控件：思考模式参数
+  //   - 前端不传 → undefined → 后端两条路径都按各自默认值（保持向后兼容）
+  //   - enabled=false → 关闭思考
+  //   - enabled=true → 按 effort 启用（low/medium/high）
+  //   这里只做白名单清洗，不做默认值填充（让 handler 内部决定）
+  if (reasoning && typeof reasoning === 'object') {
+    const allowedEffort = ['low', 'medium', 'high'];
+    if (reasoning.effort && !allowedEffort.includes(reasoning.effort)) {
+      reasoning.effort = 'high';
+    }
+    reasoning.enabled = reasoning.enabled !== false;  // 默认 true
+  }
 
   // 如果没有sessionId，自动创建（归属当前用户）
   if (!sessionId) {
@@ -435,13 +448,14 @@ router.post('/generate', async (req, res) => {
             }
           })(),
           logger,
+          reasoningConfig: reasoning,  // ★ 用户控件：透传到 Responses 路径
         });
         return;
       }
       // apiMode === 'chat_completions' 或无配置（旧用户） → 原代码 0 改动
 
       try {
-        const generator = runSqlAgent(question, historyText, abortController.signal, sessionId, req.user.username);
+        const generator = runSqlAgent(question, historyText, abortController.signal, sessionId, req.user.username, reasoning);
         let fullContent = '';
         let sql = '';
         let message = '';
