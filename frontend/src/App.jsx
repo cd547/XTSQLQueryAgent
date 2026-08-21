@@ -29,6 +29,7 @@ import { readSSEStream } from './utils/sseStream';
 import { sqliteUtcToIso, formatSqliteUtcLocal } from './utils/formatTime';
 import { exportToExcel } from './utils/excel';
 import { extractToolName } from './utils/toolName';
+import { closeableMessage } from './utils/message.jsx';
 import { SESSIONS_PAGE_SIZE } from './utils/constants.js';
 import { useSessionList } from './hooks/useSessionList.js';
 import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages, saveFavoriteQuery, checkFavorites, unfavoriteQuery, getFavoriteSuggestions } from './api';
@@ -1453,7 +1454,7 @@ function AuthenticatedApp({ user, logout }) {
             queryTime: elapsed
           }
         }));
-        messageApi.success(`查询成功，${res.rowCount} 条结果，耗时 ${elapsed}ms`);
+        closeableMessage(messageApi, 'success', `查询成功，${res.rowCount} 条结果，耗时 ${elapsed}ms`);
       }
     } finally {
       setLoading(false);
@@ -1477,7 +1478,7 @@ const handleExplain = async (sql) => {
       setExplainResults(newResults);
       setExplainPanelOpen(true);
       setIsExplainResult(true);
-      messageApi.success(`EXPLAIN 完成，${res.rowCount} 行，耗时 ${elapsed}ms`);
+      closeableMessage(messageApi, 'success', `EXPLAIN 完成，${res.rowCount} 行，耗时 ${elapsed}ms`);
     }
   } finally {
     setLoading(false);
