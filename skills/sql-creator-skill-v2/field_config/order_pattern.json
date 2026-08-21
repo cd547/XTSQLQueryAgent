@@ -1,0 +1,50 @@
+{
+  "table_name": "order_pattern",
+  "field_aliases": {
+    "id": ["费用类型ID", "订单模式ID"],
+    "name": ["费用类型名称", "订单模式名称"],
+    "admin_division": ["事业部"],
+    "type": ["订单模式类型"],
+    "contract_type": ["合同类型"],
+    "include_calc": ["是否纳入渠道佣金结算统计"],
+    "del": ["删除标记"]
+  },
+  "field_enums": {
+    "type": {
+      "1": "扣课订单",
+      "2": "普通订单"
+    },
+    "contract_type": {
+      "1": "合同",
+      "2": "收据"
+    },
+    "include_calc": {
+      "0": "不纳入",
+      "1": "纳入"
+    }
+  },
+  "virtual_associations": [
+    {
+      "name": "关联订单主表",
+      "target_table": "order_student",
+      "join_condition": "order_student.pattern_id = order_pattern.id",
+      "type": "one_to_many",
+      "description": "订单的费用类型，order_student.pattern_id 指向 order_pattern.id",
+      "business_rule": "查询时必须 del = 0"
+    },
+    {
+      "name": "关联行政事业部",
+      "target_table": "admin_division",
+      "join_condition": "admin_division.id = order_pattern.admin_division",
+      "type": "many_to_one",
+      "description": "订单模式所属事业部",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {
+  },
+  "business_rules": [
+    "order_student.pattern_id 枚举：1=课程, 2=学杂费, 3=其他（与 order_pattern.id 对应）"
+  ]
+}

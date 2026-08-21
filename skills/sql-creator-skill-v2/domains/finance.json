@@ -16,6 +16,11 @@
     "order_student_consume",
     "admin_pay_order",
     "admin_pay_order_student",
-    "order_student_received_reject"
+    "order_student_received_reject",
+    "order_entry",
+    "order_pattern",
+    "order_approval_order_student_log",
+    "order_student_reject",
+    "order_approval_configure_user"
   ]
 }

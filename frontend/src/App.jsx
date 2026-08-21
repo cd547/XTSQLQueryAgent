@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
 import { Layout, Input, Button, Spin, Drawer, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, Modal, Dropdown, Tooltip, theme, Segmented, Space, App as AntdApp } from 'antd';
 import 'react-resizable/css/styles.css';
 import './App.css';
@@ -38,6 +38,7 @@ import { useFavorites } from './hooks/useFavorites.js';
 import { useTagConfirmation } from './hooks/useTagConfirmation.js';
 import { useUserChoice } from './hooks/useUserChoice.js';
 import { useAppConfig } from './hooks/useAppConfig.js';
+import { useScrollMemory } from './hooks/useScrollMemory.js';
 import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages } from './api';
 
 const { TextArea } = Input;
@@ -118,6 +119,12 @@ function AuthenticatedApp({ user, logout }) {
   const [skillSelectedFile, setSkillSelectedFile] = useState(null);
   const [tabs, setTabs] = useState({ 'chat': { title: '聊天' } });
   const [activeTabKey, setActiveTabKey] = useState('chat');
+  // 滚动位置记忆 + 流式自动跟随(独立 hook,chatContentRef/messagesEndRef 供 JSX 绑定,
+  // isNearBottomRef/streamingScrollRafRef 供 handleSend SSE 用,saveChatScrollTop 供切 tab 前调)
+  const {
+    chatContentRef, messagesEndRef, isNearBottomRef, streamingScrollRafRef,
+    saveChatScrollTop, handleTabChange, handleChatScroll, resetMessageCount,
+  } = useScrollMemory({ activeTabKey, setActiveTabKey, currentSessionId, messagesLength: messages.length });
   const [currentSessionName, setCurrentSessionName] = useState('聊天');
   const [sqlInput, setSqlInput] = useState('');
   const [sqlEditorInst, setSqlEditorInst] = useState(null);
@@ -159,20 +166,7 @@ function AuthenticatedApp({ user, logout }) {
   const [showMessagesModal, setShowMessagesModal] = useState(false);
   const [sessionMessagesContent, setSessionMessagesContent] = useState('');
   const [sessionMessagesTokens, setSessionMessagesTokens] = useState(0);
-  const [chatScrollTop, setChatScrollTop] = useState(0);
   const contentRef = useRef('');
-  const messageCountRef = useRef(0);
-  const messagesEndRef = useRef(null);
-  // ★ 修复：用户是否停留在聊天区底部附近（阈值 100px）。
-  //   流式输出时仅当用户贴近底部才自动跟随滚动；用户上翻查看历史时不得被实时输出拉回底部。
-  //   初始为 true：进入会话时自动滚到最新消息。
-  const isNearBottomRef = useRef(true);
-  // 记录上一次自动滚动的会话 id，用于区分"切换会话"与"同会话流式增长"
-  const lastScrollSessionRef = useRef(null);
-  // Per-session scrollTop 记忆：sessionId -> scrollTop。
-  // 用 ref 而非 state，避免 onScroll 频繁触发重渲染。
-  // 切换会话时优先恢复该会话上次的位置；无记忆时回退到"滚到最新消息"。
-  const sessionScrollTopsRef = useRef(new Map());
   const inputResizerRef = useRef(null);
   const initialLoadRef = useRef(false);
   const abortControllerRef = useRef(null);
@@ -181,9 +175,6 @@ function AuthenticatedApp({ user, logout }) {
   //   但 explain-analyze 是 Modal 关闭触发的，混用会让用户点错按钮互相影响。
   //   独立 ref 也让"切会话只 abort handleSend，不影响 modal 内正在跑的 analysis"成为可能。
   const explainAbortControllerRef = useRef(null);
-  const chatContentRef = useRef(null);
-  // 流式响应期间用于 rAF 节流的滚动句柄（避免每 chunk 触发 scrollIntoView）
-  const streamingScrollRafRef = useRef(0);
   // 客户端消息 id 计数器：保证新创建的每条消息都有稳定唯一 key
   // DB 加载的消息用 `db-<row_id>` 命名空间，与客户端 `c-N` 互不冲突
   const clientMsgIdRef = useRef(0);
@@ -202,39 +193,7 @@ function AuthenticatedApp({ user, logout }) {
   //   数据结构：{ [round]: { prompt_tokens, completion_tokens, total_tokens, cached_tokens } }
   //   用途：在 ChatMessage 耗时左边展示"缓存命中率"
   const roundUsagesRef = useRef({});
-  
-  // 保存 chat 页滚动位置：仅在当前是 chat 页时才需要保存。
-  // 抽出来供「复制并执行」「复制到SQL查询」「新增SQL页」等直接 setActiveTabKey 的入口复用，
-  // 避免绕开 handleTabChange 导致 scrollTop 没保存、切回时跳回顶部。
-  const saveChatScrollTop = () => {
-    if (activeTabKey === 'chat' && chatContentRef.current) {
-      setChatScrollTop(chatContentRef.current.scrollTop);
-    }
-  };
 
-  const handleTabChange = (key) => {
-    saveChatScrollTop();
-    setActiveTabKey(key);
-  };
-
-  // 切回 chat 时恢复滚动位置。
-  // 用 useLayoutEffect 而非 useEffect：必须在浏览器绘制前同步完成，
-  // 否则用户会看到"先滚回顶部，再滚到目标位置"的动画。
-  // 同时临时覆盖 scroll-behavior: smooth（来自全局 CSS），
-  // 避免 scrollTop 赋值触发平滑滚动动画。
-  useLayoutEffect(() => {
-    if (activeTabKey === 'chat' && chatContentRef.current) {
-      const el = chatContentRef.current;
-      const prev = el.style.scrollBehavior;
-      el.style.scrollBehavior = 'auto';
-      el.scrollTop = chatScrollTop;
-      // 下一帧恢复内联样式（让用户后续手动滚动仍走 smooth 行为）
-      requestAnimationFrame(() => {
-        el.style.scrollBehavior = prev;
-      });
-    }
-  }, [activeTabKey, chatScrollTop]);
-  
   useEffect(() => {
     if (initialLoadRef.current) return;
     initialLoadRef.current = true;
@@ -348,44 +307,7 @@ function AuthenticatedApp({ user, logout }) {
       }
     }
   };
-  
-  useEffect(() => {
-    if (messages.length > messageCountRef.current && currentSessionId) {
-      const saved = sessionScrollTopsRef.current.get(currentSessionId);
-      messageCountRef.current = messages.length;
-      // 区分"切换会话"（恢复该会话浏览位置）与"同会话流式增长"（仅在贴近底部时跟随）
-      const sessionChanged = lastScrollSessionRef.current !== currentSessionId;
-      lastScrollSessionRef.current = currentSessionId;
-      // rAF 等 DOM 更新完成再操作 scrollTop，避免消息尚未渲染时 scrollHeight 还是旧值
-      requestAnimationFrame(() => {
-        if (!chatContentRef.current) return;
-        if (sessionChanged) {
-          // 切换会话：有记忆则恢复该会话上次浏览位置，无记忆则滚到最新消息
-          if (saved !== undefined) {
-            chatContentRef.current.scrollTop = saved;
-          } else {
-            messagesEndRef.current?.scrollIntoView({ behavior: 'instant' });
-          }
-        } else if (isNearBottomRef.current) {
-          // 同会话流式增长：仅当用户贴近底部时跟随输出
-          messagesEndRef.current?.scrollIntoView({ behavior: 'instant' });
-        }
-        // 用户已上翻查看历史（!isNearBottomRef.current）：保持当前位置，不滚动
-      });
-    }
-  }, [messages.length, currentSessionId]);
 
-  // onScroll 实时记录当前会话的 scrollTop
-  // 同时更新"是否贴近底部"标记，供流式自动滚动判断
-  // 用 ref.set 不触发重渲染，性能开销可忽略
-  const handleChatScroll = useCallback(() => {
-    if (currentSessionId && chatContentRef.current) {
-      const el = chatContentRef.current;
-      sessionScrollTopsRef.current.set(currentSessionId, el.scrollTop);
-      isNearBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 100;
-    }
-  }, [currentSessionId]);
-  
   const handleNewSession = async () => {
     try {
       const data = await createSession('新对话');
@@ -404,7 +326,7 @@ function AuthenticatedApp({ user, logout }) {
       setMessages([]);
       setResults([]);
       setShowResults(false);
-      messageCountRef.current = 0;
+      resetMessageCount();
       // 拉取新会话建议（用户决策：点新建对话时重新拉）
       refetchSuggestions();
     } catch (e) {
@@ -429,7 +351,7 @@ function AuthenticatedApp({ user, logout }) {
     setActiveTabKey('chat');
     const newName = session.name ? `${session.name}#${session.id}` : '聊天';
     setCurrentSessionName(newName);
-    messageCountRef.current = 0;
+    resetMessageCount();
     // 先重置查看消息按钮颜色为默认色（同步，避免并行请求延迟导致旧色残留）
     setSessionMessagesTokens(0);
     // 3 个独立 API 串行 → 并行（PERF-4 修复），切换会话快 ~2 倍

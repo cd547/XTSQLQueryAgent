@@ -1,0 +1,37 @@
+{
+  "table_name": "order_approval_order_student_log",
+  "field_aliases": {
+    "id": ["审批记录ID"],
+    "order_student_id": [ "订单ID"],
+    "level": ["审批等级", "审批级别"],
+    "admin_user_id": ["审批人ID", "订单审批人ID"],
+    "created_time": ["审批时间", "订单审批时间", "创建时间"],
+    "remarks": [ "审批备注"],
+    "del": ["删除标记"]
+  },
+  "field_enums": {},
+  "virtual_associations": [
+    {
+      "name": "关联订单主表",
+      "target_table": "order_student",
+      "join_condition": "order_student.id = order_approval_order_student_log.order_student_id",
+      "type": "many_to_one",
+      "business_rule": "查询时必须 del = 0"
+    },
+    {
+      "name": "关联审批人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = order_approval_order_student_log.admin_user_id",
+      "type": "many_to_one",
+      "description": "执行审批的操作人，admin_user.user 为审批人姓名",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {
+    "del_must_be_zero": "所有查询必须加 del = 0"
+  },
+  "business_rules": [
+    "一个订单可能有多条审批记录（多级审批）"
+  ]
+}

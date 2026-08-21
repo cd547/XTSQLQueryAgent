@@ -1649,7 +1649,9 @@
     {
       "name": "edu_room_study",
       "description": "班级-班级排课记录表",
-      "tags": ["班课"],
+      "tags": [
+        "班课"
+      ],
       "related_tables": [
         "edu_course_exam_subject_name",
         "edu_class_type",
@@ -1708,6 +1710,57 @@
       "related_tables": [
         "edu_study",
         "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "order_entry",
+      "description": "项目名称",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "order_pattern",
+      "description": "订单模式",
+      "tags": [],
+      "related_tables": [
+        "admin_division"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "order_approval_order_student_log",
+      "description": "订单审批记录",
+      "tags": [],
+      "related_tables": [
+        "order_student",
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "order_student_reject",
+      "description": "订单驳回记录",
+      "tags": [],
+      "related_tables": [
+        "order_student",
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "order_approval_configure_user",
+      "description": "审批流程配置用户",
+      "tags": [],
+      "related_tables": [
+        "admin_user",
+        "order_approval_configure"
       ],
       "business_constraints": [],
       "business_rules": []

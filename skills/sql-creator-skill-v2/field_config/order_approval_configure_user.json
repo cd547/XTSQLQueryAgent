@@ -1,0 +1,34 @@
+{
+  "table_name": "order_approval_configure_user",
+  "field_aliases": {
+    "id": ["记录ID"],
+    "order_approval_configure_id": ["审批流程配置ID", "流程ID"],
+    "level": ["审批等级"],
+    "admin_user_id": ["审批人ID", "用户ID"]
+  },
+  "field_enums": {},
+  "virtual_associations": [
+    {
+      "name": "关联审批流程配置",
+      "target_table": "order_approval_configure",
+      "join_condition": "order_approval_configure.id = order_approval_configure_user.order_approval_configure_id",
+      "type": "many_to_one",
+      "description": "该用户所属的审批流程配置",
+      "business_rule": ""
+    },
+    {
+      "name": "关联审批人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = order_approval_configure_user.admin_user_id",
+      "type": "many_to_one",
+      "description": "配置的审批人，admin_user.user 为审批人姓名",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    "此表为审批流程配置表，定义了每个审批流程的各等级审批人",
+    "一个流程可配置多个等级的审批人（level 1/2/3...）"
+  ]
+}

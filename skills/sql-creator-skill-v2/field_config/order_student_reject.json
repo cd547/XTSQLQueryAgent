@@ -1,0 +1,36 @@
+{
+  "table_name": "order_student_reject",
+  "field_aliases": {
+    "id": ["驳回记录ID"],
+    "order_student_id": ["订单ID", "学生订单ID"],
+    "admin_user_id": ["审批人ID", "驳回人ID"],
+    "level": ["审批等级"],
+    "remarks": ["驳回原因", "驳回备注", "备注"],
+    "created_time": ["驳回时间", "创建时间"]
+  },
+  "field_enums": {},
+  "virtual_associations": [
+    {
+      "name": "关联订单主表",
+      "target_table": "order_student",
+      "join_condition": "order_student.id = order_student_reject.order_student_id",
+      "type": "many_to_one",
+      "description": "驳回记录所属的订单",
+      "business_rule": ""
+    },
+    {
+      "name": "关联驳回人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = order_student_reject.admin_user_id",
+      "type": "many_to_one",
+      "description": "执行驳回的操作人，admin_user.user 为驳回人姓名",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    "查询驳回原因时只取最新一条：ORDER BY created_time DESC LIMIT 0,1",
+    "created_time 为毫秒时间戳"
+  ]
+}

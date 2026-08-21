@@ -1,0 +1,25 @@
+{
+  "table_name": "order_entry",
+  "field_aliases": {
+    "id": ["项目ID", "订单项目ID"],
+    "name": ["项目名称", "订单项目名称"],
+    "simple": ["字母简称", "项目简称"],
+    "del": ["删除标记"]
+  },
+  "field_enums": {},
+  "virtual_associations": [
+    {
+      "name": "关联订单主表",
+      "target_table": "order_student",
+      "join_condition": "order_student.order_entry_id = order_entry.id",
+      "type": "one_to_many",
+      "description": "订单关联的项目名称，order_student.order_entry_id 指向 order_entry.id",
+      "business_rule": "查询时必须 del = 0"
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {
+    "del_must_be_zero": "所有查询必须加 del = 0"
+  },
+  "business_rules": []
+}
