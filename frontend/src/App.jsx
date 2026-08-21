@@ -34,7 +34,8 @@ import { SESSIONS_PAGE_SIZE } from './utils/constants.js';
 import { groupMessagesByRound } from './utils/groupMessages';
 import { hydrateLoadedMessages } from './utils/messageHistory';
 import { useSessionList } from './hooks/useSessionList.js';
-import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages, saveFavoriteQuery, checkFavorites, unfavoriteQuery, getFavoriteSuggestions } from './api';
+import { useFavorites } from './hooks/useFavorites.js';
+import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages } from './api';
 
 const { TextArea } = Input;
 const { Content } = Layout;
@@ -74,6 +75,10 @@ function AuthenticatedApp({ user, logout }) {
     addSession, removeSession, updateSessionName,
     loadMoreSessions, handleSiderScroll, sessionsLoadingRef,
   } = useSessionList();
+  const {
+    favoriteStates, handleFavorite, hydrateFavoriteStates, clearFavoriteStates,
+    chatSuggestions, refetchSuggestions,
+  } = useFavorites({ messageApi });
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -344,7 +349,7 @@ function AuthenticatedApp({ user, logout }) {
         //   导致 setMessages(loaded) 永远不执行，切回空会话时残留上一个会话的消息。
         if (data.messages.length === 0) {
           setMessages([]);
-          setFavoriteStates({});
+          clearFavoriteStates();
           return;
         }
         // 历史回放核心转换（4 步流水线）：
@@ -356,7 +361,7 @@ function AuthenticatedApp({ user, logout }) {
         const loaded = hydrateLoadedMessages(data.messages);
         setMessages(loaded);
         // 切换会话时清空旧 favorites 状态再回显本会话的
-        setFavoriteStates({});
+        clearFavoriteStates();
         hydrateFavoriteStates(loaded);
       }
     } catch (e) {
@@ -428,7 +433,7 @@ function AuthenticatedApp({ user, logout }) {
       setShowResults(false);
       messageCountRef.current = 0;
       // 拉取新会话建议（用户决策：点新建对话时重新拉）
-      fetchChatSuggestions();
+      refetchSuggestions();
     } catch (e) {
       messageApi.error('创建会话失败');
     }
@@ -606,102 +611,10 @@ function AuthenticatedApp({ user, logout }) {
     await handleExecute(sql, newKey);
   };
 
-  // 收藏为常用 SQL：按 msgId 维护每条消息的收藏状态（支持 toggle 取消）
-  const [favoriteStates, setFavoriteStates] = useState({});
-  const handleFavorite = useCallback(async ({ msgId, userQuestion, sqlOutput }) => {
-    if (!msgId || !userQuestion || !sqlOutput) return;
-    if (favoriteStates[msgId] === 'loading') return;
-    // toggle：已收藏 → 取消；未收藏 → 收藏
-    if (favoriteStates[msgId] === 'done') {
-      setFavoriteStates(prev => ({ ...prev, [msgId]: 'loading' }));
-      try {
-        const res = await unfavoriteQuery(sqlOutput);
-        if (res?.success) {
-          setFavoriteStates(prev => ({ ...prev, [msgId]: 'idle' }));
-          messageApi.success('已取消收藏');
-        } else {
-          setFavoriteStates(prev => ({ ...prev, [msgId]: 'done' }));
-          messageApi.error(res?.message || '取消收藏失败');
-        }
-      } catch (e) {
-        setFavoriteStates(prev => ({ ...prev, [msgId]: 'done' }));
-        const apiMsg = e?.response?.data?.message;
-        messageApi.error(apiMsg || `取消收藏失败: ${e.message}`);
-      }
-      return;
-    }
-    setFavoriteStates(prev => ({ ...prev, [msgId]: 'loading' }));
-    try {
-      const res = await saveFavoriteQuery({ userQuestion, sqlOutput });
-      if (res?.success) {
-        setFavoriteStates(prev => ({ ...prev, [msgId]: 'done' }));
-        messageApi.success(`已收藏：${res.optimizedQuestion || userQuestion}`);
-      } else {
-        setFavoriteStates(prev => ({ ...prev, [msgId]: 'idle' }));
-        messageApi.error(res?.message || '收藏失败');
-      }
-    } catch (e) {
-      setFavoriteStates(prev => ({ ...prev, [msgId]: 'idle' }));
-      // 后端 500 时附带的 message 字段更具体
-      const apiMsg = e?.response?.data?.message;
-      messageApi.error(apiMsg || `收藏失败: ${e.message}`);
-    }
-  }, [favoriteStates]);
-
-  // 加载消息完成后，批量查询哪些 SQL 已被收藏，把对应 msgId 标为 done
-  const hydrateFavoriteStates = useCallback(async (msgs) => {
-    if (!Array.isArray(msgs) || msgs.length === 0) return;
-    const sqlItems = [];
-    const sqlToMsgIds = new Map();   // sql -> msgId（取第一个匹配）
-    msgs.forEach(m => {
-      if (m.role === 'assistant' && m.sql && m.sql.trim()) {
-        const sql = m.sql.trim();
-        if (!sqlToMsgIds.has(sql)) {
-          sqlToMsgIds.set(sql, m.id);
-          sqlItems.push({ sqlOutput: sql });
-        }
-      }
-    });
-    if (sqlItems.length === 0) return;
-    try {
-      const res = await checkFavorites(sqlItems);
-      const matched = (res?.items || []).filter(it => it.matched);
-      if (matched.length === 0) return;
-      setFavoriteStates(prev => {
-        const next = { ...prev };
-        matched.forEach(it => {
-          const msgId = sqlToMsgIds.get(it.sqlOutput);
-          if (msgId && next[msgId] !== 'loading') next[msgId] = 'done';
-        });
-        return next;
-      });
-    } catch (e) {
-      console.error('回显收藏状态失败:', e);
-    }
-  }, []);
-
   const handleToggleCollapse = useCallback((msgId) => {
     setMessages(prev => prev.map(m => m.id === msgId ? { ...m, collapsed: !(m.collapsed ?? true) } : m));
   }, []);
 
-  // 新会话建议：从用户自己的收藏（admin 跨用户）随机抽 4 条
-  // 不足 4 条时返回几条就显几个；接口失败/未登录时显示空数组，由渲染层 fallback 到写死
-  const [chatSuggestions, setChatSuggestions] = useState([]);
-  const fetchChatSuggestions = useCallback(async () => {
-    try {
-      const res = await getFavoriteSuggestions(4);
-      setChatSuggestions(Array.isArray(res?.suggestions) ? res.suggestions : []);
-    } catch (e) {
-      console.error('获取建议失败:', e);
-      setChatSuggestions([]);
-    }
-  }, []);
-
-  // 首次进入/刷新页面：立即拉一次建议（解决"刷新后还显示写死"的问题）
-  useEffect(() => {
-    fetchChatSuggestions();
-  }, [fetchChatSuggestions]);
-  
   const handleSend = async (overrideText = null) => {
     // 兼容 onClick={handleSend} 情况：React 会注入 SyntheticEvent 作为第一个参数
     // 这里把非 string 参数当 null 处理，强制走 input 分支
