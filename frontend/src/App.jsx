@@ -37,6 +37,7 @@ import { useSessionList } from './hooks/useSessionList.js';
 import { useFavorites } from './hooks/useFavorites.js';
 import { useTagConfirmation } from './hooks/useTagConfirmation.js';
 import { useUserChoice } from './hooks/useUserChoice.js';
+import { useAppConfig } from './hooks/useAppConfig.js';
 import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages } from './api';
 
 const { TextArea } = Input;
@@ -81,6 +82,9 @@ function AuthenticatedApp({ user, logout }) {
     favoriteStates, handleFavorite, hydrateFavoriteStates, clearFavoriteStates,
     chatSuggestions, refetchSuggestions,
   } = useFavorites({ messageApi });
+  const {
+    currentModel, tokenWarningLevel, loadCurrentModel, loadAgentConfig, applyAgentConfig,
+  } = useAppConfig();
   const {
     confirmTagAdd, openTagConfirmation,
     handleConfirmTagAdd, handleCancelTagAdd,
@@ -143,7 +147,6 @@ function AuthenticatedApp({ user, logout }) {
   const [skillLocked, setSkillLocked] = useState(true);
   const [skillSaving, setSkillSaving] = useState(false);
   const [skillOriginalContent, setSkillOriginalContent] = useState('');
-  const [currentModel, setCurrentModel] = useState('');
   const [addTableModalOpen, setAddTableModalOpen] = useState(false);
   const [explainAnalyzeModalOpen, setExplainAnalyzeModalOpen] = useState(false);
   const [explainAnalysisContent, setExplainAnalysisContent] = useState('');
@@ -156,7 +159,6 @@ function AuthenticatedApp({ user, logout }) {
   const [showMessagesModal, setShowMessagesModal] = useState(false);
   const [sessionMessagesContent, setSessionMessagesContent] = useState('');
   const [sessionMessagesTokens, setSessionMessagesTokens] = useState(0);
-  const [tokenWarningLevel, setTokenWarningLevel] = useState(30000);
   const [chatScrollTop, setChatScrollTop] = useState(0);
   const contentRef = useRef('');
   const messageCountRef = useRef(0);
@@ -241,28 +243,6 @@ function AuthenticatedApp({ user, logout }) {
     loadAgentConfig();
   }, []);
 
-  const loadCurrentModel = async () => {
-    if (loadingRef.current.model) return;
-    loadingRef.current.model = true;
-    try {
-      const data = await api.getLlMConfig();
-      setCurrentModel(data.model || '');
-    } catch (e) {} finally {
-      loadingRef.current.model = false;
-    }
-  };
-
-  const loadAgentConfig = async () => {
-    try {
-      const data = await api.getAgentConfig();
-      if (data) {
-        setTokenWarningLevel(parseInt(data.agent_token_warning_level) || 30000);
-      }
-    } catch (e) {
-      console.debug('获取Agent配置失败:', e.message);
-    }
-  };
-
   useEffect(() => {
     if (activeTabKey !== 'chat' && tabs[activeTabKey]?.sql !== undefined) {
       setSqlInput(tabs[activeTabKey].sql || '');
@@ -306,12 +286,7 @@ function AuthenticatedApp({ user, logout }) {
           console.debug('获取消息token失败:', e.message);
         }
         // 加载Agent配置获取token警告阈值
-        try {
-          const config = await api.getAgentConfig();
-          setTokenWarningLevel(parseInt(config.agent_token_warning_level) || 30000);
-        } catch (e) {
-          console.debug('获取Agent配置失败:', e.message);
-        }
+        await loadAgentConfig();
       }
     } catch (e) {
       console.error('加载会话失败:', e);
@@ -471,7 +446,7 @@ function AuthenticatedApp({ user, logout }) {
     }
     if (configResult.status === 'fulfilled') {
       // api.getAgentConfig 内部也已解包
-      setTokenWarningLevel(parseInt(configResult.value.agent_token_warning_level) || 30000);
+      applyAgentConfig(configResult.value);
     } else {
       console.debug('获取Agent配置失败:', configResult.reason?.message);
     }
