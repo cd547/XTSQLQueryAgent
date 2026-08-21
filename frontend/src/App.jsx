@@ -1,14 +1,14 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
-import { Layout, Input, Button, Table, Spin, Drawer, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, Modal, Dropdown, Tooltip, theme, Segmented, Space, App as AntdApp } from 'antd';
+import { Layout, Input, Button, Spin, Drawer, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, Modal, Dropdown, Tooltip, theme, Segmented, Space, App as AntdApp } from 'antd';
 import 'react-resizable/css/styles.css';
 import './App.css';
 const { Panel } = Collapse;
 
 import ConfirmDialog from './components/ConfirmDialog';
 import UserChoiceDialog from './components/UserChoiceDialog';
-import ResizableTitle from './components/ResizableTitle';
 import ChatMessage from './components/ChatMessage';
 import ChatInput from './components/ChatInput';
+import SqlPanel from './components/SqlPanel';
 import RoundGroup from './components/RoundGroup';
 import ConfigPanel from './components/ConfigPanel';
 import LoginPage from './components/LoginPage';
@@ -92,12 +92,9 @@ function AuthenticatedApp({ user, logout }) {
   const [sqlEditorInst, setSqlEditorInst] = useState(null);
   const [sqlKey, setSqlKey] = useState(['sql']);
   const [resultKey, setResultKey] = useState(['result']);
-  const [pageSize, setPageSize] = useState(20);
   const [columnWidths, setColumnWidths] = useState({});
   const [inputHeight, setInputHeight] = useState(80);
   const [siderCollapsed, setSiderCollapsed] = useState(false);
-  const [sqlPreviewHeight, setSqlPreviewHeight] = useState(200);
-  const [resultTableHeight, setResultTableHeight] = useState(800);
   const [currentTokens, setCurrentTokens] = useState(0);
   // ★ 用户控件：思考模式
   //   默认 high（与后端 history 行为一致，老用户感知差异最小）
@@ -171,7 +168,6 @@ function AuthenticatedApp({ user, logout }) {
   // 切换会话时优先恢复该会话上次的位置；无记忆时回退到"滚到最新消息"。
   const sessionScrollTopsRef = useRef(new Map());
   const inputResizerRef = useRef(null);
-  const resizerRef = useRef(null);
   const initialLoadRef = useRef(false);
   const abortControllerRef = useRef(null);
   // ★ F4 修复：handleExplainAnalyze 专用的 AbortController ref。
@@ -180,9 +176,6 @@ function AuthenticatedApp({ user, logout }) {
   //   独立 ref 也让"切会话只 abort handleSend，不影响 modal 内正在跑的 analysis"成为可能。
   const explainAbortControllerRef = useRef(null);
   const chatContentRef = useRef(null);
-  // Monaco hover 隐藏定时器 ref：跨 render 持久化 timer id，
-  // 避免 React 重新挂载时旧 setInterval 残留（导致内存泄漏 + 多次 hide 调用）
-  const hoverIntervalRef = useRef(null);
   // 流式响应期间用于 rAF 节流的滚动句柄（避免每 chunk 触发 scrollIntoView）
   const streamingScrollRafRef = useRef(0);
   // 客户端消息 id 计数器：保证新创建的每条消息都有稳定唯一 key
@@ -1679,17 +1672,6 @@ const explainColumns = useMemo(() => explainResults.length > 0
     }
   }, [currentSessionId]);
 
-  // 组件卸载时清理 Monaco hover 隐藏定时器，覆盖 editor.onDidDispose 未触发的边界场景
-  // （如 React 卸载先于 Monaco 异步销毁、Strict Mode 二次挂载等）
-  useEffect(() => {
-    return () => {
-      if (hoverIntervalRef.current) {
-        clearInterval(hoverIntervalRef.current);
-        hoverIntervalRef.current = null;
-      }
-    };
-  }, []);
-
   // ★ F4 修复：组件卸载时 abort in-flight explain-analyze SSE 流。
   //   场景：用户在 modal 打开期间通过路由切换或父组件卸载触发本组件卸载，
   //   若不显式 abort，reader + 后端 LLM 仍在跑 → 浪费 token + React "state update on unmounted" 警告
@@ -1959,237 +1941,26 @@ const explainColumns = useMemo(() => explainResults.length > 0
                   </div>
                 )
               ) : (
-                <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-                  <Collapse
-                    activeKey={sqlKey}
-                    onChange={(key) => {
-                      const k = Array.isArray(key) ? key : [key];
-                      setSqlKey(k);
-                      setResultKey(k);
-                    }}
-                    style={{ flex: 1, overflow: 'auto' }}
-                    className="custom-collapse"
-items={[
-                      {
-                    key: 'sql',
-                        label: <span style={{ fontWeight: 500, fontSize: 12 }}>SQL预览</span>,
-                        children: (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }} ref={resizerRef}>
-                            <div style={{ border: '1px solid #d9d9d9', borderRadius: 4, position: 'relative' }}>
-<Editor
-                                onMount={(editor, monaco) => {
-                                  setSqlEditorInst(editor);
-                                  
-                                  const styleId = 'monaco-tooltip-disable-style';
-                                  if (!document.getElementById(styleId)) {
-                                    const style = document.createElement('style');
-                                    style.id = styleId;
-                                    style.textContent = `
-                                      .monaco-hover, 
-                                      .monaco-editor-hover, 
-                                      .workbench-hover,
-                                      .find-widget .monaco-tooltip {
-                                        display: none !important;
-                                        visibility: hidden !important;
-                                      }
-                                      .find-widget .monaco-action-bar .action-label::before,
-                                      .find-widget .monaco-action-bar .action-label::after {
-                                        display: none !important;
-                                      }
-                                    `;
-                                    document.head.appendChild(style);
-                                  }
-                                  
-                                  const hideHoverWidgets = () => {
-                                    const widgets = document.querySelectorAll('.monaco-hover, .monaco-editor-hover, .workbench-hover, .monaco-tooltip');
-                                    widgets.forEach(w => {
-                                      if (w.style.display !== 'none') {
-                                        w.style.display = 'none';
-                                      }
-                                    });
-                                  };
-
-                                  // 清理旧 timer：处理 Editor 重新挂载场景（如 SQL 输入切换 / Strict Mode 二次挂载）
-                                  if (hoverIntervalRef.current) {
-                                    clearInterval(hoverIntervalRef.current);
-                                    hoverIntervalRef.current = null;
-                                  }
-                                  hoverIntervalRef.current = setInterval(hideHoverWidgets, 100);
-                                  // 编辑器销毁时清理定时器，避免内存泄漏
-                                  const disposeDisposable = editor.onDidDispose(() => {
-                                    if (hoverIntervalRef.current) {
-                                      clearInterval(hoverIntervalRef.current);
-                                      hoverIntervalRef.current = null;
-                                    }
-                                    disposeDisposable?.dispose();
-                                  });
-                                }}
-                                height={sqlPreviewHeight}
-                                defaultLanguage="sql"
-                                value={sqlInput}
-                                onChange={handleSqlChange}
-                                theme="vs-dark"
-                                options={{
-                                  minimap: { enabled: false },
-                                  fontSize: 11,
-                                  lineNumbers: 'on',
-                                  scrollBeyondLastLine: false,
-                                  automaticLayout: true,
-                                  wordWrap: 'on',
-                                  folding: false,
-                                  glyphMargin: false,
-                                  renderLineHighlight: 'none',
-                                  hover: { enabled: false },
-                                  quickSuggestions: false,
-                                  parameterHints: { enabled: false },
-                                  suggestOnTriggerCharacters: false,
-                                  acceptSuggestionOnEnter: 'off',
-                                  tabCompletion: 'off',
-                                  wordBasedSuggestions: 'off'
-                                }}
-                              />
-                              <div
-                                style={{
-                                  position: 'absolute',
-                                  bottom: 0,
-                                  left: 0,
-                                  right: 0,
-                                  height: 6,
-                                  cursor: 'ns-resize',
-                                  background: 'transparent',
-                                  zIndex: 10
-                                }}
-                                onMouseDown={(e) => {
-                                  e.preventDefault();
-                                  const startY = e.clientY;
-                                  const startHeight = sqlPreviewHeight;
-                                  let raf = 0;
-                                  const handleMove = (moveEvent) => {
-                                    const delta = moveEvent.clientY - startY;
-                                    const newHeight = Math.max(100, Math.min(500, startHeight + delta));
-                                    if (raf) cancelAnimationFrame(raf);
-                                    raf = requestAnimationFrame(() => {
-                                      setSqlPreviewHeight(newHeight);
-                                    });
-                                  };
-                                  const handleUp = () => {
-                                    document.removeEventListener('mousemove', handleMove);
-                                    document.removeEventListener('mouseup', handleUp);
-                                    if (raf) cancelAnimationFrame(raf);
-                                  };
-                                  document.addEventListener('mousemove', handleMove);
-                                  document.addEventListener('mouseup', handleUp);
-                                }}
-                              />
-                            </div>
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                              <Button 
-                                size="small" 
-                                icon={<SelectOutlined />}
-                                disabled={!sqlInput.trim() && !getSelectedSql()}
-                                onClick={() => handleExplain(getSelectedSql())}
-                              >EXPLAIN</Button>
-                              
-                              <Button type="primary" size="small" disabled={!sqlInput.trim() && !getSelectedSql()} onClick={() => handleExecute(getSelectedSql())}>查询</Button>
-                            </div>
-                          </div>
-                        )
-                      },
-{
-                    key: 'result',
-                        label: <span style={{ fontWeight: 500, fontSize: 12 }}>查询结果 ({currentRowCount} 条{currentQueryTime ? `, ${currentQueryTime}ms` : ''})</span>,
-children: currentResults.length > 0 ? (
-                  <div style={{ display: 'flex', flexDirection: 'column', height: '100%', position: 'relative' }}>
-                            <div
-                              style={{
-                                position: 'absolute',
-                                top: 0,
-                                left: 0,
-                                right: 0,
-                                height: 6,
-                                cursor: 'ns-resize',
-                                zIndex: 10
-                              }}
-                              onMouseDown={(e) => {
-                                e.preventDefault();
-                                const startY = e.clientY;
-                                const startHeight = resultTableHeight;
-                                let raf = 0;
-                                const handleMove = (moveEvent) => {
-                                  const delta = startY - moveEvent.clientY;
-                                  const newHeight = Math.max(100, Math.min(600, startHeight + delta));
-                                  if (raf) cancelAnimationFrame(raf);
-                                  raf = requestAnimationFrame(() => {
-                                    setResultTableHeight(newHeight);
-                                  });
-                                };
-                                const handleUp = () => {
-                                  document.removeEventListener('mousemove', handleMove);
-                                  document.removeEventListener('mouseup', handleUp);
-                                  if (raf) cancelAnimationFrame(raf);
-                                };
-                                document.addEventListener('mousemove', handleMove);
-                                document.addEventListener('mouseup', handleUp);
-                              }}
-                            />
-                            <div style={{ marginBottom: 8, marginTop: 6, flexShrink: 0, display: 'flex', gap: 8 }}>
-                              <Button size="small" onClick={() => exportToExcel(currentResults, columns, messageApi)}>导出Excel</Button>
-
-                            </div>
-                            <div style={{ height: resultTableHeight, overflow: 'visible' }}>
-                              <Table
-                                dataSource={currentResults}
-                                columns={columns}
-                                rowKey={(record, index) => record.id ?? `row-${index}`}
-                                components={{ header: { cell: ResizableTitle } }}
-                                pagination={{
-                                  pageSize: pageSize,
-                                  showSizeChanger: true,
-                                  pageSizeOptions: ['10', '20', '50', '100'],
-                                  onShowSizeChange: (_, size) => setPageSize(size)
-                                }}
-                                scroll={{ x: 'max-content' }}
-                                size="small"
-                                className="sql-result-table"
-                                style={{ fontSize: 10 }}
-                                rootClassName="sticky-table-header"
-                              />
-                            </div>
-                          </div>
-                        ) : (
-                          <div style={{ color: '#999' }}>暂无结果</div>
-                        )
-                      },
-                      ...(explainResults.length > 0 ? [{
-                        key: 'explain',
-                        label: <span style={{ fontWeight: 500, fontSize: 12 }}>执行计划</span>,
-                        children: (
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-                            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                              <Button size="small" icon={<AppIcon size={18} />} onClick={handleExplainAnalyze}>AI分析</Button>
-                            </div>
-                            <Table
-                              dataSource={explainResults}
-                              columns={explainColumns}
-                              rowKey={(record, index) => record.id ?? `row-${index}`}
-                              pagination={{
-                                pageSize: pageSize,
-                                showSizeChanger: true,
-                                pageSizeOptions: ['10', '20', '50', '100'],
-                                onShowSizeChange: (_, size) => setPageSize(size)
-                              }}
-                              scroll={{ x: 'max-content' }}
-                              size="small"
-                              className="sql-result-table"
-                              style={{ fontSize: 10 }}
-                              rootClassName="sticky-table-header"
-                            />
-                          </div>
-                        )
-                      }] : [])
-                    ]}
-                  />
-                </div>
+                <SqlPanel
+                  sqlInput={sqlInput}
+                  sqlKey={sqlKey}
+                  setSqlKey={setSqlKey}
+                  resultKey={resultKey}
+                  setResultKey={setResultKey}
+                  currentResults={currentResults}
+                  columns={columns}
+                  currentRowCount={currentRowCount}
+                  currentQueryTime={currentQueryTime}
+                  explainResults={explainResults}
+                  explainColumns={explainColumns}
+                  setSqlEditorInst={setSqlEditorInst}
+                  getSelectedSql={getSelectedSql}
+                  onSqlChange={handleSqlChange}
+                  onExecute={handleExecute}
+                  onExplain={handleExplain}
+                  onExplainAnalyze={handleExplainAnalyze}
+                  onExportExcel={() => exportToExcel(currentResults, columns, messageApi)}
+                />
               )}
               {activeTabKey === 'chat' && <div ref={messagesEndRef} />}
               
