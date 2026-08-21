@@ -8,7 +8,7 @@
  *    全部由父组件持有（因为跨 tab 切换时会复用，handleExecute / handleExplain 也在父组件）。
  *  - sqlEditorInst 仍在父组件持有，因为 getSelectedSql 是父组件 handleExplainAnalyze
  *    也要用的；本组件只通过 setSqlEditorInst prop 把实例回传。
- *  - sqlPreviewHeight / resultTableHeight / pageSize / hoverIntervalRef / resizerRef
+ *  - sqlPreviewHeight / resultTableHeight / pageSize / resizerRef
  *    是纯 UI 状态，下沉到本组件内部。父组件无需知道。
  *  - 父组件定义 getSelectedSql（闭包依赖 sqlEditorInst + sqlInput），传入本组件。
  *  - AppIcon / SelectOutlined / ResizableTitle 直接 import 而非通过 props 传入，
@@ -49,19 +49,7 @@ export default function SqlPanel({
   const [sqlPreviewHeight, setSqlPreviewHeight] = useState(200);
   const [resultTableHeight, setResultTableHeight] = useState(800);
   const [pageSize, setPageSize] = useState(20);
-  const hoverIntervalRef = useRef(null);
   const resizerRef = useRef(null);
-
-  // 组件卸载时清理 Monaco hover 隐藏定时器，覆盖 editor.onDidDispose 未触发的边界场景
-  // （如 React 卸载先于 Monaco 异步销毁、Strict Mode 二次挂载等）
-  useEffect(() => {
-    return () => {
-      if (hoverIntervalRef.current) {
-        clearInterval(hoverIntervalRef.current);
-        hoverIntervalRef.current = null;
-      }
-    };
-  }, []);
 
   // 拖拽条 mousedown 闭包
   const handlePreviewResizerMouseDown = useCallback((e) => {
@@ -110,50 +98,7 @@ export default function SqlPanel({
 
   const handleEditorMount = (editor, monaco) => {
     setSqlEditorInst(editor);
-
-    const styleId = 'monaco-tooltip-disable-style';
-    if (!document.getElementById(styleId)) {
-      const style = document.createElement('style');
-      style.id = styleId;
-      style.textContent = `
-        .monaco-hover,
-        .monaco-editor-hover,
-        .workbench-hover,
-        .find-widget .monaco-tooltip {
-          display: none !important;
-          visibility: hidden !important;
-        }
-        .find-widget .monaco-action-bar .action-label::before,
-        .find-widget .monaco-action-bar .action-label::after {
-          display: none !important;
-        }
-      `;
-      document.head.appendChild(style);
-    }
-
-    const hideHoverWidgets = () => {
-      const widgets = document.querySelectorAll('.monaco-hover, .monaco-editor-hover, .workbench-hover, .monaco-tooltip');
-      widgets.forEach(w => {
-        if (w.style.display !== 'none') {
-          w.style.display = 'none';
-        }
-      });
-    };
-
-    // 清理旧 timer：处理 Editor 重新挂载场景（如 SQL 输入切换 / Strict Mode 二次挂载）
-    if (hoverIntervalRef.current) {
-      clearInterval(hoverIntervalRef.current);
-      hoverIntervalRef.current = null;
-    }
-    hoverIntervalRef.current = setInterval(hideHoverWidgets, 100);
-    // 编辑器销毁时清理定时器，避免内存泄漏
-    const disposeDisposable = editor.onDidDispose(() => {
-      if (hoverIntervalRef.current) {
-        clearInterval(hoverIntervalRef.current);
-        hoverIntervalRef.current = null;
-      }
-      disposeDisposable?.dispose();
-    });
+    // Monaco hover 抑制已搬到 utils/monacoEnv.js 全局处理(3 个 Monaco 实例共用)
   };
 
   return (
