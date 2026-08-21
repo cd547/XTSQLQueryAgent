@@ -43,7 +43,7 @@ export default function ChangePasswordModal({ open, onClose, onChanged }) {
         return;
       }
       const msg = e?.response?.data?.error || e?.message || '修改失败';
-      message.error(msg);
+      messageApi.error(msg);
     } finally {
       setSubmitting(false);
     }

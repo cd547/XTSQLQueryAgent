@@ -83,7 +83,7 @@ export default function AddTableModal({ open, onClose, onCreated }) {
     try {
       const data = await createTableFiles(name.trim(), ddl, description, selectedDomains);
       if (data.success) {
-        message.success(data.existed ? 'DDL文件已覆盖' : '表格文件创建成功');
+        messageApi.success(data.existed ? 'DDL文件已覆盖' : '表格文件创建成功');
         onClose();
         onCreated && onCreated();
       } else {

@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
-import { Layout, Input, Button, Table, message, Spin, Drawer, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, Modal, Dropdown, Tooltip, theme, Segmented, Space } from 'antd';
+import { Layout, Input, Button, Table, Spin, Drawer, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, Modal, Dropdown, Tooltip, theme, Segmented, Space, App as AntdApp } from 'antd';
 import 'react-resizable/css/styles.css';
 import './App.css';
 const { Panel } = Collapse;
@@ -25,6 +25,9 @@ import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
 import './utils/monacoEnv';
 import { readSSEStream } from './utils/sseStream';
+import { sqliteUtcToIso, formatSqliteUtcLocal } from './utils/formatTime';
+import { exportToExcel } from './utils/excel';
+import { extractToolName } from './utils/toolName';
 import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages, saveFavoriteQuery, checkFavorites, unfavoriteQuery, getFavoriteSuggestions } from './api';
 
 const { TextArea } = Input;
@@ -53,6 +56,12 @@ function App() {
 // 鉴权通过后的主体组件，保持原 App 业务逻辑不变
 function AuthenticatedApp({ user, logout }) {
   const { theme, toggleTheme } = useTheme();
+  // ★ antd AntdApp.useApp()：获取与 <AntdApp> 上下文绑定的 message API
+  //   替代静态 `import { message } from 'antd'`，消除
+  //   "[antd: message] Static function can not consume context like dynamic theme." 警告
+  //   注意：必须先于任何条件 return 调用（hook 规则）
+  //   antd 的 App 与本文件默认导出的 App 同名，import 时用 as 别名避坑
+  const { message: messageApi } = AntdApp.useApp();
   const [sessions, setSessions] = useState([]);
   const [sessionsTotal, setSessionsTotal] = useState(0);
   const [hasMoreSessions, setHasMoreSessions] = useState(false);
@@ -537,7 +546,7 @@ function AuthenticatedApp({ user, logout }) {
             // ★ 2026-08-21：历史回显的时间来自 SQLite CURRENT_TIMESTAMP（UTC 无时区字符串），
             //   前端 new Date() 会按本地时区错解析（少 8 小时），
             //   此处加 replace(' ','T')+'Z' 显式标记为 UTC ISO 格式，让 ChatMessage 正确显示本地时区
-            timestamp: m.created_at ? m.created_at.replace(' ', 'T') + 'Z' : m.created_at,
+            timestamp: sqliteUtcToIso(m.created_at),
             logType: m.role === 'LLM' ? 'llm' : m.role === 'tool_return' ? 'return' : 'call',
             // ★ 2026-08-17：历史回看抽取 toolName
             //   老数据：m.content 含 "🔧 调用工具: {toolName}\n参数: ..." → regex 抽
@@ -550,25 +559,8 @@ function AuthenticatedApp({ user, logout }) {
             //     ② "🚫 拦截重复调用: {name}\n..."
             //     ③ "🚫 {errLabel}: {name}\n..."
             //     ④ "✅ {name} 参数已自动修复..."
-            toolName: (() => {
-              const c = m.content || '';
-              if (m.role === 'tool') {
-                // 工具调用：🔧 调用工具: {name}\n参数: ...
-                const match = c.match(/🔧 调用工具:\s*(\S+)/);
-                return match ? match[1] : null;
-              }
-              if (m.role === 'tool_return') {
-                // 工具返回：①/②/③/④ 多种前缀格式
-                let match = c.match(/📋 工具 (\S+) 返回/);
-                if (match) return match[1];
-                match = c.match(/✅ (\S+) 参数已自动修复/);
-                if (match) return match[1];
-                match = c.match(/🚫 (?:拦截重复调用:|[^:\n]+:)\s*(\S+)/);
-                if (match) return match[1];
-                return null;
-              }
-              return null;
-            })(),
+            // 统一抽到 utils/toolName.js，App.jsx 与 ChatMessage.jsx 共用
+            toolName: extractToolName(m.content, { role: m.role }),
             // 历史回看：所有日志类型（LLM思考 / 工具调用 / 工具返回）默认折叠，
             // 与流式实时态（collapsed: true）保持一致，避免历史消息全展开
             collapsed: ['LLM', 'tool', 'tool_return'].includes(m.role),
@@ -679,7 +671,7 @@ function AuthenticatedApp({ user, logout }) {
       // 拉取新会话建议（用户决策：点新建对话时重新拉）
       fetchChatSuggestions();
     } catch (e) {
-      message.error('创建会话失败');
+      messageApi.error('创建会话失败');
     }
   };
   
@@ -741,10 +733,10 @@ function AuthenticatedApp({ user, logout }) {
         setSessionMessagesTokens(data.messageTokens || 0);
         setShowMessagesModal(true);
       } else {
-        message.info(data.message || '暂无消息数据');
+        messageApi.info(data.message || '暂无消息数据');
       }
     } catch (e) {
-      message.error('获取消息失败: ' + e.message);
+      messageApi.error('获取消息失败: ' + e.message);
     }
   };
   
@@ -763,9 +755,9 @@ function AuthenticatedApp({ user, logout }) {
             setCurrentSessionId(null);
             setMessages([]);
           }
-          message.success('对话已删除');
+          messageApi.success('对话已删除');
         } catch (e) {
-          message.error('删除失败');
+          messageApi.error('删除失败');
         }
       }
     });
@@ -780,9 +772,9 @@ function AuthenticatedApp({ user, logout }) {
         setCurrentSessionName(`${editingSessionName.trim()}#${sessionId}`);
       }
       setEditingSessionId(null);
-      message.success('重命名成功');
+      messageApi.success('重命名成功');
     } catch (e) {
-      message.error('重命名失败');
+      messageApi.error('重命名失败');
     }
   };
 
@@ -793,19 +785,19 @@ function AuthenticatedApp({ user, logout }) {
 
   const handleSummarizeSession = async (sessionId) => {
     try {
-      message.loading({ content: '正在总结聊天记录...', key: 'summarize' });
+      messageApi.loading({ content: '正在总结聊天记录...', key: 'summarize' });
       const res = await summarizeSession(sessionId);
       if (res.error) {
-        message.error({ content: res.error, key: 'summarize' });
+        messageApi.error({ content: res.error, key: 'summarize' });
       } else {
         setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, name: res.name } : s));
         if (currentSessionId === sessionId) {
           setCurrentSessionName(`${res.name}#${sessionId}`);
         }
-        message.success({ content: '总结完成', key: 'summarize' });
+        messageApi.success({ content: '总结完成', key: 'summarize' });
       }
     } catch (e) {
-      message.error({ content: '总结失败', key: 'summarize' });
+      messageApi.error({ content: '总结失败', key: 'summarize' });
     }
   };
 
@@ -868,15 +860,15 @@ function AuthenticatedApp({ user, logout }) {
         const res = await unfavoriteQuery(sqlOutput);
         if (res?.success) {
           setFavoriteStates(prev => ({ ...prev, [msgId]: 'idle' }));
-          message.success('已取消收藏');
+          messageApi.success('已取消收藏');
         } else {
           setFavoriteStates(prev => ({ ...prev, [msgId]: 'done' }));
-          message.error(res?.message || '取消收藏失败');
+          messageApi.error(res?.message || '取消收藏失败');
         }
       } catch (e) {
         setFavoriteStates(prev => ({ ...prev, [msgId]: 'done' }));
         const apiMsg = e?.response?.data?.message;
-        message.error(apiMsg || `取消收藏失败: ${e.message}`);
+        messageApi.error(apiMsg || `取消收藏失败: ${e.message}`);
       }
       return;
     }
@@ -885,16 +877,16 @@ function AuthenticatedApp({ user, logout }) {
       const res = await saveFavoriteQuery({ userQuestion, sqlOutput });
       if (res?.success) {
         setFavoriteStates(prev => ({ ...prev, [msgId]: 'done' }));
-        message.success(`已收藏：${res.optimizedQuestion || userQuestion}`);
+        messageApi.success(`已收藏：${res.optimizedQuestion || userQuestion}`);
       } else {
         setFavoriteStates(prev => ({ ...prev, [msgId]: 'idle' }));
-        message.error(res?.message || '收藏失败');
+        messageApi.error(res?.message || '收藏失败');
       }
     } catch (e) {
       setFavoriteStates(prev => ({ ...prev, [msgId]: 'idle' }));
       // 后端 500 时附带的 message 字段更具体
       const apiMsg = e?.response?.data?.message;
-      message.error(apiMsg || `收藏失败: ${e.message}`);
+      messageApi.error(apiMsg || `收藏失败: ${e.message}`);
     }
   }, [favoriteStates]);
 
@@ -1091,29 +1083,8 @@ function AuthenticatedApp({ user, logout }) {
                 //   来源：后端 llm.js:1627 yield { type: "tool", toolName, ... }
                 // F23 v3: tool_return 也透传 toolName — 用于前端 ChatMessage 隐藏 get_call_history 的返回
                 //   优先 data.toolName（新后端会 yield toolName），未传时用 regex 兜底（兼容旧后端/历史回看）
-                toolName: (() => {
-                  const log = data.log || '';
-                  if (data.type === 'tool' || data.type === 'tool_return') {
-                    // 优先用后端 yield 的 toolName 字段（新数据）
-                    if (data.toolName) return data.toolName;
-                    // 兜底 1：tool 类型 log 格式 "🔧 调用工具: xxx\n参数: {...}"
-                    let match = log.match(/🔧 调用工具:\s*(\S+)/);
-                    if (match) return match[1];
-                    // 兜底 2：tool_return 的 4 种格式
-                    //   ① "📋 工具 {name} 返回: ..."
-                    //   ② "🚫 拦截重复调用: {name}\n..."
-                    //   ③ "🚫 {errLabel}: {name}\n..."
-                    //   ④ "✅ {name} 参数已自动修复..."
-                    match = log.match(/📋 工具 (\S+) 返回/);
-                    if (match) return match[1];
-                    match = log.match(/✅ (\S+) 参数已自动修复/);
-                    if (match) return match[1];
-                    match = log.match(/🚫 (?:拦截重复调用:|[^:\n]+:)\s*(\S+)/);
-                    if (match) return match[1];
-                    return null;
-                  }
-                  return null;
-                })(),
+                // 统一抽到 utils/toolName.js，App.jsx 历史回看 + 实时 SSE 共用
+                toolName: extractToolName(data.log, { role: data.type, preferToolName: data.toolName }),
                 // ★ LLM 工具调用轮次编号（用于前端"数轴式"轮次展示）
                 //   后端 llm.js 在每个 yield 时附带 round 字段
                 //   同 assistant 消息内多条 log 可能共享同一 round（思考→调用→返回属于同一轮）
@@ -1229,7 +1200,7 @@ function AuthenticatedApp({ user, logout }) {
           //   不再依赖 llm.js:1867 那个特定 yield 文案(原硬编码检查其实很少匹配上)
           const isInterrupted = data.interrupted === true;
           if (!isInterrupted) {
-            message.error(data.content);
+            messageApi.error(data.content);
           }
           setMessages(prev => {
             const newMsgs = [...prev];
@@ -1375,7 +1346,7 @@ function AuthenticatedApp({ user, logout }) {
       //   - handleSessionClick（切会话）abort + bump → 版本号不一致，catch 直接 bail，新会话消息保持干净
       if (streamRequestIdRef.current !== myStreamVersion) return;
       if (error.name !== 'AbortError') {
-        message.error(error.message);
+        messageApi.error(error.message);
       }
       setMessages(prev => {
         const newMsgs = [...prev];
@@ -1408,9 +1379,9 @@ function AuthenticatedApp({ user, logout }) {
     try {
       await addTagToTable(table, term);
       const termStr = Array.isArray(term) ? term.join(', ') : term;
-      message.success(`已将 "${termStr}" 添加到 ${table} 的标签`);
+      messageApi.success(`已将 "${termStr}" 添加到 ${table} 的标签`);
     } catch (e) {
-      message.error('添加标签失败: ' + e.message);
+      messageApi.error('添加标签失败: ' + e.message);
     }
     setConfirmTagAdd(prev => ({ ...prev, visible: false }));
   };
@@ -1507,7 +1478,7 @@ function AuthenticatedApp({ user, logout }) {
       const res = await queryExecute({ sql });
       const elapsed = Date.now() - startTime;
       if (res.error) {
-        message.error(res.error);
+        messageApi.error(res.error);
       } else {
         const newResults = res.results || [];
         setColumnWidths({});
@@ -1525,7 +1496,7 @@ function AuthenticatedApp({ user, logout }) {
             queryTime: elapsed
           }
         }));
-        message.success(`查询成功，${res.rowCount} 条结果，耗时 ${elapsed}ms`);
+        messageApi.success(`查询成功，${res.rowCount} 条结果，耗时 ${elapsed}ms`);
       }
     } finally {
       setLoading(false);
@@ -1542,14 +1513,14 @@ const handleExplain = async (sql) => {
     const res = await explainQuery({ sql });
     const elapsed = Date.now() - startTime;
     if (res.error) {
-      message.error(res.error);
+      messageApi.error(res.error);
     } else {
       const newResults = res.results || [];
       setColumnWidths({});
       setExplainResults(newResults);
       setExplainPanelOpen(true);
       setIsExplainResult(true);
-      message.success(`EXPLAIN 完成，${res.rowCount} 行，耗时 ${elapsed}ms`);
+      messageApi.success(`EXPLAIN 完成，${res.rowCount} 行，耗时 ${elapsed}ms`);
     }
   } finally {
     setLoading(false);
@@ -1574,7 +1545,7 @@ const handleExplain = async (sql) => {
       const response = await api.explainAnalyze(getSelectedSql(), explainResults, abortController.signal);
 
       if (!response.ok) {
-        message.error('请求失败');
+        messageApi.error('请求失败');
         setExplainAnalysisLoading(false);
         return;
       }
@@ -1591,7 +1562,7 @@ const handleExplain = async (sql) => {
           contentRef.current += data.content;
           setExplainAnalysisContent(contentRef.current);
         } else if (data.type === 'error') {
-          message.error(data.content);
+          messageApi.error(data.content);
           setExplainAnalysisLoading(false);
         } else if (data.type === 'done') {
           setExplainAnalysisLoading(false);
@@ -1600,7 +1571,7 @@ const handleExplain = async (sql) => {
     } catch (error) {
       // ★ F4 修复：用户主动中断（modal 关闭/卸载/auth-expired）时不弹错误 toast
       if (error.name === 'AbortError') return;
-      message.error(error.message);
+      messageApi.error(error.message);
       setExplainAnalysisLoading(false);
     } finally {
       // 只有"自己仍是最新流"才清空 ref，防止新流被旧流覆盖
@@ -1618,87 +1589,6 @@ const handleExplain = async (sql) => {
     }
     setExplainAnalysisLoading(false);
   };
-  
-// 中文字符按 2 个宽度计算，英文/数字按 1 个
-const getCharWidth = (str) => {
-  if (str == null) return 0;
-  const s = String(str);
-  let w = 0;
-  for (const ch of s) {
-    w += /[一-鿿　-〿＀-￯]/.test(ch) ? 2 : 1;
-  }
-  return w;
-};
-
-const exportToExcel = async (data, cols) => {
-  try {
-    // 使用 xlsx-js-style（xlsx 的社区分支），支持写入单元格样式；原 xlsx 社区版会静默丢弃 .s
-    const XLSX = await import('xlsx-js-style');
-    const worksheet = XLSX.utils.json_to_sheet(data);
-    const workbook = XLSX.utils.book_new();
-
-    // 1) 自适应列宽：根据每列表头和数据的最大字符宽度计算（中文按 2 算）
-    const keys = data.length > 0 ? Object.keys(data[0]) : cols.map(c => c.dataIndex);
-    const colMeta = keys.map(key => {
-      const col = cols.find(c => c.dataIndex === key);
-      const headerText = col ? (typeof col.title === 'string' ? col.title : String(col.dataIndex || key)) : key;
-      let maxWidth = getCharWidth(headerText);
-      const sampleSize = Math.min(data.length, 500);
-      for (let i = 0; i < sampleSize; i++) {
-        const w = getCharWidth(data[i]?.[key]);
-        if (w > maxWidth) maxWidth = w;
-      }
-      return { wch: Math.min(60, Math.max(10, maxWidth + 4)) };
-    });
-    worksheet['!cols'] = colMeta;
-
-    // 2) 表头样式：加粗 + 白字 + 蓝色背景 + 居中 + 边框
-    const headerStyle = {
-      font: { bold: true, color: { rgb: 'FFFFFF' }, sz: 12, name: '微软雅黑' },
-      fill: { patternType: 'solid', fgColor: { rgb: '4472C4' } },
-      alignment: { horizontal: 'center', vertical: 'center', wrapText: true },
-      border: {
-        top: { style: 'thin', color: { rgb: '8EA9DB' } },
-        bottom: { style: 'thin', color: { rgb: '8EA9DB' } },
-        left: { style: 'thin', color: { rgb: '8EA9DB' } },
-        right: { style: 'thin', color: { rgb: '8EA9DB' } },
-      },
-    };
-    // 数据样式：浅色边框 + 垂直居中 + 自动换行
-    const dataStyle = {
-      font: { sz: 11, name: '微软雅黑' },
-      alignment: { vertical: 'center', wrapText: true },
-      border: {
-        top: { style: 'thin', color: { rgb: 'D9D9D9' } },
-        bottom: { style: 'thin', color: { rgb: 'D9D9D9' } },
-        left: { style: 'thin', color: { rgb: 'D9D9D9' } },
-        right: { style: 'thin', color: { rgb: 'D9D9D9' } },
-      },
-    };
-
-    const range = XLSX.utils.decode_range(worksheet['!ref'] || 'A1');
-    for (let R = range.s.r; R <= range.e.r; R++) {
-      for (let C = range.s.c; C <= range.e.c; C++) {
-        const ref = XLSX.utils.encode_cell({ r: R, c: C });
-        if (worksheet[ref]) {
-          worksheet[ref].s = R === 0 ? headerStyle : dataStyle;
-        }
-      }
-    }
-
-    // 3) 冻结首行（xlsx-js-style 通过 !views 写入）
-    worksheet['!views'] = [{ state: 'frozen', ySplit: 1, xSplit: 0, topLeftCell: 'A2', activePane: 'bottomLeft' }];
-    // 表头行高
-    worksheet['!rows'] = [{ hpt: 24 }];
-
-    XLSX.utils.book_append_sheet(workbook, worksheet, '查询结果');
-    XLSX.writeFile(workbook, `查询结果_${Date.now()}.xlsx`);
-    message.success('导出成功');
-  } catch (e) {
-    console.error('导出Excel失败:', e);
-    message.error('导出失败：' + (e?.message || '未知错误'));
-  }
-};
 
   const loadSkillsList = async () => {
     try {
@@ -1721,7 +1611,7 @@ const exportToExcel = async (data, cols) => {
         setSkillOriginalContent(data.content || '');
         setSkillFileLanguage(data.language || 'plaintext');
       } else {
-        message.error(data.message || '读取失败');
+        messageApi.error(data.message || '读取失败');
       }
     } catch (e) {
       console.error('读取文件失败:', e);
@@ -1734,12 +1624,12 @@ const exportToExcel = async (data, cols) => {
     try {
       const data = await saveSkillFile(skillSelectedFile, skillFileContent);
       if (data.success) {
-        message.success(`保存成功，备份于 ${data.backupFolder}`);
+        messageApi.success(`保存成功，备份于 ${data.backupFolder}`);
       } else {
-        message.error(data.message || '保存失败');
+        messageApi.error(data.message || '保存失败');
       }
     } catch (e) {
-      message.error('保存失败: ' + e.message);
+      messageApi.error('保存失败: ' + e.message);
     } finally {
       setSkillSaving(false);
     }
@@ -1876,7 +1766,7 @@ const explainColumns = useMemo(() => explainResults.length > 0
                           <>
                             <div className="xtsql-session-name">{item.name}</div>
                             <div className="xtsql-session-desc">
-                              {item.created_at ? new Date(item.created_at.replace(' ', 'T') + 'Z').toLocaleString('zh-CN', { hour12: false }) : ''}
+                              {formatSqliteUtcLocal(item.created_at, { hour12: false })}
                             </div>
                           </>
                         )}
@@ -2242,7 +2132,7 @@ children: currentResults.length > 0 ? (
                               }}
                             />
                             <div style={{ marginBottom: 8, marginTop: 6, flexShrink: 0, display: 'flex', gap: 8 }}>
-                              <Button size="small" onClick={() => exportToExcel(currentResults, columns)}>导出Excel</Button>
+                              <Button size="small" onClick={() => exportToExcel(currentResults, columns, messageApi)}>导出Excel</Button>
 
                             </div>
                             <div style={{ height: resultTableHeight, overflow: 'visible' }}>

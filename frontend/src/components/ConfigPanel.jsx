@@ -1,8 +1,10 @@
 import React, { useState, useEffect } from 'react';
-import { Input, Button, Select, InputNumber, Space, message } from 'antd';
+import { Input, Button, Select, InputNumber, Space, App as AntdApp } from 'antd';
 import * as api from '../api';
 
 function ConfigPanel() {
+  // ★ antd AntdApp.useApp()：让 message 走动态主题上下文，消除静态 message 警告
+  const { message: messageApi } = AntdApp.useApp();
   const [dbConfig, setDbConfig] = useState({ host: 'localhost', port: 3306, user: 'root', password: '', database: '' });
   const [llmConfig, setLlmConfig] = useState({ provider: 'deepseek', apiKey: '', model: 'deepseek-chat', apiMode: 'chat_completions' });
   const [agentConfig, setAgentConfig] = useState({ max_tool_calls: '30', timeout_ms: '60000', token_warning_level: '30000' });
@@ -58,10 +60,10 @@ function ConfigPanel() {
       if (data.success && data.models) {
         setAvailableModels(data.models.map(m => ({ value: m.id, label: m.name })));
       } else {
-        message.error(data.message || '获取模型列表失败');
+        messageApi.error(data.message || '获取模型列表失败');
       }
     } catch (e) {
-      message.error('获取模型列表失败');
+      messageApi.error('获取模型列表失败');
     } finally {
       setLoadingModels(false);
     }
@@ -94,7 +96,7 @@ function ConfigPanel() {
     try {
       const data = await api.testConnection(dbConfig);
       message[data.success ? 'success' : 'error'](data.message);
-    } catch (e) { message.error('连接失败'); }
+    } catch (e) { messageApi.error('连接失败'); }
     finally { setTesting(false); }
   };
   
@@ -103,7 +105,7 @@ function ConfigPanel() {
     try {
       const data = await api.saveDbConfig(dbConfig);
       message[data.success ? 'success' : 'error'](data.success ? '数据库配置已保存' : '保存失败');
-    } catch (e) { message.error('保存失败'); }
+    } catch (e) { messageApi.error('保存失败'); }
     finally { setTesting(false); }
   };
   
@@ -120,7 +122,7 @@ function ConfigPanel() {
       }
       const data = await api.saveLlMConfig(payload);
       if (data.success) {
-        message.success('保存成功');
+        messageApi.success('保存成功');
         // 重新拉取最新掩码，更新 UI；user 即使输入了新 key 也会被掩码覆盖
         const fresh = await api.getLlMConfig();
         if (fresh.provider) {
@@ -139,9 +141,9 @@ function ConfigPanel() {
         // ★ 2026-08-17：apiKey 可能改了 → 重新拉一次余额
         fetchBalance();
       } else {
-        message.error('保存失败');
+        messageApi.error('保存失败');
       }
-    } catch (e) { message.error('保存失败'); }
+    } catch (e) { messageApi.error('保存失败'); }
     finally { setTestingLlm(false); }
   };
 
@@ -151,8 +153,8 @@ function ConfigPanel() {
       await api.updateAgentConfig('max_tool_calls', agentConfig.max_tool_calls);
       await api.updateAgentConfig('timeout_ms', agentConfig.timeout_ms);
       await api.updateAgentConfig('token_warning_level', agentConfig.token_warning_level);
-      message.success('Agent配置已保存');
-    } catch (e) { message.error('保存失败'); }
+      messageApi.success('Agent配置已保存');
+    } catch (e) { messageApi.error('保存失败'); }
     finally { setSavingAgent(false); }
   };
   
