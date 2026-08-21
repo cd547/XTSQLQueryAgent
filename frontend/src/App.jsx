@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useMemo, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect, useMemo, useCallback } from 'react';
 import { Layout, Input, Button, Table, message, Spin, Drawer, ConfigProvider, Popconfirm, Tabs, Collapse, Tree, Modal, Dropdown, Tooltip, theme } from 'antd';
 import 'react-resizable/css/styles.css';
 import './App.css';
@@ -178,16 +178,35 @@ function AuthenticatedApp({ user, logout }) {
   //   用途：在 ChatMessage 耗时左边展示"缓存命中率"
   const roundUsagesRef = useRef({});
   
-  const handleTabChange = (key) => {
+  // 保存 chat 页滚动位置：仅在当前是 chat 页时才需要保存。
+  // 抽出来供「复制并执行」「复制到SQL查询」「新增SQL页」等直接 setActiveTabKey 的入口复用，
+  // 避免绕开 handleTabChange 导致 scrollTop 没保存、切回时跳回顶部。
+  const saveChatScrollTop = () => {
     if (activeTabKey === 'chat' && chatContentRef.current) {
       setChatScrollTop(chatContentRef.current.scrollTop);
     }
+  };
+
+  const handleTabChange = (key) => {
+    saveChatScrollTop();
     setActiveTabKey(key);
   };
-  
-  useEffect(() => {
+
+  // 切回 chat 时恢复滚动位置。
+  // 用 useLayoutEffect 而非 useEffect：必须在浏览器绘制前同步完成，
+  // 否则用户会看到"先滚回顶部，再滚到目标位置"的动画。
+  // 同时临时覆盖 scroll-behavior: smooth（来自全局 CSS），
+  // 避免 scrollTop 赋值触发平滑滚动动画。
+  useLayoutEffect(() => {
     if (activeTabKey === 'chat' && chatContentRef.current) {
-      chatContentRef.current.scrollTop = chatScrollTop;
+      const el = chatContentRef.current;
+      const prev = el.style.scrollBehavior;
+      el.style.scrollBehavior = 'auto';
+      el.scrollTop = chatScrollTop;
+      // 下一帧恢复内联样式（让用户后续手动滚动仍走 smooth 行为）
+      requestAnimationFrame(() => {
+        el.style.scrollBehavior = prev;
+      });
     }
   }, [activeTabKey, chatScrollTop]);
   
@@ -795,6 +814,7 @@ function AuthenticatedApp({ user, logout }) {
   };
   
   const handleOpenSqlTab = (sql) => {
+    saveChatScrollTop();
     const newKey = `sql-${Date.now()}`;
     setTabs(prev => ({ ...prev, [newKey]: { title: 'SQL查询', sql, results: [], rowCount: 0 } }));
     setActiveTabKey(newKey);
@@ -805,6 +825,7 @@ function AuthenticatedApp({ user, logout }) {
   };
 
   const handleCopyAndExecute = async (sql) => {
+    saveChatScrollTop();
     const newKey = `sql-${Date.now()}`;
     setTabs(prev => ({ ...prev, [newKey]: { title: 'SQL查询', sql, results: [], rowCount: 0 } }));
     setActiveTabKey(newKey);
