@@ -30,8 +30,8 @@
 | **1** | 抽取纯函数工具 | 极低 | 100+ 行 | ✅ 完成 |
 | **2** | 抽 `useChatStream` hook | 中 | 500+ 行 | ⏳ 待做 |
 | **3** | 抽 `useSessionList` + `<Sider />` | 中 | 300+ 行 | ⏳ 待做 |
-| **4** | 抽 `<ChatPanel />` / `<SqlPanel />` / `<ChatInput />` | 低 | 450+ 行 | ⏳ 待做 |
-| **5** | 抽 `<SkillDrawer />` | 低 | 140+ 行 | ⏳ 待做 |
+| **4** | 抽 `<ChatPanel />` / `<SqlPanel />` / `<ChatInput />` | 低 | 450+ 行 | ✅ 完成 |
+| **5** | 抽 `<SkillDrawer />` | 低 | 140+ 行 | ✅ 完成 |
 
 **总预期**：App.jsx **2579 → ~1100 行**（−58%），新增 1 hook + 5 组件。
 
@@ -173,21 +173,22 @@ App.jsx **~1700 → ~1300 行**（−400）
 
 ---
 
-## 7. ⏳ 阶段 5：抽 `<SkillDrawer />`
+## 7. ✅ 阶段 5：抽 `<SkillDrawer />`（已完成）
 
 ### 目标
 
-`frontend/src/components/SkillDrawer.jsx`（约 140 行）—— 完整的技能管理抽屉：Tree + 文件选择 + 文件内容编辑 + 锁 + 拖拽 + 保存。
+`frontend/src/components/SkillDrawer.jsx`（约 190 行）—— 完整的技能管理抽屉：文件树 + 文件内容编辑 + 锁 + 拖拽 + 保存。
 
-### 风险点
+### 实施结果
 
-- Drawer 受控开关
-- 锁状态的本地副本与服务端一致性
-- 文件树懒加载
+- 190 行内联 Drawer → 16 行 `<SkillDrawer />` 调用
+- App.jsx：2204 → 2026 行（−178，含 5 个 dead UI state 下沉 + 6 个 dead icon import 清理 + 1 个 dead state 移除）
+- 业务数据 8 项 + 业务回调 7 项通过 props 透传
+- 5 个内部 UI state（skillTreeCollapsed / skillContentCollapsed / skillTreeHeight / skillEditorHeight / skillDrawerWidth）下沉到组件内部
 
-### 预计
+### 验证
 
-App.jsx **~1300 → ~1100 行**（−200）
+- [ ] `npm run build` 通过（4252 modules）
 
 ---
 
@@ -245,10 +246,13 @@ App.jsx **~1300 → ~1100 行**（−200）
 | 阶段 1 ✅ | 2579 | 3 utils | +3 |
 | 阶段 2 后 | ~2100 | +1 hook | +4 |
 | 阶段 3 后 | ~1700 | +1 hook + 1 组件 | +6 |
-| 阶段 4 后 | ~1300 | +3 组件 | +9 |
-| 阶段 5 后 | **~1100** | +1 组件 | **+10** |
+| 阶段 4 ✅ 后 | 2204 | +3 组件 | +9 |
+| 阶段 5 ✅ 后 | **2026** | +1 组件 | **+10** |
 
-> 2579 → ~1100，总降幅 **−58%**
+> 2602 → 2026，已完成阶段总降幅 **−576 行**（−22.1%）
+>
+> 未做阶段 2（useChatStream）和 阶段 3（useSessionList + Sider），这两个是业务逻辑 hook
+> 抽取，风险较高。如果未来要做，App.jsx 还有约 700 行可清理潜力。
 
 ---
 
@@ -258,7 +262,12 @@ App.jsx **~1300 → ~1100 行**（−200）
 |---|---|---|
 | 2026-08-21 | 1 ✅ | commit 7ba8112 `refactor: 统一替换静态 message 为动态上下文 API，新增工具函数` |
 | 2026-08-21 | 1 ✅ | 修 3 处 parallel Edit 漏改的 bug（AddTableModal / ChangePasswordModal / excel.js 死 import） |
-| 待开始 | 2 | 抽 `useChatStream` hook |
+| 2026-08-21 | 4.1 ✅ | 抽 ChatInput（−85 行）+ 手动测试通过 |
+| 2026-08-21 | 4.2 ✅ | 抽 SqlPanel（−229 行）+ dead state/icon 清理 13 行 |
+| 2026-08-21 | 4.3 ✅ | 抽 ChatPanel（−60 行）+ dead import 清理 3 个 |
+| 2026-08-21 | 5 ✅ | 抽 SkillDrawer（−178 行，含 5 UI state 下沉 + 6 icon import 清理） |
+| 待开始 | 2 | 抽 `useChatStream` hook（高风险，按需） |
+| 待开始 | 3 | 抽 `useSessionList` + `<Sider />`（中风险，按需） |
 
 ---
 

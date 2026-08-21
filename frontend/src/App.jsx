@@ -9,6 +9,7 @@ import UserChoiceDialog from './components/UserChoiceDialog';
 import ChatInput from './components/ChatInput';
 import ChatPanel from './components/ChatPanel';
 import SqlPanel from './components/SqlPanel';
+import SkillDrawer from './components/SkillDrawer';
 import ConfigPanel from './components/ConfigPanel';
 import LoginPage from './components/LoginPage';
 import SessionMessagesModal from './components/modals/SessionMessagesModal.jsx';
@@ -18,7 +19,7 @@ import ExplainAnalyzeModal from './components/modals/ExplainAnalyzeModal.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { useTheme } from './context/ThemeContext.jsx';
 import * as api from './api/index.js';
-import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, FolderOpenOutlined, CaretRightOutlined, DownOutlined, LockOutlined, UnlockOutlined, CheckOutlined, EditOutlined, TableOutlined, SendOutlined, SelectOutlined, MoreOutlined, DeleteOutlined, LoadingOutlined, LogoutOutlined, UserOutlined, BulbOutlined, BulbFilled, ClockCircleOutlined } from '@ant-design/icons';
+import { SettingOutlined, CloseOutlined, PlusOutlined, MenuOutlined, FolderOutlined, FileTextOutlined, CheckOutlined, EditOutlined, SendOutlined, MoreOutlined, DeleteOutlined, LoadingOutlined, LogoutOutlined, UserOutlined, LockOutlined, BulbOutlined, BulbFilled, ClockCircleOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
@@ -82,7 +83,6 @@ function AuthenticatedApp({ user, logout }) {
   const [skillFileContent, setSkillFileContent] = useState('');
   const [skillFileLanguage, setSkillFileLanguage] = useState('plaintext');
   const [skillSelectedFile, setSkillSelectedFile] = useState(null);
-  const [skillDrawerWidth, setSkillDrawerWidth] = useState(480);
   const [tabs, setTabs] = useState({ 'chat': { title: '聊天' } });
   const [activeTabKey, setActiveTabKey] = useState('chat');
   const [currentSessionName, setCurrentSessionName] = useState('聊天');
@@ -111,14 +111,9 @@ function AuthenticatedApp({ user, logout }) {
   });
   useEffect(() => { try { localStorage.setItem('xtsql.reasoning.enabled', String(reasoningEnabled)); } catch (e) {} }, [reasoningEnabled]);
   useEffect(() => { try { localStorage.setItem('xtsql.reasoning.effort', reasoningEffort); } catch (e) {} }, [reasoningEffort]);
-  const [skillTreeCollapsed, setSkillTreeCollapsed] = useState(false);
-  const [skillContentCollapsed, setSkillContentCollapsed] = useState(false);
   const [skillLocked, setSkillLocked] = useState(true);
   const [skillSaving, setSkillSaving] = useState(false);
   const [skillOriginalContent, setSkillOriginalContent] = useState('');
-  const [skillTreeHeight, setSkillTreeHeight] = useState(200);
-  const [skillEditorHeight, setSkillEditorHeight] = useState(300);
-  const [skillTreeActionsVisible, setSkillTreeActionsVisible] = useState(false);
   const [currentModel, setCurrentModel] = useState('');
   const [addTableModalOpen, setAddTableModalOpen] = useState(false);
   const [explainAnalyzeModalOpen, setExplainAnalyzeModalOpen] = useState(false);
@@ -1985,196 +1980,23 @@ const explainColumns = useMemo(() => explainResults.length > 0
           </div>
         </Drawer>
 
-        <Drawer
-          className="xtsql-drawer"
-          title={
-            <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-              <span>Skill查看器</span>
-              <Button
-                type="text"
-                size="small"
-                icon={skillLocked ? <LockOutlined /> : <UnlockOutlined />}
-                onClick={() => setSkillLocked(!skillLocked)}
-                title={skillLocked ? '点击解锁编辑权限' : '点击锁定编辑权限'}
-                style={{ color: skillLocked ? 'var(--xtsql-text-tertiary)' : 'var(--xtsql-success)' }}
-              />
-            </div>
-          }
-          placement="right"
-          width={skillDrawerWidth}
-          onClose={() => setSkillOpen(false)}
-          open={skillOpen}
-          onOpen={() => { if (skillTree.length === 0) loadSkillsList(); }}
-          styles={{ body: { padding: '0 16px', position: 'relative' } }}
-        >
-          <div
-            style={{
-              position: 'absolute',
-              left: 0,
-              top: 0,
-              bottom: 0,
-              width: 8,
-              cursor: 'ew-resize',
-              zIndex: 10
-            }}
-            onMouseDown={(e) => {
-              e.preventDefault();
-              const startX = e.clientX;
-              const startWidth = skillDrawerWidth;
-              let raf = 0;
-              const handleMove = (moveEvent) => {
-                const delta = startX - moveEvent.clientX;
-                const newWidth = Math.max(300, Math.min(800, startWidth + delta));
-                if (raf) cancelAnimationFrame(raf);
-                raf = requestAnimationFrame(() => {
-                  setSkillDrawerWidth(newWidth);
-                });
-              };
-              const handleUp = () => {
-                document.removeEventListener('mousemove', handleMove);
-                document.removeEventListener('mouseup', handleUp);
-                if (raf) cancelAnimationFrame(raf);
-              };
-              document.addEventListener('mousemove', handleMove);
-              document.addEventListener('mouseup', handleUp);
-            }}
-          />
-          <div className="skill-drawer-content" style={{ display: 'flex', flexDirection: 'column', height: '100%', borderRadius: 6, overflow: 'hidden', paddingTop: 5 }}>
-            <div style={{display:'flex',alignItems:'center',cursor:'pointer',marginBottom:4}} onClick={()=>setSkillTreeCollapsed(!skillTreeCollapsed)}>
-              {skillTreeCollapsed?<CaretRightOutlined style={{marginRight:4,fontSize:10}}/>:<DownOutlined style={{marginRight:4,fontSize:10}}/>}
-              <span style={{fontSize:12,fontWeight:500}}>目录结构</span>
-            </div>
-{!skillLocked && !skillTreeCollapsed && (
-              <div style={{ marginBottom: 8, display: 'flex', gap: 8 }}>
-                <Button 
-                  size="small" 
-                  icon={<TableOutlined style={{ color: '#1890ff' }} />} 
-                  style={{ fontSize: 11, color: '#1890ff' }}
-                  title="添加表格"
-                  onClick={() => setAddTableModalOpen(true)}
-                >添加</Button>
-              </div>
-            )}
-            {!skillTreeCollapsed && <div style={{ height: skillTreeHeight, overflow: 'auto', borderBottom: '1px solid var(--xtsql-border)', marginBottom: 8, padding: 8, background: 'var(--xtsql-hover)', borderRadius: 4, position: 'relative' }} className="skill-drawer-scroll">
-              <div
-                style={{
-                  position: 'absolute',
-                  bottom: 0,
-                  left: 0,
-                  right: 0,
-                  height: 6,
-                  cursor: 'ns-resize',
-                  zIndex: 10
-                }}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  const startY = e.clientY;
-                  const startHeight = skillTreeHeight;
-                  const handleMove = (moveEvent) => {
-                    const delta = moveEvent.clientY - startY;
-                    const newHeight = Math.max(80, Math.min(400, startHeight + delta));
-                    setSkillTreeHeight(newHeight);
-                  };
-                  const handleUp = () => {
-                    document.removeEventListener('mousemove', handleMove);
-                    document.removeEventListener('mouseup', handleUp);
-                  };
-                  document.addEventListener('mousemove', handleMove);
-                  document.addEventListener('mouseup', handleUp);
-                }}
-              />
-              <div style={{ height: '100%' }} className="skill-drawer-scroll">
-                <div>
-                  {skillTree.length > 0 ? (
-                    <Tree
-                      treeData={skillTree}
-                      showIcon={true}
-                      onSelect={(selectedKeys, { node }) => {
-                        if (!node.isFolder) {
-                          handleSkillFileSelect(node.key);
-                        }
-                      }}
-                      style={{ fontSize: 12, padding: '4px 0' }}
-                      icon={(node) => node.isFolder ? <FolderOpenOutlined style={{ color: '#faad14' }} /> : <FileTextOutlined style={{ color: '#1890ff' }} />}
-                    />
-                  ) : (
-                    <div style={{ color: '#999', fontSize: 12 }}>暂无内容</div>
-                  )}
-                </div>
-              </div>
-            </div>}
-            <div style={{display:'flex',alignItems:'center',cursor:'pointer',marginBottom:4}} onClick={()=>setSkillContentCollapsed(!skillContentCollapsed)}>
-              {skillContentCollapsed?<CaretRightOutlined style={{marginRight:4,fontSize:10}}/>:<DownOutlined style={{marginRight:4,fontSize:10}}/>}
-              <span style={{fontSize:12,fontWeight:500}}>文件内容</span>
-            </div>
-            {!skillContentCollapsed && <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column', marginBottom: 10, position: 'relative' }}>
-              <div
-                style={{
-                  position: 'absolute',
-                  top: 0,
-                  left: 0,
-                  right: 0,
-                  height: 6,
-                  cursor: 'ns-resize',
-                  zIndex: 10
-                }}
-                onMouseDown={(e) => {
-                  e.preventDefault();
-                  const startY = e.clientY;
-                  const startHeight = skillEditorHeight;
-                  let raf = 0;
-                  const handleMove = (moveEvent) => {
-                    const delta = moveEvent.clientY - startY;
-                    const newHeight = Math.max(100, Math.min(500, startHeight - delta));
-                    if (raf) cancelAnimationFrame(raf);
-                    raf = requestAnimationFrame(() => {
-                      setSkillEditorHeight(newHeight);
-                    });
-                  };
-                  const handleUp = () => {
-                    document.removeEventListener('mousemove', handleMove);
-                    document.removeEventListener('mouseup', handleUp);
-                    if (raf) cancelAnimationFrame(raf);
-                  };
-                  document.addEventListener('mousemove', handleMove);
-                  document.addEventListener('mouseup', handleUp);
-                }}
-              />
-              <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                <span>{skillSelectedFile ? `文件: ${skillSelectedFile}` : '文件内容'}</span>
-                {!skillLocked && skillSelectedFile && skillFileContent !== skillOriginalContent && (
-                  <Button 
-                    type="text" 
-                    size="small" 
-                    loading={skillSaving}
-                    onClick={handleSkillSave}
-                    style={{ padding: 2, height: 20, minWidth: 20 }}
-                    icon={<EditOutlined style={{ fontSize: 12 }} />}
-                  />
-                )}
-              </div>
-              <div style={{ flex: 1, border: '1px solid #444', borderRadius: 4, overflow: 'hidden', position: 'relative', background: '#1e1e1e' }}>
-                <Editor
-                  height="100%"
-                  language={skillFileLanguage}
-                  value={skillSelectedFile ? skillFileContent : '请选择文件查看内容'}
-                  onChange={(value) => setSkillFileContent(value || '')}
-                  theme="vs-dark"
-                  options={{
-                    readOnly: skillLocked,
-                    minimap: { enabled: false },
-                    fontSize: 11,
-                    lineNumbers: 'on',
-                    scrollBeyondLastLine: false,
-                    automaticLayout: true,
-                    wordWrap: 'on',
-                    hover: { enabled: false }
-                  }}
-                />
-              </div>
-            </div>}
-          </div>
-        </Drawer>
+        <SkillDrawer
+          skillOpen={skillOpen}
+          setSkillOpen={setSkillOpen}
+          skillLocked={skillLocked}
+          setSkillLocked={setSkillLocked}
+          skillTree={skillTree}
+          skillFileLanguage={skillFileLanguage}
+          skillSelectedFile={skillSelectedFile}
+          skillFileContent={skillFileContent}
+          skillOriginalContent={skillOriginalContent}
+          skillSaving={skillSaving}
+          setSkillFileContent={setSkillFileContent}
+          setAddTableModalOpen={setAddTableModalOpen}
+          loadSkillsList={loadSkillsList}
+          handleSkillFileSelect={handleSkillFileSelect}
+          handleSkillSave={handleSkillSave}
+        />
         
         <AddTableModal
           open={addTableModalOpen}
