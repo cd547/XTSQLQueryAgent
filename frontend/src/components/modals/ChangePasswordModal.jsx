@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Modal, Form, Input, message } from 'antd';
+import { Modal, Form, Input, App as AntdApp } from 'antd';
 import { LockOutlined } from '@ant-design/icons';
 import * as api from '../../api/index.js';
 
@@ -12,6 +12,8 @@ import * as api from '../../api/index.js';
  * - 改密成功后回调 onChanged（父组件负责登出 + 跳登录）
  */
 export default function ChangePasswordModal({ open, onClose, onChanged }) {
+  // ★ antd AntdApp.useApp()：让 message 走动态主题上下文，消除静态 message 警告
+  const { message: messageApi } = AntdApp.useApp();
   const [form] = Form.useForm();
   const [submitting, setSubmitting] = useState(false);
 
@@ -34,7 +36,7 @@ export default function ChangePasswordModal({ open, onClose, onChanged }) {
         oldPassword: values.oldPassword,
         newPassword: values.newPassword
       });
-      message.success('密码已修改，请重新登录');
+      messageApi.success('密码已修改，请重新登录');
       // 改密会吊销 token_version，前端必须退出登录态
       onChanged && onChanged();
     } catch (e) {
