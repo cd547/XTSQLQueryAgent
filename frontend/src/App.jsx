@@ -35,6 +35,8 @@ import { groupMessagesByRound } from './utils/groupMessages';
 import { hydrateLoadedMessages } from './utils/messageHistory';
 import { useSessionList } from './hooks/useSessionList.js';
 import { useFavorites } from './hooks/useFavorites.js';
+import { useTagConfirmation } from './hooks/useTagConfirmation.js';
+import { useUserChoice } from './hooks/useUserChoice.js';
 import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages } from './api';
 
 const { TextArea } = Input;
@@ -79,6 +81,20 @@ function AuthenticatedApp({ user, logout }) {
     favoriteStates, handleFavorite, hydrateFavoriteStates, clearFavoriteStates,
     chatSuggestions, refetchSuggestions,
   } = useFavorites({ messageApi });
+  const {
+    confirmTagAdd, openTagConfirmation,
+    handleConfirmTagAdd, handleCancelTagAdd,
+  } = useTagConfirmation({ messageApi });
+  // useUserChoice 需要调 handleSend 触发新一轮 → 用 ref 注入避免 hook 顺序耦合
+  // (useUserChoice 必须在组件顶层调用,但 handleSend 在它下面定义,所以通过 ref 间接调用)
+  const handleSendRef = useRef(null);
+  const onSubmitCombined = useCallback((text) => {
+    handleSendRef.current?.(text);
+  }, []);
+  const {
+    userChoiceRequest, openUserChoiceRequest,
+    handleSubmitUserChoice, handlePrevUserChoice, handleCancelUserChoice,
+  } = useUserChoice({ onSubmitCombined });
   const [currentSessionId, setCurrentSessionId] = useState(null);
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
@@ -132,24 +148,6 @@ function AuthenticatedApp({ user, logout }) {
   const [explainAnalyzeModalOpen, setExplainAnalyzeModalOpen] = useState(false);
   const [explainAnalysisContent, setExplainAnalysisContent] = useState('');
   const [explainAnalysisLoading, setExplainAnalysisLoading] = useState(false);
-  const [confirmTagAdd, setConfirmTagAdd] = useState({
-    visible: false,
-    term: [],
-    table: '',
-    description: ''
-  });
-  // ★ request_user_choice 弹窗状态：由 SSE done 事件的 user_choice_request 字段驱动
-  // v2 (2026-07-15) 链式弹窗：单次 LLM 推理可问 1-3 个问题，前端按 currentIndex 顺序展示
-  //   - requests: 问题数组（来自后端 yield 的 userChoiceRequest 数组；1-3 个元素）
-  //   - currentIndex: 当前展示的问题索引
-  //   - answers: 与 requests 等长的答案数组，每个 {selected:[], text:''}，按 currentIndex 顺序填充
-  // 提交/取消后合成 1 个综合 user message（"label=answer" 用 ; 连接），调 /generate 触发新一轮
-  const [userChoiceRequest, setUserChoiceRequest] = useState({
-    visible: false,
-    requests: [],
-    currentIndex: 0,
-    answers: []
-  });
   const [isExplainResult, setIsExplainResult] = useState(false);
   const [explainResults, setExplainResults] = useState([]);
   const [explainPanelOpen, setExplainPanelOpen] = useState(false);
@@ -722,8 +720,7 @@ function AuthenticatedApp({ user, logout }) {
               try {
                 const params = JSON.parse(paramMatch[1]);
                 const term = Array.isArray(params.term) ? params.term : [params.term || ''];
-                setConfirmTagAdd({
-                  visible: true,
+                openTagConfirmation({
                   term: term.filter(t => t),
                   table: params.table || '',
                   description: params.description || ''
@@ -1002,12 +999,7 @@ function AuthenticatedApp({ user, logout }) {
               multiSelect: !!r.multi_select,
               header: r.header || ''
             }));
-            setUserChoiceRequest({
-              visible: true,
-              requests: reqs,
-              currentIndex: 0,
-              answers: reqs.map(() => ({ selected: [], text: '' }))
-            });
+            openUserChoiceRequest({ requests: reqs });
           }
         }
       });
@@ -1039,91 +1031,19 @@ function AuthenticatedApp({ user, logout }) {
     }
   };
 
+  // ★ useUserChoice 通过 handleSendRef 间接调用 handleSend 触发新一轮
+  //   每次 render 都同步最新 handleSend 到 ref(useUserChoice 内部 setTimeout 0 异步触发,此时 ref 已就绪)
+  //   必须放在 handleSend 声明之后,否则依赖数组 [handleSend] 求值时触发 TDZ
+  useEffect(() => {
+    handleSendRef.current = handleSend;
+  }, [handleSend]);
+
   const handleStop = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
     }
   };
 
-  const handleConfirmTagAdd = async () => {
-    const { table, term } = confirmTagAdd;
-    try {
-      await addTagToTable(table, term);
-      const termStr = Array.isArray(term) ? term.join(', ') : term;
-      messageApi.success(`已将 "${termStr}" 添加到 ${table} 的标签`);
-    } catch (e) {
-      messageApi.error('添加标签失败: ' + e.message);
-    }
-    setConfirmTagAdd(prev => ({ ...prev, visible: false }));
-  };
-
-  const handleCancelTagAdd = () => {
-    setConfirmTagAdd(prev => ({ ...prev, visible: false }));
-  };
-
-  // ★ request_user_choice 链式提交处理 (v2: 1-3 个问题串联)
-  //   - 非最后一个问题：保存当前答案 + currentIndex++ (弹窗不关，只换问题)
-  //   - 最后一个问题：保存答案 + 合成 1 个综合 user message + 关闭弹窗 + 调 /generate
-  // 综合消息格式: "label=answer; label=answer; ..."（label 优先用 header，缺失时退化为"问题N"）
-  // 方案 A: messages 数组只追加 1 个 user 消息（不像旧版 N 轮展开），节省 token
-  const handleSubmitUserChoice = (selected, text) => {
-    setUserChoiceRequest(prev => {
-      if (!prev.visible || prev.requests.length === 0) return prev;
-      const newAnswers = [...prev.answers];
-      newAnswers[prev.currentIndex] = { selected: selected || [], text: text || '' };
-      const isLast = prev.currentIndex >= prev.requests.length - 1;
-      if (!isLast) {
-        // 链式：保存当前答案 + 进入下一个问题
-        return { ...prev, currentIndex: prev.currentIndex + 1, answers: newAnswers };
-      }
-      // 最后一个：合成综合 user 消息
-      // ★ v2 改进（2026-07-27）：跳过的问题不再用 `（无）` 占位（LLM 易把"无"理解为 SQL 关键字）
-      //   改为：分两部分 —— 已答的进 "label=answer; ..."；跳过的额外追加一行明确标记
-      //   优点：LLM 一眼区分"已答"vs"跳过"，不会被"无"误判为 NULL / 不加 WHERE
-      const answeredParts = [];
-      const skippedLabels = [];
-      newAnswers.forEach((a, i) => {
-        const req = prev.requests[i] || {};
-        const label = (req.header && String(req.header).trim()) || `问题${i + 1}`;
-        const sel = Array.isArray(a.selected) && a.selected.length > 0 ? a.selected.join(', ') : '';
-        const txt = (a.text || '').trim();
-        const isAnswered = sel !== '' || txt !== '';
-        if (isAnswered) {
-          const ans = [sel, txt].filter(Boolean).join(' + ');
-          answeredParts.push(`${label}=${ans}`);
-        } else {
-          skippedLabels.push(label);
-        }
-      });
-      let combined = answeredParts.join('; ');
-      if (skippedLabels.length > 0) {
-        const skipNote = `（用户跳过了 ${skippedLabels.length} 个问题：${skippedLabels.join('、')}）`;
-        combined = combined ? `${combined}\n${skipNote}` : skipNote;
-      }
-      // 关闭弹窗 + 触发新一轮（setTimeout 0 避免在 reducer 中嵌套 setState）
-      setTimeout(() => {
-        handleSend(combined || '用户未回答');
-      }, 0);
-      return { visible: false, requests: [], currentIndex: 0, answers: [] };
-    });
-  };
-
-  // ★ v3 (2026-07-16) "上一步"：让用户回到上题修改答案
-  //   - 答案已存在 answers[] 中，dialog 的 useEffect 会从 previousAnswer 初始化本地 state
-  //   - 边界：currentIndex === 0 时按钮不显示
-  const handlePrevUserChoice = () => {
-    setUserChoiceRequest(prev => {
-      if (prev.currentIndex <= 0) return prev;
-      return { ...prev, currentIndex: prev.currentIndex - 1 };
-    });
-  };
-
-  // ★ 取消处理：合成 "用户取消了选择" 消息，提交新一轮
-  const handleCancelUserChoice = () => {
-    setUserChoiceRequest(prev => ({ ...prev, visible: false }));
-    handleSend('用户取消了选择，请基于已有信息继续');
-  };
-  
   const getSelectedSql = () => {
     if (sqlEditorInst) {
       const selection = sqlEditorInst.getSelection();
