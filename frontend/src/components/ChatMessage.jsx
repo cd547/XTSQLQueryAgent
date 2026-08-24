@@ -336,23 +336,25 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
                               />
                               <ReTooltip
                                 cursor={{ stroke: 'rgba(255,255,255,0.25)', strokeWidth: 1 }}
-                                contentStyle={{
-                                  background: 'rgba(20,20,20,0.95)',
-                                  border: '1px solid rgba(255,255,255,0.15)',
-                                  borderRadius: 4,
-                                  padding: '6px 9px',
-                                  fontSize: 11,
-                                  color: 'rgba(255,255,255,0.92)',
-                                }}
-                                labelStyle={{ color: 'rgba(255,255,255,0.92)', fontWeight: 600, marginBottom: 2 }}
-                                itemStyle={{ color: 'rgba(255,255,255,0.92)', padding: 0 }}
-                                formatter={(value, _name, props) => {
-                                  const p = props && props.payload;
-                                  if (!p) return [`${value}%`, '命中率'];
-                                  return [
-                                    `${value}%  ·  命中 ${p.cached} / 未命中 ${p.miss} / prompt ${p.prompt}`,
-                                    '命中率',
-                                  ];
+                                content={({ active, payload }) => {
+                                  if (!active || !payload || !payload.length) return null;
+                                  const p = payload[0].payload;
+                                  if (!p) return null;
+                                  return (
+                                    <div
+                                      style={{
+                                        background: 'rgba(20,20,20,0.95)',
+                                        border: '1px solid rgba(255,255,255,0.15)',
+                                        borderRadius: 4,
+                                        padding: '6px 9px',
+                                        fontSize: 11,
+                                        color: 'rgba(255,255,255,0.92)',
+                                      }}
+                                    >
+                                      <div>{`命中率: ${p.rate}%`}</div>
+                                      <div>{`命中 ${p.cached} / 未命中 ${p.miss} / prompt ${p.prompt}`}</div>
+                                    </div>
+                                  );
                                 }}
                               />
                               <ReferenceLine y={50} stroke="rgba(255,255,255,0.18)" strokeDasharray="2 3" />
