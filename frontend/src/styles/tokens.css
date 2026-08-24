@@ -70,8 +70,8 @@ html.xtsql-dark body {
   --xtsql-accent-soft: rgba(79, 140, 255, 0.16);
   --xtsql-accent-glow: 0 4px 14px rgba(79, 140, 255, 0.45);
   --xtsql-divider: rgba(255, 255, 255, 0.06);
-  --xtsql-app-bg: radial-gradient(1200px 600px at 0% 0%, rgba(79, 140, 255, 0.10), transparent 60%),
-                  radial-gradient(900px 500px at 100% 100%, rgba(124, 58, 237, 0.08), transparent 60%),
+  --xtsql-app-bg: radial-gradient(1200px 600px at 0% 0%, rgba(79, 140, 255, 0.25), transparent 60%),
+                  radial-gradient(900px 500px at 100% 100%, rgba(124, 58, 237, 0.20), transparent 60%),
                   #0f1115;
 }
 

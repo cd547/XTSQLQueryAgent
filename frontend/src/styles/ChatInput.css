@@ -1,12 +1,22 @@
 /* ==================== 输入区 ==================== */
 .xtsql-input-wrap {
+  /* ★ 浮在 .xtsql-content 底部（绝对定位），让聊天内容从后面滑过
+     配合 .xtsql-content::after 渐变蒙层实现"消息淡出"效果 */
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
   padding: 0 24px 16px;
   background: transparent;
+  z-index: 2;
 }
 .xtsql-input-inner {
-  max-width: 880px;
+  /* 响应式：与 .xtsql-chat-inner 保持一致（min 880 / max 1280）
+     见 ChatArea.css 注释 */
+  max-width: clamp(880px, calc(100% - 16px), 1280px);
   margin: 0 auto;
   position: relative;
+  /* 实色背景（light/dark 由 --xtsql-bg-elevated 自动适配） */
   background: var(--xtsql-bg-elevated);
   border-radius: var(--xtsql-radius-xl);
   border: 1px solid var(--xtsql-border);

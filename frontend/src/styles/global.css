@@ -25,3 +25,21 @@ html.xtsql-dark *::-webkit-scrollbar-thumb:hover { background: rgba(255, 255, 25
   50% { opacity: 0.55; }
 }
 .xtsql-pulse { animation: xtsql-pulse 1.4s ease-in-out infinite; }
+
+/* ==================== antd Tooltip 统一样式 ====================
+   浅色模式原本是 antd 默认 rgba(0,0,0,0.85)（半透明但无模糊），
+   深色模式原本是 #434343 实色（无透明无模糊）。
+   这里统一改为：半透明黑 + backdrop-filter 高斯模糊 + 细白边。
+   - 浅色/深色用同一规则，避免重复
+   - 箭头用同色 rgba，避开 backdrop-filter 在伪元素上的兼容问题 */
+.ant-tooltip-inner {
+  background-color: rgba(0, 0, 0, 0.7) !important;
+  color: #fff !important;
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.2);
+}
+.ant-tooltip-arrow::before {
+  background: rgba(0, 0, 0, 0.7) !important;
+}

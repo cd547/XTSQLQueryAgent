@@ -291,6 +291,8 @@ html.xtsql-dark .xtsql-log-tag.return { color: #fbbf24; }
   flex-direction: column;
   align-items: center;
   padding-top: 4px;
+  /* ★ 2026-08-24：圆圈可点击区域扩展到整个 axis（44px 宽，比 24px 圆点更好点） */
+  cursor: pointer;
 }
 .xtsql-round-dot {
   width: 24px;
@@ -307,6 +309,23 @@ html.xtsql-dark .xtsql-log-tag.return { color: #fbbf24; }
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.18);
   z-index: 2;
   position: relative;
+  /* ★ 2026-08-24：hover 缩放反馈 */
+  transition: transform 0.15s ease, box-shadow 0.15s ease, opacity 0.2s ease;
+}
+.xtsql-round-axis:hover .xtsql-round-dot {
+  transform: scale(1.12);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
+}
+/* ★ 2026-08-24：折叠态——圆点变淡变小，提示"已折叠" */
+.xtsql-round-group.is-collapsed .xtsql-round-dot {
+  opacity: 0.55;
+  transform: scale(0.85);
+  background: var(--xtsql-text-tertiary);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+.xtsql-round-group.is-collapsed .xtsql-round-axis:hover .xtsql-round-dot {
+  opacity: 0.85;
+  transform: scale(0.95);
 }
 .xtsql-round-line {
   position: absolute;

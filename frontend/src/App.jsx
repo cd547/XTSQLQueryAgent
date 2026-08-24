@@ -328,6 +328,9 @@ function AuthenticatedApp({ user, logout }) {
       setCurrentSessionId(data.id);
       setCurrentSessionName(`${sessionName}#${data.id}`);
       setCurrentTokens(0);
+      // ★ 修复：新建会话时清空"会话消息详情"进度条数值，
+      //   否则会残留上一个会话的 token 数（与 handleSessionClick 切会话时的 reset 对齐）
+      setSessionMessagesTokens(0);
       setMessages([]);
       setResults([]);
       setShowResults(false);
