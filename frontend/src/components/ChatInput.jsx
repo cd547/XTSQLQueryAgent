@@ -19,12 +19,15 @@
  *  - 状态显示：currentModel, currentTokens, sessionMessagesTokens, tokenWarningLevel, onViewMessages
  *  - 思考模式：reasoningEnabled, reasoningEffort, setReasoningEnabled, setReasoningEffort
  */
-import React from 'react';
-import { Input, Button, Space, Tooltip, Segmented } from 'antd';
+import React, { useRef } from 'react';
+import { Input, Button, Space, Tooltip, Segmented, Progress, Tag } from 'antd';
 import {
   ClockCircleOutlined,
   SendOutlined,
   LoadingOutlined,
+  PaperClipOutlined,
+  CloseOutlined,
+  FileImageOutlined,
 } from '@ant-design/icons';
 
 const { TextArea } = Input;
@@ -59,7 +62,16 @@ export default function ChatInput({
   //   移除 reasoningEnabled prop（始终为 true，App.jsx 硬编码）
   reasoningEffort,         // 'low' | 'medium' | 'high'
   setReasoningEffort,      // (s) => void
+
+  // ===== 附件（★ 2026-08-24 新增：DeepSeek Files API）=====
+  filesConfig,             // { allowedTypes: string[], maxSizeMiB: number, expiresAfterSeconds: number|null }
+  uploadedFiles,           // Array<{ id, filename, bytes, created_at, expires_at? }>（全局已上传文件，跨会话共享）
+  uploadingFiles,          // Array<{ tempId, name, size, progress, controller }>（上传中任务，含进度与可取消）
+  onUploadFile,            // (file: File) => void
+  onRemoveFile,            // (fileId: string) => void
+  onCancelUpload,          // (tempId: string) => void
 }) {
+  const fileInputRef = useRef(null);
   // 拖拽条 mousedown 闭包（捕获 startHeight/handleMove/handleUp）
   const handleResizerMouseDown = (e) => {
     e.preventDefault();
@@ -84,8 +96,55 @@ export default function ChatInput({
     setReasoningEffort(v);
   };
 
+  // 把后端的 allowedTypes（如 image/jpeg）映射到 <input type="file" accept> 字符串（image/jpeg,image/png,...）
+  const acceptAttr = (Array.isArray(filesConfig?.allowedTypes) ? filesConfig.allowedTypes : []).join(',');
+
+  // 点 paperclip 按钮 → 触发隐藏的 <input type="file"> 点击
+  const handlePaperclipClick = () => {
+    if (isCurrentSessionStreaming || otherSessionStreaming || disabled) return;
+    fileInputRef.current?.click();
+  };
+
+  // 文件选择：每次只传一个（多文件选第一个且只读第一个，避免 batch upload 复杂度）
+  const handleFileChange = (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (file) onUploadFile?.(file);
+    // 清 value：让下次选同一文件也能触发 change
+    e.target.value = '';
+  };
+
   return (
     <div className="xtsql-input-wrap">
+      {/* ★ 2026-08-24 附件：上传进度条
+            - 位置：聊天对话框的上方（紧贴 input 容器上沿）
+            - 仅在 uploadingFiles.length > 0 时显示
+            - 每条任务 = 1 行 Progress + 文件名 + 取消按钮 */}
+      {uploadingFiles && uploadingFiles.length > 0 && (
+        <div className="xtsql-file-uploads">
+          {uploadingFiles.map((u) => (
+            <div key={u.tempId} className="xtsql-file-upload-row">
+              <FileImageOutlined style={{ fontSize: 12, color: 'var(--xtsql-text-secondary, #888)' }} />
+              <span className="xtsql-file-upload-name" title={u.name}>{u.name}</span>
+              <Progress
+                percent={u.progress}
+                size="small"
+                showInfo
+                style={{ flex: 1, margin: '0 8px' }}
+                strokeColor={{ '0%': '#69b1ff', '100%': '#1677ff' }}
+              />
+              <Tooltip title="取消上传">
+                <Button
+                  size="small"
+                  type="text"
+                  icon={<CloseOutlined />}
+                  onClick={() => onCancelUpload?.(u.tempId)}
+                />
+              </Tooltip>
+            </div>
+          ))}
+        </div>
+      )}
+
       <div
         ref={inputResizerRef}
         className="xtsql-input-inner"
@@ -96,6 +155,37 @@ export default function ChatInput({
           onMouseDown={handleResizerMouseDown}
         />
         <div className="xtsql-input-grip" />
+
+        {/* ★ 2026-08-24 附件：已上传文件 chip 列表
+              - 位置：TextArea 之上、resizer 之下（输入框内顶部）
+              - 全局已上传文件展示在此；每个 chip 有一个 × 按钮触发 removeFile
+              - 暂不支持 chip 排序/拖拽；为空时不渲染（不占行高） */}
+        {uploadedFiles && uploadedFiles.length > 0 && (
+          <div className="xtsql-file-chip-list">
+            {uploadedFiles.map((f) => (
+              <Tag
+                key={f.id}
+                className="xtsql-file-chip"
+                icon={<FileImageOutlined />}
+                closable
+                onClose={(e) => { e.preventDefault(); onRemoveFile?.(f.id); }}
+                title={`file_id: ${f.id}\nfilename: ${f.filename}\nsize: ${(f.bytes / 1024).toFixed(1)} KiB`}
+              >
+                <span className="xtsql-file-chip-name">{f.filename}</span>
+              </Tag>
+            ))}
+          </div>
+        )}
+
+        {/* ★ 2026-08-24 附件：隐藏 file input + paperclip 按钮触发
+              accept 同步后端 allowlist；filesConfig 未加载时给个保守默认 */}
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={acceptAttr || 'image/jpeg,image/png,image/gif,image/webp'}
+          style={{ display: 'none' }}
+          onChange={handleFileChange}
+        />
 
         <TextArea
           className="xtsql-input-textarea"
@@ -124,6 +214,25 @@ export default function ChatInput({
 
         <div className="xtsql-input-footer">
           <div className="xtsql-input-meta">
+            {/* ★ 2026-08-24 附件按钮：放在最左侧（模型的"左侧"）
+                  - icon=PaperClipOutlined
+                  - 提示：上传文件（当前支持 JPEG/PNG/GIF/WebP）
+                  - 流式 / 弹窗阻塞 / disabled 时一并禁用（避免误点） */}
+            <Tooltip title={
+              isCurrentSessionStreaming || otherSessionStreaming
+                ? '生成中无法上传'
+                : `上传附件${filesConfig?.maxSizeMiB ? `（≤ ${filesConfig.maxSizeMiB} MiB）` : ''}`
+            }>
+              <Button
+                size="small"
+                type="text"
+                className="xtsql-paperclip-btn"
+                icon={<PaperClipOutlined />}
+                onClick={handlePaperclipClick}
+                disabled={isCurrentSessionStreaming || otherSessionStreaming || disabled}
+              />
+            </Tooltip>
+
             {currentModel && <span className="xtsql-input-model-tag">{currentModel}</span>}
 
             {/* ★ 用户控件：思考模式

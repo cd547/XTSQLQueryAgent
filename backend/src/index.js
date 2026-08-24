@@ -29,6 +29,7 @@ import skillRouter from './routes/skill.js';
 import exportRouter from './routes/export.js';
 import authRouter from './routes/auth.js';
 import favoriteQueryRouter from './routes/favoriteQuery.js';
+import filesRouter from './routes/files.js';
 
 app.use('/api/auth', authRouter);
 app.use('/api/config', configRouter);
@@ -39,6 +40,7 @@ app.use('/api/table-schema', tableSchemaRouter);
 app.use('/api/skills', skillRouter);
 app.use('/api/export', exportRouter);
 app.use('/api/queries', favoriteQueryRouter);
+app.use('/api/files', filesRouter);
 
 // ★ 兜底（B13 修复）：Express 4 不自动捕获 async 路由的 rejected promise，
 //   漏 try/catch 时 Node 15+ 会以 unhandledRejection 终止进程。

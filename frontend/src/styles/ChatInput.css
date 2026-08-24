@@ -165,3 +165,88 @@
 @media (max-width: 768px) {
   .xtsql-input-wrap { padding: 0 12px 12px; }
 }
+
+/* ==================== 附件（★ 2026-08-24 新增：DeepSeek Files API）==================== */
+/* 进度条：位于 .xtsql-input-wrap 内、.xtsql-input-inner 上方 */
+.xtsql-file-uploads {
+  max-width: clamp(880px, calc(100% - 16px), 1280px);
+  margin: 8px auto 6px;
+  padding: 6px 10px;
+  background: var(--xtsql-hover);
+  border: 1px solid var(--xtsql-border);
+  border-radius: var(--xtsql-radius-md);
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.xtsql-file-upload-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--xtsql-text-secondary);
+}
+.xtsql-file-upload-name {
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  flex-shrink: 0;
+  color: var(--xtsql-text);
+}
+/* 文件 chip 列表：TextArea 之上、resizer 之下 */
+.xtsql-file-chip-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 6px;
+  padding: 8px 18px 0;
+  max-height: 64px;
+  overflow-y: auto;
+}
+.xtsql-file-chip.ant-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 8px;
+  font-size: 10.5px;
+  line-height: 20px;
+  background: var(--xtsql-accent-soft);
+  border-color: var(--xtsql-accent);
+  color: var(--xtsql-accent);
+  border-radius: var(--xtsql-radius-pill);
+  max-width: 200px;
+}
+.xtsql-file-chip-name {
+  display: inline-block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 160px;
+  vertical-align: bottom;
+}
+.xtsql-file-chip .anticon-close {
+  color: var(--xtsql-accent);
+  font-size: 10px;
+  margin-left: 2px;
+}
+.xtsql-file-chip .anticon-close:hover {
+  color: var(--xtsql-danger);
+}
+/* paperclip 按钮：在 footer meta 最左侧 */
+.xtsql-paperclip-btn.ant-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  color: var(--xtsql-text-tertiary);
+}
+.xtsql-paperclip-btn.ant-btn:hover:not(:disabled) {
+  color: var(--xtsql-accent);
+  background: var(--xtsql-accent-soft);
+}
+.xtsql-paperclip-btn.ant-btn:disabled {
+  color: var(--xtsql-border-strong);
+  cursor: not-allowed;
+}

@@ -338,6 +338,7 @@ async function* _runSqlAgentResponsesStreamGen({
   question, historyText, signal, sessionId, username,
   allTools, systemMessage, cfg, maxToolCalls: maxToolCallsInput,
   reasoningConfig,  // ★ 用户控件：{ enabled: boolean, effort: 'low'|'medium'|'high' }。undefined → 保持向后兼容 (high)
+  fileIds,           // ★ 2026-08-24：DeepSeek Files API 文件 id 列表
 }) {
   logger.info("runSqlAgentResponses called", {
     question, historyLength: historyText?.length, sessionId, username,
@@ -390,8 +391,8 @@ async function* _runSqlAgentResponsesStreamGen({
   // toolsMap 基于完整 allTools 构建（key = t.name），循环内复用
   const toolsMap = new Map(allTools.map((t) => [t.name, t]));
 
-  // 4) Messages 初始化
-  let messages = initMessagesForRun({ sessionId, question, systemMessage });
+  // 4) Messages 初始化（★ 2026-08-24：透传 fileIds 给 buildUserMessage）
+  let messages = initMessagesForRun({ sessionId, question, systemMessage, fileIds });
   // ★ 每次新 user 消息（= 一次 invoke）重置"问题级"状态：
   //   validateSqlFields* 始终重置；域路由状态仅新问题时清空，
   //   request_user_choice 中断后的续问保留状态（与 CC path 1:1 对齐）。
@@ -715,6 +716,7 @@ export async function runSqlAgentResponsesHandler(req, res, ctx) {
     sessionId, question, historyText, username,
     tools: toolsInput, cfg, systemMessage, llmCfg, logger: routeLogger,
     reasoningConfig,  // ★ 用户控件：透传到 generator
+    fileIds,           // ★ 2026-08-24：DeepSeek Files API 文件 id 列表
   } = ctx;
 
   const log = routeLogger || logger;
@@ -736,6 +738,7 @@ export async function runSqlAgentResponsesHandler(req, res, ctx) {
       question, historyText, signal: abortController.signal, sessionId, username,
       allTools, systemMessage, cfg: llmCfg || cfg,
       reasoningConfig,  // ★ 用户控件：透传
+      fileIds,           // ★ 2026-08-24：DeepSeek Files API
     });
 
     for await (const chunk of generator) {

@@ -33,6 +33,7 @@ import {
   queueLog,
   flushLogs,
   setLastMessages,
+  buildUserMessage,
 } from "./llm.js";
 import { logger } from "../logger.js";
 
@@ -42,8 +43,8 @@ import { logger } from "../logger.js";
 // 职责：从 DB 加载历史消息（如有）+ 拼接 system+user 消息 → 返回初始 messages 数组
 // ============================================================
 export function initMessagesForRun(ctx) {
-  // ctx: { sessionId, question, systemMessage }
-  const { sessionId, question, systemMessage } = ctx;
+  // ctx: { sessionId, question, systemMessage, fileIds? }
+  const { sessionId, question, systemMessage, fileIds } = ctx;
   let messages;
 
   // 如果有 sessionId，尝试从数据库加载历史消息
@@ -62,18 +63,18 @@ export function initMessagesForRun(ctx) {
       if (systemIndex >= 0) {
         messages[systemIndex] = { role: "system", content: systemMessage };
       }
-      // 添加新的用户消息
-      messages.push({ role: "user", content: question });
+      // 添加新的用户消息（★ 2026-08-24：支持 file_ids 多模态 content 数组）
+      messages.push(buildUserMessage(question, fileIds));
     } else {
       messages = [
         { role: "system", content: systemMessage },
-        { role: "user", content: question },
+        buildUserMessage(question, fileIds),
       ];
     }
   } else {
     messages = [
       { role: "system", content: systemMessage },
-      { role: "user", content: question },
+      buildUserMessage(question, fileIds),
     ];
   }
   return messages;
@@ -532,11 +533,27 @@ export function convertMessagesToInputItems(messages) {
       continue;
     }
     if (m.role === "user") {
-      items.push({
-        type: "message",
-        role: "user",
-        content: [{ type: "input_text", text: String(m.content || "") }],
-      });
+      // ★ 2026-08-24：支持多模态 content 数组（DeepSeek Files API 透传 file content block）
+      //   - content 是 string → 旧版走 input_text 块
+      //   - content 是 Array → 逐项映射：
+      //       {type:'text'} → {type:'input_text', text}
+      //       {type:'file', file_id} → 原样保留（DeepSeek Responses API 直接接受 file 块）
+      let contentBlocks;
+      if (Array.isArray(m.content)) {
+        contentBlocks = m.content.map((part) => {
+          if (part && part.type === "text") {
+            return { type: "input_text", text: String(part.text || "") };
+          }
+          if (part && part.type === "file" && typeof part.file_id === "string") {
+            return { type: "file", file_id: part.file_id };
+          }
+          // 未知块：兜底为 input_text
+          return { type: "input_text", text: String(part?.text || "") };
+        });
+      } else {
+        contentBlocks = [{ type: "input_text", text: String(m.content || "") }];
+      }
+      items.push({ type: "message", role: "user", content: contentBlocks });
       continue;
     }
     if (m.role === "assistant") {

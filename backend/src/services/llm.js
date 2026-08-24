@@ -1174,6 +1174,26 @@ function sanitizeMessagesForLLM(messages) {
 //   项目惯例），"Agent" 反映多轮 tool-calling 循环本质，"Sql" 标注领域。
 //   历史可追溯：原名仍出现在 git log / docs/执行流程.md / docs/superpowers/
 //   reviews/ 与 plans/ 中（本注释作为锚点，git blame 可定位到此处）。
+// ★ 2026-08-24：构建 user 消息。
+//   - 无 fileIds → 与旧版一致返回 { role:'user', content: string }
+//   - 有 fileIds → 走 DeepSeek 多模态 content 数组格式（[{type:'text',text}, {type:'file',file_id}, ...]）
+//     文档：https://api-docs.deepseek.com/zh-cn/guides/files_api#%E5%9C%A8%E5%AF%B9%E8%AF%9D%E8%AF%B7%E6%B1%82%E4%B8%AD%E4%BD%BF%E7%94%A8%E5%B7%B2%E4%B8%8A%E4%BC%A0%E7%9A%84%E6%96%87%E4%BB%B6
+//   注：当前 Responses API 路径（responsesApi.js）独立拼装 input items，暂不处理 file_ids
+//     （仅 deepseek-v4-flash-vision-exp 支持，本项目目前主要走 chat_completions）。
+export function buildUserMessage(question, fileIds) {
+  const ids = Array.isArray(fileIds) ? fileIds.filter(id => typeof id === 'string' && id.length > 0) : [];
+  if (ids.length === 0) {
+    return { role: 'user', content: question };
+  }
+  return {
+    role: 'user',
+    content: [
+      { type: 'text', text: question },
+      ...ids.map((id) => ({ type: 'file', file_id: id })),
+    ],
+  };
+}
+
 export async function* runSqlAgent(
   question,
   history = "",
@@ -1181,6 +1201,7 @@ export async function* runSqlAgent(
   sessionId = null,
   username = null,
   reasoningConfig,  // ★ 用户控件：{ enabled: boolean, effort: 'low'|'medium'|'high' }。undefined → 向后兼容 (enabled)
+  fileIds = null,   // ★ 2026-08-24：DeepSeek Files API 文件 id 列表（仅 deepseek-v4-flash-vision-exp 模型支持）
 ) {
   logger.info("runSqlAgent called", {
     question,
@@ -1245,18 +1266,18 @@ export async function* runSqlAgent(
       if (systemIndex >= 0) {
         messages[systemIndex] = { role: "system", content: systemMessage };
       }
-      // 添加新的用户消息
-      messages.push({ role: "user", content: question });
+      // 添加新的用户消息（★ 2026-08-24：支持 file_ids 多模态 content 数组）
+      messages.push(buildUserMessage(question, fileIds));
     } else {
       messages = [
         { role: "system", content: systemMessage },
-        { role: "user", content: question },
+        buildUserMessage(question, fileIds),
       ];
     }
   } else {
     messages = [
       { role: "system", content: systemMessage },
-      { role: "user", content: question },
+      buildUserMessage(question, fileIds),
     ];
   }
 

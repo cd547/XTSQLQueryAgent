@@ -234,6 +234,74 @@ export function updateAgentConfig(key, value) {
   return api.put(`/config/agent/${key}`, { value }).then(r => r.data);
 }
 
+// ★ 2026-08-24：DeepSeek Files API（附件）
+//   - 文档：https://api-docs.deepseek.com/zh-cn/guides/files_api
+//   - 当前仅支持 4 种图片格式：JPEG/PNG/GIF/WebP（后端从 agent_files_config 拉 allowlist 二次校验）
+//   - 仅 deepseek-v4-flash-vision-exp 模型能消费（其他模型调用会 400）
+//   - 上传走 fetch + XHR（axios 默认不支持 progress 事件），返回 { promise, abort }
+export function getFilesConfig() {
+  return api.get('/config/files').then(r => r.data);
+}
+
+export function listFiles({ limit = 100, order = 'desc' } = {}) {
+  return api.get('/files', { params: { limit, order } }).then(r => r.data);
+}
+
+export function deleteFileApi(fileId) {
+  return api.delete(`/files/${encodeURIComponent(fileId)}`).then(r => r.data);
+}
+
+/**
+ * 上传文件到 DeepSeek Files API，附带进度回调。
+ * @param {File} file
+ * @param {{onProgress?: (percent:number)=>void, signal?: AbortSignal}} opts
+ * @returns {Promise<{id,filename,bytes,created_at,purpose,expires_at}>}
+ */
+export function uploadFileWithProgress(file, opts = {}) {
+  const { onProgress, signal } = opts;
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    if (signal) {
+      const onAbort = () => xhr.abort();
+      signal.addEventListener('abort', onAbort, { once: true });
+    }
+    xhr.open('POST', baseURL + '/files/upload', true);
+    xhr.withCredentials = true;
+    xhr.responseType = 'json';
+    xhr.upload.onprogress = (e) => {
+      if (e.lengthComputable && onProgress) {
+        onProgress(Math.round((e.loaded / e.total) * 100));
+      }
+    };
+    xhr.onload = () => {
+      const data = xhr.response;
+      if (xhr.status >= 200 && xhr.status < 300) {
+        if (data && data.success && data.file) resolve(data.file);
+        else resolve(data);
+      } else {
+        const msg = (data && data.error) || `上传失败：HTTP ${xhr.status}`;
+        const err = new Error(msg);
+        err.code = (data && data.code) || 'UPLOAD_FAILED';
+        err.status = xhr.status;
+        reject(err);
+      }
+    };
+    xhr.onerror = () => {
+      const err = new Error('网络错误，上传失败');
+      err.code = 'NETWORK_ERROR';
+      reject(err);
+    };
+    xhr.onabort = () => {
+      const err = new Error('已取消上传');
+      err.code = 'ABORTED';
+      reject(err);
+    };
+    const form = new FormData();
+    form.append('file', file, file.name);
+    xhr.send(form);
+  });
+}
+
 // 鉴权相关 API
 export function loginApi(payload) {
   return api.post('/auth/login', payload).then(r => r.data);

@@ -301,7 +301,18 @@ router.delete('/messages/:sessionId', async (req, res) => {
 });
 
 router.post('/generate', async (req, res) => {
-  let { question, sessionId, schemaMode, reasoning } = req.body;
+  let { question, sessionId, schemaMode, reasoning, fileIds } = req.body;
+
+  // ★ 2026-08-24：DeepSeek Files API 文件 id 白名单清洗
+  //   - 仅接受形如 'file-api-xxx' 的字符串数组
+  //   - 不在白名单 → 静默丢弃（避免前端误传任意字符串污染 LLM message）
+  //   - 持久化由 messages.content 内嵌（多模态 content 数组）承担；此处仅校验后透传
+  if (Array.isArray(fileIds)) {
+    fileIds = fileIds.filter((id) => typeof id === 'string' && /^file-api-[A-Za-z0-9-]+$/.test(id));
+    if (fileIds.length === 0) fileIds = null;
+  } else {
+    fileIds = null;
+  }
 
   // ★ 用户控件：思考模式参数
   //   - 前端不传 → undefined → 后端两条路径都按各自默认值（保持向后兼容）
@@ -438,10 +449,12 @@ router.post('/generate', async (req, res) => {
           cfg: llmCfgForDispatch,
           systemMessage,
           reasoningConfig: reasoning,  // ★ 用户控件：透传到 Responses 路径
+          fileIds,                       // ★ 2026-08-24：DeepSeek Files API（仅 deepseek-v4-flash-vision-exp 支持）
           // ★ Phase 2: max_tool_calls 从 DB agent_config 查（与 runSqlAgent L1182 1:1）
           maxToolCalls: (() => {
             try {
               const db = getDb();
+
               const row = db.prepare('SELECT value FROM configs WHERE key = ?').get('agent_max_tool_calls');
               return row?.value || '30';
             } catch (e) {
@@ -456,7 +469,7 @@ router.post('/generate', async (req, res) => {
       // apiMode === 'chat_completions' 或无配置（旧用户） → 原代码 0 改动
 
       try {
-        const generator = runSqlAgent(question, historyText, abortController.signal, sessionId, req.user.username, reasoning);
+        const generator = runSqlAgent(question, historyText, abortController.signal, sessionId, req.user.username, reasoning, fileIds);
         let fullContent = '';
         let sql = '';
         let message = '';

@@ -39,6 +39,7 @@ import { useTagConfirmation } from './hooks/useTagConfirmation.js';
 import { useUserChoice } from './hooks/useUserChoice.js';
 import { useAppConfig } from './hooks/useAppConfig.js';
 import { useScrollMemory } from './hooks/useScrollMemory.js';
+import { useFileUpload } from './hooks/useFileUpload.js';
 import { queryExecute, getSessions, createSession, getSessionMessages, saveSessionMessage, deleteSession, getSkillsList, readSkillFile, saveSkillFile, getSessionTokens, explainQuery, updateSession, summarizeSession, addTagToTable, getQueryMessages } from './api';
 
 const { TextArea } = Input;
@@ -105,6 +106,15 @@ function AuthenticatedApp({ user, logout }) {
     userChoiceRequest, openUserChoiceRequest,
     handleSubmitUserChoice, handlePrevUserChoice, handleCancelUserChoice,
   } = useUserChoice({ onSubmitCombined });
+
+  // ★ 2026-08-24 附件上传（DeepSeek Files API）
+  //   - uploadedFiles: 全局（跨会话）已上传文件列表
+  //   - uploadingFiles: 正在上传中的任务（带 progress，UI 显示进度条）
+  //   - filesConfig: 后端返回的 allowlist（前端按钮的 accept 字符串同步生成）
+  const {
+    uploadedFiles, uploadingFiles, filesConfig,
+    uploadFile, cancelUpload, removeFile, refreshFiles,
+  } = useFileUpload();
   const [currentSessionId, setCurrentSessionId] = useState(null);
   // ★ 2026-08-24 多会话并行流式重构：消息按 sessionId 索引
   //   旧：单一 messages 数组，切会话时必须 abort 当前流
@@ -650,6 +660,11 @@ function AuthenticatedApp({ user, logout }) {
         // ★ 用户控件：思考模式（每次请求透传当前 UI 选择）
         //   v5.20c 移除 enabled 状态：始终为 true，不再透传
         reasoning: { enabled: true, effort: reasoningEffort },
+        // ★ 2026-08-24：附件 file_ids（DeepSeek Files API；全局已上传文件）
+        //   - 后端在 routes/query.js 入口做白名单清洗（^file-api-[A-Za-z0-9]+$）
+        //   - 仅 deepseek-v4-flash-vision-exp 模型能消费，其他模型 400 由后端报错
+        //   - 当前若没有任何已上传文件 → 字段省略（更轻的 payload）
+        ...(uploadedFiles.length > 0 ? { fileIds: uploadedFiles.map(f => f.id) } : {}),
       }, abortController.signal);
 
       if (!response.ok) {
@@ -1583,6 +1598,13 @@ const explainColumns = useMemo(() => explainResults.length > 0
                 // 思考模式（v5.20c 移除 reasoningEnabled）
                 reasoningEffort={reasoningEffort}
                 setReasoningEffort={setReasoningEffort}
+                // ★ 2026-08-24 附件（DeepSeek Files API）
+                filesConfig={filesConfig}
+                uploadedFiles={uploadedFiles}
+                uploadingFiles={uploadingFiles}
+                onUploadFile={uploadFile}
+                onRemoveFile={removeFile}
+                onCancelUpload={cancelUpload}
               />
             )}
           </Content>
