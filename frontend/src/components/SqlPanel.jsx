@@ -40,10 +40,13 @@ export default function SqlPanel({
   setSqlEditorInst,         // (editor) => void, Editor onMount 回调
   getSelectedSql,           // () => string, 选区 SQL 或全文
   onSqlChange,              // (value) => void, Editor onChange
-  onExecute,                // (sql) => void, "查询" 按钮
-  onExplain,                // (sql) => void, "EXPLAIN" 按钮
-  onExplainAnalyze,         // () => void, "AI 分析" 按钮
+  onExecute,                // (sql) => void, "查询" 按钮（SQL 直接执行，非 LLM 流）
+  onExplain,                // (sql) => void, "EXPLAIN" 按钮（SQL 直接执行，非 LLM 流）
+  onExplainAnalyze,         // () => void, "AI 分析" 按钮（★ 这是 LLM 流，需 globalStreaming 守卫）
   onExportExcel,            // () => void, "导出 Excel" 按钮
+  // ★ 2026-08-24 多会话并行：是否全局有 LLM 流在跑
+  //   只用来禁用"AI分析"按钮（其他按钮都是 SQL 直查，不算"流式输出"）
+  globalStreaming,
 }) {
   // ===== 内部 UI 状态 =====
   const [sqlPreviewHeight, setSqlPreviewHeight] = useState(200);
@@ -222,7 +225,19 @@ export default function SqlPanel({
             children: (
               <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
                 <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-                  <Button size="small" icon={<AppIcon size={18} />} onClick={onExplainAnalyze}>AI分析</Button>
+                  <Tooltip
+                    // ★ 2026-08-24 多会话并行：另一会话 LLM 流在跑时禁用 AI 分析
+                    //   AI 分析 = handleExplainAnalyze = LLM 流，会和 handleSend 竞争 token
+                    //   → 与 handleSend 同样走"一页面同一时间只有一个流式输出"约束
+                    title={globalStreaming ? '另一会话正在生成中，请等待或先停止' : undefined}
+                  >
+                    <Button
+                      size="small"
+                      icon={<AppIcon size={18} />}
+                      disabled={globalStreaming}
+                      onClick={onExplainAnalyze}
+                    >AI分析</Button>
+                  </Tooltip>
                 </div>
                 <Table
                   dataSource={explainResults}

@@ -40,7 +40,12 @@ export default function ChatInput({
   setInput,                // (s) => void
   onSend,                  // () => void, Enter 或点发送
   onStop,                  // () => void, 加载中点停止
-  loading,                 // boolean, 正在流式生成
+  // ★ 2026-08-24 多会话并行流式：拆分"当前会话在流"和"其他会话在流"两个 prop
+  //   - 修前用 loading（全 局流状态）→ A 在流时 B 也显示停止按钮，用户点错就误杀 A
+  //   - 修后用 isCurrentSessionStreaming：只有当前会话真在流才显示停止按钮
+  //   - otherSessionStreaming：其他会话在流时显示发送按钮但 disabled
+  isCurrentSessionStreaming, // boolean, 当前会话（currentSessionId === streamingSessionId）
+  otherSessionStreaming,    // boolean, 任何 LLM 流在跑但不是当前会话
   disabled,                // boolean, 例：userChoiceRequest.visible 时禁输入
 
   // ===== 状态显示（footer meta）=====
@@ -97,8 +102,21 @@ export default function ChatInput({
           value={input}
           onChange={e => setInput(e.target.value)}
           onPressEnter={e => { if (!e.shiftKey) { e.preventDefault(); onSend(); } }}
-          placeholder={disabled ? "请先完成弹窗中的选择" : "输入自然语言查询，按Enter发送，Shift+Enter换行"}
-          disabled={disabled}
+          // ★ 2026-08-24 多会话并行流式：3 种禁用场景
+          //   - disabled: 弹窗阻塞（userChoiceRequest.visible）
+          //   - isCurrentSessionStreaming: 当前会话在流 → 不可改 prompt
+          //   - otherSessionStreaming: 其他会话在流 → 全局只 1 个流，不能开新流
+          //   三者任一为真都要禁用 TextArea
+          disabled={disabled || isCurrentSessionStreaming || otherSessionStreaming}
+          placeholder={
+            disabled
+              ? "请先完成弹窗中的选择"
+              : isCurrentSessionStreaming
+              ? "当前会话正在生成中，点右侧停止按钮中断"
+              : otherSessionStreaming
+              ? "另一会话正在生成中，请等待其结束"
+              : "输入自然语言查询，按Enter发送，Shift+Enter换行"
+          }
           // ★ 由 .xtsql-input-inner 的 flex 布局控制高度（flex: 1 填中间空间）
           //   不再写死 style.height，避免拉高容器时把 footer 顶下去
           //   autoSize 也移除（flex 高度优先；内容超出走内部滚动）
@@ -159,7 +177,11 @@ export default function ChatInput({
             </Tooltip>
           </div>
 
-          {loading ? (
+          {isCurrentSessionStreaming ? (
+            // ★ 2026-08-24 多会话并行流式：只有当前会话在流时才显示"停止"按钮
+            //   修前：loading=true 就显示停止按钮 → A 在流时切到 B，B 顶部按钮是停止
+            //     → 用户点停止会误杀 A（虽然 abort 行为是正确的，但 UX 违反直觉）
+            //   修后：isCurrentSessionStreaming=true 才显示停止 → 按钮的语义 = 中断"当前会话的流"
             <Button
               className="xtsql-send-btn danger"
               onClick={onStop}
@@ -169,7 +191,10 @@ export default function ChatInput({
             <Button
               className="xtsql-send-btn"
               onClick={onSend}
-              disabled={!input.trim()}
+              // ★ 禁用条件：input 为空 / 弹窗阻塞 / 其他会话在流
+              //   - otherSessionStreaming 时虽然按钮显示为"发送"语义，但实际点了也无效
+              //     所以 disabled 掉 + placeholder 已经提示
+              disabled={!input.trim() || disabled || otherSessionStreaming}
               icon={<SendOutlined />}
             />
           )}

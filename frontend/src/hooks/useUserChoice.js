@@ -22,11 +22,19 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
 
 export function useUserChoice({ onSubmitCombined }) {
+  // ★ 2026-08-24 多会话并行：sessionId 记录"本次弹窗由哪个会话触发"
+  //   - 场景：A 在流，模型发起 request_user_choice；用户此时切到 B 看别的
+  //   - 弹窗 visible=true 但 currentSessionId=B；老逻辑提交时 handleSend 读 currentSessionId=B
+  //     → 新一轮的 user 消息被错误写入 B、A 的消息流断了
+  //   - 修法：弹窗状态里存 sessionId，提交时用 sessionId 而非 currentSessionId
+  //   - 不主动 setCurrentSessionId 切到发起方：用户在 B 看就在 B 看，新一轮在 A 后台跑
+  //     → 用户随时切回 A 能看到完整流式过程
   const [userChoiceRequest, setUserChoiceRequest] = useState({
     visible: false,
     requests: [],
     currentIndex: 0,
-    answers: []
+    answers: [],
+    sessionId: null,
   });
 
   // 用 ref 固定 onSubmitCombined,callback 重建不依赖它
@@ -35,7 +43,8 @@ export function useUserChoice({ onSubmitCombined }) {
 
   /**
    * 打开链式弹窗(由 SSE done 事件触发)
-   * @param {{ requests: Array<{id, question, options, multiSelect, header}> }} payload
+   * @param {{ requests: Array<{id, question, options, multiSelect, header}>, sessionId: string }} payload
+   *   sessionId 必填：本次弹窗由哪个会话发起
    */
   const openUserChoiceRequest = useCallback((payload) => {
     const reqs = Array.isArray(payload.requests) ? payload.requests : [];
@@ -43,7 +52,8 @@ export function useUserChoice({ onSubmitCombined }) {
       visible: true,
       requests: reqs,
       currentIndex: 0,
-      answers: reqs.map(() => ({ selected: [], text: '' }))
+      answers: reqs.map(() => ({ selected: [], text: '' })),
+      sessionId: payload.sessionId || null,
     });
   }, []);
 
@@ -83,11 +93,14 @@ export function useUserChoice({ onSubmitCombined }) {
         const skipNote = `（用户跳过了 ${skippedLabels.length} 个问题：${skippedLabels.join('、')}）`;
         combined = combined ? `${combined}\n${skipNote}` : skipNote;
       }
+      // ★ 2026-08-24：提交时把 sessionId 透传给 onSubmitCombined
+      //   让 App.handleSend 知道要把 user 消息和新的流写到哪个会话
+      const openerSessionId = prev.sessionId;
       // 关闭弹窗 + 触发新一轮（setTimeout 0 避免在 reducer 中嵌套 setState）
       setTimeout(() => {
-        submitRef.current?.(combined || '用户未回答');
+        submitRef.current?.(combined || '用户未回答', openerSessionId);
       }, 0);
-      return { visible: false, requests: [], currentIndex: 0, answers: [] };
+      return { visible: false, requests: [], currentIndex: 0, answers: [], sessionId: null };
     });
   }, []);
 
@@ -104,12 +117,16 @@ export function useUserChoice({ onSubmitCombined }) {
 
   /**
    * 取消处理：合成 "用户取消了选择" 消息,提交新一轮
+   * ★ 2026-08-24：同样透传 sessionId
    */
   const handleCancelUserChoice = useCallback(() => {
-    setUserChoiceRequest(prev => ({ ...prev, visible: false }));
-    setTimeout(() => {
-      submitRef.current?.('用户取消了选择，请基于已有信息继续');
-    }, 0);
+    setUserChoiceRequest(prev => {
+      const openerSessionId = prev.sessionId;
+      setTimeout(() => {
+        submitRef.current?.('用户取消了选择，请基于已有信息继续', openerSessionId);
+      }, 0);
+      return { ...prev, visible: false };
+    });
   }, []);
 
   return {

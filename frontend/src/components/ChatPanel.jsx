@@ -40,6 +40,7 @@ export default function ChatPanel({
   onFavorite,           // ({ msgId, userQuestion, sqlOutput }) => void
   onOpenSqlTab,         // (sql) => void
   onCopyAndExecute,     // (sql) => void
+  globalStreaming,      // ★ 2026-08-24 多会话并行：是否全局有 LLM 流在跑，透传 ChatMessage 禁用"复制并执行"
 }) {
   // 头像首字母提取（与原 inline 逻辑保持一致）
   const userAvatar = (user?.display_name || user?.username || 'U').slice(0, 1).toUpperCase();
@@ -115,6 +116,7 @@ export default function ChatPanel({
             onFavorite={makeFavoriteHandler(msg.id, userQuestion)}
             userAvatar={userAvatar}
             interrupted={msg.interrupted}  // ★ 2026-07-29：从 DB 或 SSE error 传入，渲染"已中断" badge
+            globalStreaming={globalStreaming}  // ★ 2026-08-24：透传全局流状态，用于禁用"复制并执行"按钮
           />
         );
       })}

@@ -11,7 +11,7 @@ import AppIcon from './AppIcon.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { getMarkdownRenderers } from './markdownRenderers.jsx';
 
-const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, onOpenSqlTab, onCopyAndExecute, onFavorite, favoriteState, userQuestion, userAvatar, interrupted, usage, toolName }) {
+const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, onOpenSqlTab, onCopyAndExecute, onFavorite, favoriteState, userQuestion, userAvatar, interrupted, usage, toolName, globalStreaming }) {
   const { theme: themeMode } = useTheme();
   const isUser = role === 'user';
   const isLog = role === 'log' || role === 'LLM' || role === 'tool' || role === 'tool_return';
@@ -413,13 +413,23 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
                     非 SELECT（INSERT/UPDATE/DELETE/DDL 等）执行风险高（误改/误删数据），
                     只允许复制到 SQL 查询 tab 由用户手动确认后再执行 */}
                 {isSelectLikeSql(sql) && (
-                  <Button
-                    className="xtsql-action-btn primary"
-                    icon={<ThunderboltOutlined />}
-                    onClick={() => onCopyAndExecute && onCopyAndExecute(sql)}
+                  <Tooltip
+                    // ★ 2026-08-24 多会话并行：另一会话 LLM 流在跑时禁用此按钮
+                    //   复制并执行本身只走 SQL 查询（非 LLM 流），技术上不会冲突；
+                    //   但用户在 A 流式输出时点 B 的"复制并执行"会分散注意力，
+                    //   等价于触发"并行操作"，违反"一页面同一时间只有一个流式输出"的设计原则
+                    title={globalStreaming ? '另一会话正在生成中，请等待或先停止' : undefined}
                   >
-                    复制并执行
-                  </Button>
+                    <Button
+                      className="xtsql-action-btn primary"
+                      icon={<ThunderboltOutlined />}
+                      // 即便 disabled 也要包 Tooltip 触发 hover，所以用 disabled prop 而非不渲染
+                      disabled={globalStreaming}
+                      onClick={() => onCopyAndExecute && onCopyAndExecute(sql)}
+                    >
+                      复制并执行
+                    </Button>
+                  </Tooltip>
                 )}
               </>
             )}
