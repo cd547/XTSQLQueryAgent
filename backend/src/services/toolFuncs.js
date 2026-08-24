@@ -407,9 +407,11 @@ export async function getTableSchema(tableNames, options = {}) {
         result.fields = parseDDLFields(ddlContent);
       }
 
-      // table_name 是冗余的：LLM 从工具调用的 args.table_names 已知是哪个表，
-      // 外层 Object.fromEntries 的 key 也已经是表名。删掉每表省 ~15 字符。
-      delete result.table_name;
+      // ★ 2026-08-24：恢复 name 字段（让 JSON 自描述表名）
+      //   早期版本有 `delete result.table_name` 注释说"冗余省 15 字符"，
+      //   但用户在前端读 JSON 时经常困惑"这是哪张表的数据"——LLM 从 args.table_names 知道，
+      //   但人类看不到。name 字段短（一般 10-25 字符），相比可读性收益值得保留。
+      result.name = name;
 
       return [name, result];
     }),

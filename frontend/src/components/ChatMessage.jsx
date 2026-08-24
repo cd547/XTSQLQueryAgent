@@ -4,6 +4,9 @@ import { CaretRightOutlined, DownOutlined, UserOutlined, CopyOutlined, Thunderbo
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
+import SyntaxHighlighter from 'react-syntax-highlighter/dist/esm/prism-light';
+import { vscDarkPlus } from 'react-syntax-highlighter/dist/esm/styles/prism';
+import { prism as prismLight } from 'react-syntax-highlighter/dist/esm/styles/prism';
 import AppIcon from './AppIcon.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { getMarkdownRenderers } from './markdownRenderers.jsx';
@@ -90,6 +93,47 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
     };
   })();
 
+  // ★ 2026-08-24：检测 SQL 是否是"安全可直执"的 SELECT 类语句
+  //   - 先去掉块注释 /* ... */ 和行注释 -- / #
+  //   - 找首词：SELECT / WITH / EXPLAIN / SHOW / DESCRIBE / DESC
+  //   - 命中 → 允许"复制并执行"按钮
+  //   - 不命中（INSERT/UPDATE/DELETE/DDL/...）→ 隐藏执行按钮，避免误改/误删数据
+  const isSelectLikeSql = (raw) => {
+    if (typeof raw !== 'string') return false;
+    const cleaned = raw
+      .replace(/\/\*[\s\S]*?\*\//g, ' ')   // 块注释
+      .replace(/(^|\s)(?:--|#)[^\n]*/g, '$1') // 行注释
+      .trim()
+      .toUpperCase();
+    return /^(SELECT|WITH|EXPLAIN|SHOW|DESCRIBE|DESC)\b/.test(cleaned);
+  };
+
+  // ★ 2026-08-24：工具返回如果是 JSON，split 成 prefix + JSON 两段
+  //   返回 null 表示不是 JSON（保持原逻辑回退到普通文本）
+  //   返回 {prefix, json, isBlock} 表示要 syntax highlight
+  //   - prefix（"📋 工具 xxx 返回:\n"）：保持原样，前缀可包含 emoji 和中文
+  //   - json：能 parse 且是对象/数组 → 紧凑→pretty；已是多行→保留
+  const tryParseJsonReturn = (raw) => {
+    if (typeof raw !== 'string') return null;
+    const trimmed = raw.trim();
+    if (!trimmed) return null;
+    const firstBrace = trimmed.search(/[\{\[]/);
+    if (firstBrace < 0) return null;
+    const prefix = trimmed.slice(0, firstBrace);
+    const jsonPart = trimmed.slice(firstBrace);
+    let parsed;
+    try { parsed = JSON.parse(jsonPart); } catch { return null; }
+    if (parsed === null || typeof parsed !== 'object') return null;
+    const pretty = jsonPart.includes('\n') ? jsonPart : JSON.stringify(parsed, null, 2);
+    return { prefix, json: pretty };
+  };
+
+  // JSON 高亮样式：跟随主题（与 markdown 代码块一致）
+  const isDarkHl = themeMode === 'dark';
+  const hlStyle = isDarkHl ? vscDarkPlus : prismLight;
+  const hlContainerBg = isDarkHl ? 'rgba(0,0,0,0.45)' : 'rgba(0,0,0,0.04)';
+  const hlContainerBorder = isDarkHl ? 'rgba(255,255,255,0.08)' : 'rgba(0,0,0,0.08)';
+
   // 日志类型（工具调用 / 思考过程）
   if (isLog) {
     // ★ F23 v3 (2026-08)：始终隐藏 get_call_history 工具的调用和返回结果
@@ -108,6 +152,8 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
       typeLabel = toolName ? `工具调用 ${toolName}` : '工具调用';
     }
     const tagClass = logType === 'return' ? 'return' : (logType === 'llm' ? 'llm' : 'call');
+    // 工具返回：尝试解析为 JSON 并 syntax highlight
+    const jsonReturn = logType === 'return' ? tryParseJsonReturn(content) : null;
     return (
       <div className="xtsql-log">
         <div className="xtsql-log-card">
@@ -118,11 +164,42 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
           </div>
           {!collapsed && (
             <div className="xtsql-log-body">
-              {/* ★ 2026-08-17：统一过滤"🔧 调用工具: ..."行（标题已拼工具名，body 再显示就重复）
-                  新数据 + 老数据 + 即使后端没重启跑旧代码 → 全部统一处理
-                  兜底：过滤后为空（如空参数工具）→ 显示"(无参数)"占位，避免节点"消失" */}
+              {/* 三种分支：
+                  1) call 类型：过滤 "🔧 调用工具: ..." 行（标题已拼工具名）
+                  2) return 类型且能 parse 成 JSON：prefix 普通文本 + JSON 高亮代码块
+                  3) 其他（llm / fallback return / call 无 content）：原样 */}
               {logType === 'call' && content
                 ? (content.replace(/^🔧 调用工具:[^\n]*\n?/, '').trim() || '(无参数)')
+                : jsonReturn
+                ? (
+                  <>
+                    {jsonReturn.prefix}
+                    <SyntaxHighlighter
+                      language="json"
+                      style={hlStyle}
+                      customStyle={{
+                        margin: '6px 0 0',
+                        padding: '6px 8px',
+                        borderRadius: 6,
+                        fontSize: 8,
+                        lineHeight: 1.45,
+                        fontFamily: "'SF Mono','Monaco','Cascadia Code','Consolas',monospace",
+                        background: hlContainerBg,
+                        border: `1px solid ${hlContainerBorder}`,
+                        overflowX: 'auto',
+                      }}
+                      /* ★ 2026-08-24：强制 pre + nowrap
+                         外层 .xtsql-log-body 有 white-space: pre-wrap + word-break: break-word
+                         会破坏 SyntaxHighlighter 的 token 边界高亮（高亮被换行切断）。
+                         这里强制代码块内部 pre + nowrap，token 完整不换行；
+                         横向溢出由 overflowX: auto 提供滚动条 */
+                      PreTag="pre"
+                      codeTagProps={{ style: { whiteSpace: 'pre', wordBreak: 'normal', wordWrap: 'normal' } }}
+                    >
+                      {jsonReturn.json}
+                    </SyntaxHighlighter>
+                  </>
+                )
                 : content}
             </div>
           )}
@@ -332,13 +409,18 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
                 >
                   复制到SQL查询
                 </Button>
-                <Button
-                  className="xtsql-action-btn primary"
-                  icon={<ThunderboltOutlined />}
-                  onClick={() => onCopyAndExecute && onCopyAndExecute(sql)}
-                >
-                  复制并执行
-                </Button>
+                {/* ★ 2026-08-24：仅 SELECT 类语句才显示"复制并执行"
+                    非 SELECT（INSERT/UPDATE/DELETE/DDL 等）执行风险高（误改/误删数据），
+                    只允许复制到 SQL 查询 tab 由用户手动确认后再执行 */}
+                {isSelectLikeSql(sql) && (
+                  <Button
+                    className="xtsql-action-btn primary"
+                    icon={<ThunderboltOutlined />}
+                    onClick={() => onCopyAndExecute && onCopyAndExecute(sql)}
+                  >
+                    复制并执行
+                  </Button>
+                )}
               </>
             )}
           </div>

@@ -229,7 +229,10 @@
   animation: xtsql-msg-in 0.24s ease;
 }
 .xtsql-log-card {
-  max-width: 75%;
+  /* ★ 2026-08-24：max-width 75% → 100%
+     JSON 内容经常比较长（如 validate_sql_fields 的 errors 列表），
+     75% 限制导致长行频繁换行，破坏 SyntaxHighlighter 的 token 边界高亮 */
+  max-width: 100%;
   border-radius: var(--xtsql-radius-md);
   font-size: 11px;
   border: 1px dashed var(--xtsql-border-strong);
@@ -265,7 +268,10 @@ html.xtsql-dark .xtsql-log-tag.return { color: #fbbf24; }
   word-break: break-word;
   font-family: 'SF Mono', 'Monaco', 'Cascadia Code', 'Consolas', monospace;
   font-size: 10.5px;
-  max-height: 240px;
+  /* ★ 2026-08-24：max-height 240 → 600
+     JSON 工具返回（如 validate_sql_fields 多层 errors 列表）经常超过 240px，
+     之前被截断需要滚动条；提升到 600px 让大多数 JSON 完整可见 */
+  max-height: 600px;
   overflow-y: auto;
   border-top: 1px dashed var(--xtsql-border);
   color: var(--xtsql-text-secondary);

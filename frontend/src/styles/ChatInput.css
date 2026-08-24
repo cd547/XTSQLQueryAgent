@@ -1,14 +1,14 @@
 /* ==================== 输入区 ==================== */
 .xtsql-input-wrap {
-  /* ★ 浮在 .xtsql-content 底部（绝对定位），让聊天内容从后面滑过
-     配合 .xtsql-content::after 渐变蒙层实现"消息淡出"效果 */
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+  /* ★ 2026-08-24：取消 absolute 浮层布局
+     之前用 absolute + 渐变蒙层是想做"消息淡出 + 输入框悬浮"效果，
+     但用户担心输入框会遮挡需要看到的最新消息。
+     现改回普通 flex 元素，input-wrap 紧贴 chat-area 下方，完全不重叠 */
   padding: 0 24px 16px;
-  background: transparent;
-  z-index: 2;
+  background: var(--xtsql-bg-elevated);
+  flex-shrink: 0;
+  /* 上边框视觉分隔（与 chat-area 区分） */
+  border-top: 1px solid var(--xtsql-border);
 }
 .xtsql-input-inner {
   /* 响应式：与 .xtsql-chat-inner 保持一致（min 880 / max 1280）

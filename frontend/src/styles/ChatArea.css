@@ -33,26 +33,10 @@
 .xtsql-chat-area {
   flex: 1;
   overflow: auto;
-  /* padding-bottom 加大到 130px：最后 100px 给 ::after 渐变蒙层 + 16px 给 input-wrap padding */
-  padding: 28px 24px 130px;
+  /* padding 恢复原值（28 24 24）：输入框改回普通 flex 元素，不再浮在聊天区底部 */
+  padding: 28px 24px 24px;
   background: transparent;
   scroll-behavior: smooth;
-}
-/* ★ 底部渐变蒙层：让聊天内容淡入背景，与浮在底部的输入框无缝衔接
-   - 定位：absolute 相对 .xtsql-content 底部
-   - 高度 100px：从透明渐变到 var(--xtsql-bg) 纯色（与输入框背景接近，过渡自然）
-   - 避开输入框本身：bottom: 16px（与 input-wrap padding-bottom 对齐）
-   - z-index 1：覆盖在 chat-area 内容之上，但在 input-wrap (z-index 2) 之下 */
-.xtsql-content::after {
-  content: '';
-  position: absolute;
-  bottom: 16px;
-  left: 0;
-  right: 0;
-  height: 100px;
-  background: linear-gradient(to bottom, transparent, var(--xtsql-bg));
-  pointer-events: none;
-  z-index: 1;
 }
 .xtsql-chat-inner {
   /* 响应式：min 880 / max 1280；中间屏宽顶到父 padding 边（父 padding 24*2=48）
