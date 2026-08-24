@@ -35,7 +35,7 @@ import {
   hasLimitClause,
 } from './sqlParser.js';
 import { loadColumnsMap } from './ddlUtils.js';
-import { getTableDDL } from './toolFuncs.js';
+import { getTableDDL, MISSING_DDL_BLOCK } from './toolFuncs.js';
 
 
 // =================================================================
@@ -305,7 +305,7 @@ export async function validateSqlFields({ sql }) {
   let missingDdl = [];
   if (tables.length > 0) {
     const ddlBlocks = await getTableDDL(tables, { short: true });
-    missingDdl = tables.filter(t => ddlBlocks.includes(`-- 表 ${t} 的DDL不存在`));
+    missingDdl = tables.filter(t => ddlBlocks.includes(MISSING_DDL_BLOCK(t)));
     columnsMap = await loadColumnsMap(tables);
   }
 

@@ -412,9 +412,11 @@ console.log('\n=== 额外：源码静态检查 ===');
   const toolFuncsSrc = fs.readFileSync(toolFuncsPath, 'utf-8');
   contains('toolFuncs.js 含 validateQuestions', toolFuncsSrc, 'function validateQuestions');
   contains('toolFuncs.js 工具 schema 含 questions 数组', toolFuncsSrc, 'questions:');
-  contains('toolFuncs.js description 提 1-3 个问题', toolFuncsSrc, '1-3 个问题');
-  contains('toolFuncs.js description 提 1-4 个选项', toolFuncsSrc, '1-4 个选项');
-  contains('toolFuncs.js description 提 ≤200 字', toolFuncsSrc, '≤200 字');
+  // O3 (2026-08-24)：工具 description 不再硬编码 "1-3 个问题" / "1-4 个选项" /
+  //   "≤200 字" 等数字，避免与 schema 的 minItems/maxItems 重复。验证约束搬到 schema：
+  contains('schema 含 questions maxItems=3', toolFuncsSrc, 'maxItems: 3');
+  contains('schema 含 options maxItems=4', toolFuncsSrc, 'maxItems: 4');
+  contains('schema description 提 ≤200 字（question）', toolFuncsSrc, '≤200 字');
 }
 
 // ======================================================================

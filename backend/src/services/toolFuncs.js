@@ -10,6 +10,14 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = config.projectRoot;
 const SKILL_V2_PATH = path.join(config.skillPath, "sql-creator-skill-v2");
 
+/**
+ * DDL 缺失标记：getTableDDL 在表 DDL 文件不存在时返回的占位块。
+ * validators.js 用 includes() 检测哪些表 DDL 缺失，必须用同一字符串。
+ * 抽常量避免硬编码耦合；格式：`-- 表 <name> 的 DDL 不存在`（注：-- + 1 空格是 SQL 注释）。
+ */
+export const MISSING_DDL_BLOCK = (name) =>
+  `-- 表 ${name} 的 DDL 不存在`;
+
 // 读取文件（如不存在返回 null）。单次系统调用，无 TOCTOU 竞态。
 // 每次调用都重新读盘——文件内容可能变化（schema 重建、tag 修改、DDL 变更等），
 // 禁止缓存。
@@ -141,6 +149,45 @@ export async function loadSkillMd() {
     );
   }
   return content;
+}
+
+/**
+ * 工具入参解析器：统一 5 个工具的 string/object 双兼容 + try/catch 模板。
+ *
+ * 用法：
+ *   const { parsed, error, content } = parseToolArgs(input, "get_table_schema");
+ *   if (error) return { error, content };
+ *   const tableNames = parsed?.table_names || [];
+ *
+ * 返回：
+ *   - {parsed: {...}}       成功：input 是 object 时直接返回；string 时 JSON.parse
+ *   - {error, content}      失败：caller 直接 return 给 LLM，error 字段给 caller
+ *                           判断是否"不终止 TURN 1"（content 是给 LLM 看的字符串）
+ *
+ * 设计取舍：
+ *   - 不做字段级校验：每个工具的 schema 不同，由各工具自己校验
+ *   - 不抹平 `null`：parsed?.foo 让 caller 处理 undefined
+ *   - 统一报错前缀 `⚠️ <toolName>`：LLM 看到能直接定位是哪个工具传错
+ */
+function parseToolArgs(input, toolName) {
+  if (input !== null && typeof input === "object") {
+    return { parsed: input };
+  }
+  if (typeof input === "string") {
+    try {
+      return { parsed: JSON.parse(input) };
+    } catch (e) {
+      logger.debug(`Parse ${toolName} params failed`, { error: e.message });
+      return {
+        error: "参数解析失败",
+        content: `⚠️ ${toolName} 参数解析失败，请传入合法 JSON。`,
+      };
+    }
+  }
+  return {
+    error: "参数格式错误",
+    content: `⚠️ ${toolName} 入参必须是 object 或 JSON 字符串。`,
+  };
 }
 
 function removeEmptyProperties(obj) {
@@ -440,26 +487,10 @@ export async function getTableDDL(tableNames, options = {}) {
         const ddl = short ? simplifyDDL(content) : content;
         return `-- @@TABLE ${name}\n${ddl}`;
       }
-      return `-- @@TABLE ${name}\n-- 表 ${name} 的DDL不存在`;
+      return `-- @@TABLE ${name}\n${MISSING_DDL_BLOCK(name)}`;
     }),
   );
   return blocks.join("\n\n");
-}
-
-export async function getOutputFormat() {
-  const outputFormatPath = path.join(
-    SKILL_V2_PATH,
-    "templates",
-    "output_format.md",
-  );
-  const content = await readFileIfExists(outputFormatPath);
-  return content || "输出格式模板不存在";
-}
-
-export async function getMysqlLimits() {
-  const mysqlLimitsPath = path.join(SKILL_V2_PATH, "docs", "mysql57_limits.md");
-  const content = await readFileIfExists(mysqlLimitsPath);
-  return content || "MySQL 5.7 限制信息不存在";
 }
 
 export function requestTagConfirmation(term, table, description) {
@@ -581,6 +612,9 @@ export function requestUserChoice(questions) {
 }
 
 // 表格卡片格式化：与 get_tables 输出保持一致，供 get_sliced_index 共用
+// 注意：business_constraints / business_rules 五分支防御与 formatTableInfoCompact
+//   保持一致，避免 `${label}: ${desc}` 在任一为空时产生 "undefined: D" / "X: undefined"。
+//   历史：L659-660 注释曾称"两处并行修复了"，实际仅 compact 修了，此为补漏。
 function formatTableInfo(tables) {
   return tables
     .map((t) => {
@@ -593,8 +627,12 @@ function formatTableInfo(tables) {
         t.business_constraints.forEach((c) => {
           if (typeof c === "string") {
             info += `\n    - ${c}`;
+          } else if (c.name) {
+            info += `\n    - ${c.name}: ${c.description || ""}`;
+          } else if (c.description) {
+            info += `\n    - ${c.description}`;
           } else {
-            info += `\n    - ${c.name}: ${c.description}`;
+            info += `\n    - (空约束)`;
           }
         });
       }
@@ -603,10 +641,14 @@ function formatTableInfo(tables) {
         t.business_rules.forEach((r) => {
           if (typeof r === "string") {
             info += `\n    - ${r}`;
+          } else if (r.rule) {
+            info += `\n    - ${r.rule}: ${r.description || ""}`;
+          } else if (r.description) {
+            info += `\n    - ${r.description}`;
           } else {
-            info += `\n    - ${r.rule || r.description}: ${r.description}`;
-            if (r.query) info += `\n      示例: ${r.query}`;
+            info += `\n    - (空规则)`;
           }
+          if (r.query) info += `\n      示例: ${r.query}`;
         });
       }
       return info;
@@ -617,8 +659,7 @@ function formatTableInfo(tables) {
 // 折叠版表格卡片：去掉 related_tables（schema 的 virtual_associations 可替代），
 // 保留 name/description/tags/business_constraints/business_rules。
 // 供 compactConsumedToolResults 使用，与 formatTableInfo 区别仅在于不输出 related_tables。
-// 注意：business_constraints / business_rules 两处并行修复了 formatTableInfo 的
-//   "label/desc 任一缺失时显示 undefined" 缺陷（原模式 `${label}: ${desc}` 在任一为空时产生 "undefined: D" 或 "X: undefined"）。
+// 五分支防御与 formatTableInfo 一致（详见 formatTableInfo 上方注释）。
 export function formatTableInfoCompact(tables) {
   return tables
     .map((t) => {
@@ -704,32 +745,35 @@ export const tools = [
   new DynamicTool({
     name: "get_table_schema",
     description:
-      "获取指定表的详细信息：列名/类型/注释/外键 + 字段别名/枚举/虚拟关联/业务规则。",
+      "获取指定表的字段信息。返回 JSON：\n" +
+      "• 单表: {fields, aliases?, enums?, virtual_associations?, business_constraints?, business_rules?}\n" +
+      "  - fields: {列名: {t:类型, c?:注释, fk?:外键}}\n" +
+      "  - 失败: {error: '原因'}\n" +
+      "• 多表: {表名: <单表结构>, ...}",
     params: {
       type: "object",
       properties: {
         table_names: {
           type: "array",
           items: { type: "string" },
-          description: "查询的表名",
+          description: "表名数组",
         },
       },
       required: ["table_names"],
     },
     func: async (input) => {
-      let tableNames = [];
-      try {
-        if (typeof input === "object" && input !== null) {
-          tableNames = input.table_names || [];
-        } else if (typeof input === "string") {
-          const parsed = JSON.parse(input);
-          tableNames = parsed.table_names || [];
-        }
-      } catch (e) {
-        logger.debug("Parse tableNames failed", { error: e.message });
+      const { parsed, error, content } = parseToolArgs(
+        input,
+        "get_table_schema",
+      );
+      if (error) return { error, content };
+      const tableNames = parsed?.table_names || [];
+      if (!Array.isArray(tableNames) || tableNames.length === 0) {
+        return {
+          error: "table_names 必填",
+          content: "⚠️ get_table_schema 需要 table_names 参数（表名数组）。",
+        };
       }
-      if (!Array.isArray(tableNames) || tableNames.length === 0)
-        return "请提供 table_names 参数（表名数组）";
       // 紧凑 JSON：无缩进。deepseek-v3 对 JSON 结构化数据解析无差别，
       // 但能省 25-40% token（多表场景节省更显著），且对多轮上下文累积友好。
       // F20：LLM 永远拿到精简版（仅 t/c/fk），无需 verbose 选项
@@ -754,26 +798,19 @@ export const tools = [
       required: ["term", "table"],
     },
     func: (params) => {
-      let term, table, description;
-      try {
-        if (typeof params === "object") {
-          term = params.term;
-          table = params.table;
-          description = params.description;
-        } else if (typeof params === "string") {
-          const parsed = JSON.parse(params);
-          term = parsed.term;
-          table = parsed.table;
-          description = parsed.description;
-        }
-      } catch (e) {
-        logger.debug("Parse params failed", { error: e.message });
-      }
-
+      const { parsed, error, content } = parseToolArgs(
+        params,
+        "request_tag_confirmation",
+      );
+      if (error) return { error, content };
+      const { term, table, description } = parsed || {};
       if (!term || !table) {
-        return "请提供 term(术语数组) 和 table(表名) 参数";
+        return {
+          error: "term 和 table 必填",
+          content:
+            "⚠️ request_tag_confirmation 需要 term(术语数组) 和 table(表名) 参数。",
+        };
       }
-
       return requestTagConfirmation(term, table, description || "");
     },
   }),
@@ -782,9 +819,7 @@ export const tools = [
   new DynamicTool({
     name: "request_user_choice",
     description:
-      "当任务需要用户确认/选择/补充才能继续时调用。\n" +
-      "传 questions: 1-3 个独立问题（每题 question + options 1-4 项，字段约束见 schema）。" +
-      "调用后程序自动结束当前轮次并弹出对话框。",
+      "当需要用户确认/选择/补充才能继续时调用。",
     params: {
       type: "object",
       properties: {
@@ -796,19 +831,19 @@ export const tools = [
           items: {
             type: "object",
             properties: {
-              question: { type: "string", description: "问题，≤200 字" },
+              question: { type: "string", description: "≤200 字" },
               options: {
                 type: "array",
                 items: { type: "string" },
-                description: "选项，每项 ≤100 字",
+                description: "每项 ≤100 字",
                 minItems: 1,
                 maxItems: 4,
               },
               multi_select: {
                 type: "boolean",
-                description: "true=多选/checkbox，false=单选/radio，默认 false",
+                description: "true=多选, false=单选(默认)",
               },
-              header: { type: "string", description: "问题分类标签，≤12 字" },
+              header: { type: "string", description: "问题标签，≤12 字" },
             },
             required: ["question", "options"],
           },
@@ -817,29 +852,15 @@ export const tools = [
       required: ["questions"],
     },
     func: (params) => {
-      // 解析（string/object 双兼容）
-      let questions;
-      try {
-        if (typeof params === "object" && params !== null) {
-          questions = params.questions;
-        } else if (typeof params === "string") {
-          const parsed = JSON.parse(params);
-          questions = parsed.questions;
-        }
-      } catch (e) {
-        logger.debug("Parse request_user_choice params failed", {
-          error: e.message,
-        });
-        return {
-          error: "参数解析失败",
-          content: "⚠️ request_user_choice 参数解析失败，请传入合法 JSON。",
-        };
-      }
-
+      const { parsed, error, content } = parseToolArgs(
+        params,
+        "request_user_choice",
+      );
+      if (error) return { error, content };
       // ★ 校验 + 单调用拆 N marker
       //   success: {markers, payloads, ids, content} 给后端 phase 3 解析
       //   error:   {error, content} LLM 看到 content 修正后重试
-      return requestUserChoice(questions);
+      return requestUserChoice(parsed?.questions);
     },
   }),
   // ===== 可变工具：调用一次后会被剪枝（见 llm.js 中的剪枝逻辑）=====
@@ -858,7 +879,12 @@ export const tools = [
     },
     func: async () => {
       const domainIndex = await loadDomainRouterIndex();
-      if (!domainIndex || !domainIndex.domains) return "暂无业务域数据";
+      if (!domainIndex || !domainIndex.domains) {
+        return {
+          error: "domain_index 不存在",
+          content: "⚠️ get_domain_index 暂无业务域数据。",
+        };
+      }
       return domainIndex.domains
         .map((d) => `- ${d.id} (${d.name}): ${d.description}`)
         .join("\n");
@@ -879,23 +905,24 @@ export const tools = [
       required: ["domain_ids"],
     },
     func: async (input) => {
-      let domainIds = [];
-      try {
-        if (typeof input === "object" && input !== null) {
-          domainIds = input.domain_ids || [];
-        } else if (typeof input === "string") {
-          const parsed = JSON.parse(input);
-          domainIds = parsed.domain_ids || [];
-        }
-      } catch (e) {
-        logger.debug("Parse domainIds failed", { error: e.message });
-      }
+      const { parsed, error, content } = parseToolArgs(
+        input,
+        "get_sliced_index",
+      );
+      if (error) return { error, content };
+      const domainIds = parsed?.domain_ids || [];
       if (!Array.isArray(domainIds) || domainIds.length === 0) {
-        return "请提供 domain_ids 参数（业务域 id 数组）";
+        return {
+          error: "domain_ids 必填",
+          content: "⚠️ get_sliced_index 需要 domain_ids 参数（业务域 id 数组）。",
+        };
       }
       const sliced = await sliceTableIndexByDomains(domainIds);
       if (!sliced.tables || sliced.tables.length === 0) {
-        return "指定域下未找到任何表";
+        return {
+          error: "域下无表",
+          content: `⚠️ get_sliced_index: 指定域 ${JSON.stringify(domainIds)} 下未找到任何表。`,
+        };
       }
       return formatTableInfo(sliced.tables);
     },
@@ -920,25 +947,12 @@ export const tools = [
       required: ["sql"],
     },
     func: async (input) => {
-      // 解析（string/object 双兼容，与其他工具一致）
-      let sql = "";
-      try {
-        if (typeof input === "object" && input !== null) {
-          sql = String(input.sql || "");
-        } else if (typeof input === "string") {
-          const parsed = JSON.parse(input);
-          sql = String(parsed.sql || "");
-        }
-      } catch (e) {
-        logger.debug("Parse validate_sql_fields params failed", {
-          error: e.message,
-        });
-        return {
-          error: "参数解析失败",
-          content:
-            '⚠️ validate_sql_fields 参数解析失败，请传入合法 JSON（{sql: "..."}）。',
-        };
-      }
+      const { parsed, error, content } = parseToolArgs(
+        input,
+        "validate_sql_fields",
+      );
+      if (error) return { error, content };
+      const sql = String(parsed?.sql || "");
       if (!sql.trim()) {
         return {
           error: "sql 必填",
