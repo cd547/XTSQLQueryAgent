@@ -437,6 +437,7 @@ router.post('/generate', async (req, res) => {
           tools: LLM_TOOLS,  // F18: RA 路径也用 LLM_TOOLS（已过滤 get_domain_index）
           cfg: llmCfgForDispatch,
           systemMessage,
+          reasoningConfig: reasoning,  // ★ 用户控件：透传到 Responses 路径
           // ★ Phase 2: max_tool_calls 从 DB agent_config 查（与 runSqlAgent L1182 1:1）
           maxToolCalls: (() => {
             try {

@@ -1359,13 +1359,24 @@ export async function* runSqlAgent(
       );
     }
 
-    // ★ 用户控件：Chat Completions API 的 thinking 字段只支持 type= 开关，不支持 effort
-    //   - undefined: 向后兼容旧调用 (enabled)
-    //   - enabled=false: type=disabled
-    //   - enabled=true:  type=enabled（effort 字段如果 API 支持会忽略，不传避免歧义）
+    // ★ 用户控件：Chat Completions API 的 thinking 字段
+    //   DeepSeek 文档：type=enabled 时顶层同时传 reasoning_effort (low/medium/high)
+    //     https://api-docs.deepseek.com/zh-cn/api/create-chat-completion
+    //   官方示例: { thinking: { type: "enabled" }, reasoning_effort: "low" }
+    //   - undefined: 向后兼容旧调用 (enabled + medium)
+    //   - enabled=false: type=disabled,不附带 reasoning_effort
+    //   - enabled=true:  type=enabled + 顶层 reasoning_effort
+    //     强度映射：'low'|'medium'|'high'，未识别值回落 medium
+    const VALID_EFFORTS = new Set(['low', 'medium', 'high']);
     const buildThinking = (cfg) => {
-      if (cfg === null || cfg === undefined) return { type: "enabled" };
-      return { type: cfg.enabled === false ? "disabled" : "enabled" };
+      if (cfg === null || cfg === undefined) {
+        return { thinking: { type: 'enabled' }, reasoning_effort: 'medium' };
+      }
+      if (cfg.enabled === false) {
+        return { thinking: { type: 'disabled' } };
+      }
+      const effort = VALID_EFFORTS.has(cfg.effort) ? cfg.effort : 'medium';
+      return { thinking: { type: 'enabled' }, reasoning_effort: effort };
     };
     const requestParams = {
       model: llmModel,
@@ -1374,7 +1385,7 @@ export async function* runSqlAgent(
       stream: true,
       stream_options: { include_usage: true },
       tools: prunedTools,
-      thinking: buildThinking(reasoningConfig),
+      ...buildThinking(reasoningConfig),
     };
 
     if (signal?.aborted) {

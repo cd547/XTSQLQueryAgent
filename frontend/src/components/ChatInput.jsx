@@ -50,10 +50,9 @@ export default function ChatInput({
   tokenWarningLevel,       // number, token 警告阈值
   onViewMessages,          // () => void, 点击 token 条查看消息详情
 
-  // ===== 思考模式（4 档：关/低/中/高）=====
-  reasoningEnabled,        // boolean
+  // ===== 思考模式（v5.20d 3 档：低/中/高）=====
+  //   移除 reasoningEnabled prop（始终为 true，App.jsx 硬编码）
   reasoningEffort,         // 'low' | 'medium' | 'high'
-  setReasoningEnabled,     // (b) => void
   setReasoningEffort,      // (s) => void
 }) {
   // 拖拽条 mousedown 闭包（捕获 startHeight/handleMove/handleUp）
@@ -75,14 +74,9 @@ export default function ChatInput({
     document.addEventListener('mouseup', handleUp);
   };
 
-  // 思考模式 onChange：'off' 关，其余切档
+  // 思考模式 onChange：v5.20d 恢复 3 档（低/中/高），enabled 永远 true
   const handleReasoningChange = (v) => {
-    if (v === 'off') {
-      setReasoningEnabled(false);
-    } else {
-      setReasoningEnabled(true);
-      setReasoningEffort(v);
-    }
+    setReasoningEffort(v);
   };
 
   return (
@@ -117,19 +111,21 @@ export default function ChatInput({
             {/* ★ 用户控件：思考模式
                 - 位置：模型名称 与 累计 tokens 之间
                 - 持久化：localStorage（刷新后保留）
-                - Segmented 单控件表达「关/低/中/高」4 档，比 Switch+Select 更紧凑
-                - Chat Completions 模式下强度选择无效（API 不支持），仅开关生效
+                - v5.20a 移除"关"档：deepseek-v4-flash effort=0 下易循环
+                - v5.20b 移除"低"档 → v5.20d 恢复（误判 low 无 reasoning_content，根因是 buildThinking 嵌套 bug，已修）
+                - v5.20c 移除 reasoningEnabled 状态：始终为 true，App.jsx 硬编码
+                - 默认选中"中"（medium）
+                - Segmented 单控件表达「低/中/高」3 档
                 - label + Segmented 用 Space size=2 收紧（meta 容器 gap:10px 太大） */}
             <Space size={2}>
               <span className="xtsql-input-meta-label">思考模式：</span>
-              <Tooltip title="思考模式：高=深度推理（耗 token），低=轻度推理，关=不推理">
+              <Tooltip title="思考模式：高=深度推理（耗 token），中=适度推理，低=轻量推理">
                 <Segmented
                   size="small"
                   className="xtsql-reasoning-segmented"
-                  value={reasoningEnabled ? reasoningEffort : 'off'}
+                  value={reasoningEffort}
                   onChange={handleReasoningChange}
                   options={[
-                    { value: 'off', label: '关' },
                     { value: 'low', label: '低' },
                     { value: 'medium', label: '中' },
                     { value: 'high', label: '高' },

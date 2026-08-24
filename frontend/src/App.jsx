@@ -135,21 +135,26 @@ function AuthenticatedApp({ user, logout }) {
   const [siderCollapsed, setSiderCollapsed] = useState(false);
   const [currentTokens, setCurrentTokens] = useState(0);
   // ★ 用户控件：思考模式
-  //   默认 high（与后端 history 行为一致，老用户感知差异最小）
+  //   默认 medium
   //   持久化到 localStorage，避免每次刷新重置
-  const [reasoningEnabled, setReasoningEnabled] = useState(() => {
-    try {
-      const v = localStorage.getItem('xtsql.reasoning.enabled');
-      return v === null ? true : v === 'true';
-    } catch (e) { return true; }
-  });
+  //   v5.20a: 移除"关"档（deepseek-v4-flash 在 effort=0 下边想边说，反复调工具易循环）
+  //   v5.20d: 恢复"低"档（之前 v5.20b 误判 low 模式无 reasoning_content，实际是 buildThinking bug；
+  //     修复后顶层 reasoning_effort 正确传给 API，low/medium/high 三档都能看到思考过程）
+  //   v5.20c: 移除 reasoningEnabled 状态（始终为 true，无意义切换）
+  //     兼容老数据：localStorage 'xtsql.reasoning.enabled' 残留 false 时强制重置 true
+  //   兼容老数据：localStorage '关'/'off' 自动重置为 'medium'（v5.20b 期间重置过 'low'，也兼容）
   const [reasoningEffort, setReasoningEffort] = useState(() => {
     try {
+      // 清理老 localStorage 'xtsql.reasoning.enabled' 残留 false
+      if (localStorage.getItem('xtsql.reasoning.enabled') === 'false') {
+        localStorage.removeItem('xtsql.reasoning.enabled');
+      }
       const v = localStorage.getItem('xtsql.reasoning.effort');
-      return ['low', 'medium', 'high'].includes(v) ? v : 'high';
-    } catch (e) { return 'high'; }
+      // 兼容老值：'关'/'off' → 'medium'；'low'/'medium'/'high' 保留
+      if (v === '关' || v === 'off' || v === 'null' || v === null) return 'medium';
+      return ['low', 'medium', 'high'].includes(v) ? v : 'medium';
+    } catch (e) { return 'medium'; }
   });
-  useEffect(() => { try { localStorage.setItem('xtsql.reasoning.enabled', String(reasoningEnabled)); } catch (e) {} }, [reasoningEnabled]);
   useEffect(() => { try { localStorage.setItem('xtsql.reasoning.effort', reasoningEffort); } catch (e) {} }, [reasoningEffort]);
   const [skillLocked, setSkillLocked] = useState(true);
   const [skillSaving, setSkillSaving] = useState(false);
@@ -543,7 +548,8 @@ function AuthenticatedApp({ user, logout }) {
         schemaMode: 'stream',
         sessionId: currentSessionId,
         // ★ 用户控件：思考模式（每次请求透传当前 UI 选择）
-        reasoning: { enabled: reasoningEnabled, effort: reasoningEffort },
+        //   v5.20c 移除 enabled 状态：始终为 true，不再透传
+        reasoning: { enabled: true, effort: reasoningEffort },
       }, abortController.signal);
 
       if (!response.ok) {
@@ -1361,10 +1367,8 @@ const explainColumns = useMemo(() => explainResults.length > 0
                 sessionMessagesTokens={sessionMessagesTokens}
                 tokenWarningLevel={tokenWarningLevel}
                 onViewMessages={handleViewMessages}
-                // 思考模式
-                reasoningEnabled={reasoningEnabled}
+                // 思考模式（v5.20c 移除 reasoningEnabled）
                 reasoningEffort={reasoningEffort}
-                setReasoningEnabled={setReasoningEnabled}
                 setReasoningEffort={setReasoningEffort}
               />
             )}

@@ -714,6 +714,7 @@ export async function runSqlAgentResponsesHandler(req, res, ctx) {
     abortController, requestStartTime, overallTimer, streamCompleted,
     sessionId, question, historyText, username,
     tools: toolsInput, cfg, systemMessage, llmCfg, logger: routeLogger,
+    reasoningConfig,  // ★ 用户控件：透传到 generator
   } = ctx;
 
   const log = routeLogger || logger;

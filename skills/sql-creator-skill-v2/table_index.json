@@ -611,7 +611,7 @@
       "description": "CRM渠道表",
       "tags": [
         "CRM",
-        "渠道"
+        "渠道管理"
       ],
       "related_tables": [
         "crm_channels",
@@ -629,8 +629,8 @@
       "name": "admin_user_channel",
       "description": "渠道库",
       "tags": [
-        "CRM",
-        "渠道"
+        "渠道",
+        "渠道列表"
       ],
       "related_tables": [
         "admin_user",
