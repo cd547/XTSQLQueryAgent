@@ -347,8 +347,20 @@ router.post('/generate', async (req, res) => {
     if (sessionId && question) {
       try {
         const db = getDb();
+        // ★ 2026-08-24 vision：content 双向兼容
+        //   - 无 fileIds：原样存 question 字符串
+        //   - 有 fileIds：构造多模态 content 数组并 JSON.stringify 存入
+        //   - 历史回看由 ChatMessage.jsx:contentBlocks 自动 parse（看 startsWith('[') 决定）
+        //   - llm_messages.messages 由 buildUserMessage 直接产数组（saveMessagesToDb 全数组 stringify），
+        //     所以喂给 LLM 的历史是数组形式 → 续接上下文的 file block 不丢
+        const storedContent = (Array.isArray(fileIds) && fileIds.length > 0)
+          ? JSON.stringify([
+              { type: 'text', text: question },
+              ...fileIds.map(id => ({ type: 'file', file_id: id })),
+            ])
+          : question;
         db.prepare('INSERT INTO messages (session_id, role, content, sql, results) VALUES (?, ?, ?, ?, ?)')
-          .run(sessionId, 'user', question, '', '');
+          .run(sessionId, 'user', storedContent, '', '');
       } catch (e) {
         logger.error('保存用户消息失败', { error: e.message });
       }

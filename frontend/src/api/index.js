@@ -252,6 +252,21 @@ export function deleteFileApi(fileId) {
 }
 
 /**
+ * 下载文件二进制（用于历史图片按需回显）。
+ *
+ * 返回 Blob（responseType=blob），由调用方 URL.createObjectURL 缓存。
+ * 错误：
+ *   - 400 INVALID_ID：file_id 不合法
+ *   - 404 NOT_FOUND：DeepSeek 端文件已过期或被清理
+ *   - 其他：HTTP 状态码 + 错误信息
+ */
+export function fetchFileContent(fileId) {
+  return api.get(`/files/${encodeURIComponent(fileId)}/content`, {
+    responseType: 'blob',
+  }).then(r => r.data);
+}
+
+/**
  * 上传文件到 DeepSeek Files API，附带进度回调。
  * @param {File} file
  * @param {{onProgress?: (percent:number)=>void, signal?: AbortSignal}} opts

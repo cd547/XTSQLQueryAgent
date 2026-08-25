@@ -1,6 +1,6 @@
-import React, { memo, useState, useEffect } from 'react';
+import React, { memo, useState, useEffect, useMemo, useCallback } from 'react';
 import { Button, Spin, Tooltip } from 'antd';
-import { CaretRightOutlined, DownOutlined, UserOutlined, CopyOutlined, ThunderboltOutlined, CheckOutlined, StarOutlined, StarFilled } from '@ant-design/icons';
+import { CaretRightOutlined, DownOutlined, UserOutlined, CopyOutlined, ThunderboltOutlined, CheckOutlined, StarOutlined, StarFilled, FileImageOutlined, CloseOutlined, DownloadOutlined, ZoomInOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip as ReTooltip, ResponsiveContainer, ReferenceLine } from 'recharts';
@@ -11,7 +11,7 @@ import AppIcon from './AppIcon.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
 import { getMarkdownRenderers } from './markdownRenderers.jsx';
 
-const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, onOpenSqlTab, onCopyAndExecute, onFavorite, favoriteState, userQuestion, userAvatar, interrupted, usage, toolName, globalStreaming }) {
+const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreaming, timestamp, collapsed, onToggleCollapse, logType, sql, startTime, elapsedMs, onOpenSqlTab, onCopyAndExecute, onFavorite, favoriteState, userQuestion, userAvatar, interrupted, usage, toolName, globalStreaming, blobUrlMap, getBlobUrl }) {
   const { theme: themeMode } = useTheme();
   const isUser = role === 'user';
   const isLog = role === 'log' || role === 'LLM' || role === 'tool' || role === 'tool_return';
@@ -208,9 +208,138 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
     );
   }
 
+  // ★ 2026-08-24 vision：content 双向兼容
+  //   - string（老路径，99% 历史消息）：原样走 ReactMarkdown
+  //   - Array<{type,text?}|{type,file_id?}|{type,file_data?,filename?}>：
+  //     ① 抽出所有 text 块拼成纯文本给 messageText（assistant 走 ReactMarkdown）
+  //     ② 抽出所有 file 块，user 消息气泡内额外渲染缩略图
+  //   - 旧数据（messages.content 是 JSON 字符串但还没 parse）：被 [ 更或 { 起首才尝试 parse；
+  //     parse 失败回退原值（与 utils/messageHistory.js:parseContent 同策略）
+  const contentBlocks = useMemo(() => {
+    if (Array.isArray(content)) return content;
+    if (typeof content === 'string' && (content.startsWith('[') || content.startsWith('{'))) {
+      try { const parsed = JSON.parse(content); if (Array.isArray(parsed)) return parsed; } catch { /* ignore */ }
+    }
+    return null;  // null = 走老字符串路径
+  }, [content]);
+
+  const hasFileBlocks = Array.isArray(contentBlocks) && contentBlocks.some(b => b && b.type === 'file');
+
+  // ★ 2026-08-24 vision 修复（历史图懒加载）：
+  //   - 历史 user 消息里的 file 块只有 file_id（无 file_data），blobURL 必须从后端代理拉
+  //   - 命中 blobUrlMap 直接用；未命中 → 调 getBlobUrl() 触发后台 fetch
+  //   - 加载失败（NOT_FOUND/INVALID_ID/NETWORK）→ 区分显示：
+  //     - NOT_FOUND → "图片已失效"（DeepSeek 已清理 + 本地缓存也无 → 旧历史文件场景）
+  //     - 其他 → "图片加载失败"（网络/服务器错误）
+  //   - 用 useState 跟踪每个 file_id 的"已尝试 + 错误"状态，避免重复触发
+  const fileBlockIds = useMemo(() => {
+    if (!Array.isArray(contentBlocks)) return [];
+    return contentBlocks
+      .filter(b => b && b.type === 'file' && b.file_id && !b.file_data)
+      .map(b => b.file_id);
+  }, [contentBlocks]);
+  // file_id → { error, message }（仅当拉取失败时存在）
+  const [loadErrors, setLoadErrors] = useState(() => new Map());
+  // file_id 集合：标记已发起过请求（无论成败），避免每次 render 都触发
+  const [attemptedIds, setAttemptedIds] = useState(() => new Set());
+  useEffect(() => {
+    if (!getBlobUrl) return undefined;
+    // 找出需要拉取的 file_id（不在 map、不在 attempted）
+    const missing = fileBlockIds.filter(fid =>
+      fid && !blobUrlMap?.get(fid) && !attemptedIds.has(fid)
+    );
+    if (missing.length === 0) return undefined;
+    // 标记为已尝试（防止并发 useEffect 重复拉）
+    setAttemptedIds(prev => {
+      const next = new Set(prev);
+      missing.forEach(fid => next.add(fid));
+      return next;
+    });
+    // 异步拉：成功会写 blobUrlMap（state 变化触发重渲）；失败写 loadErrors
+    let cancelled = false;
+    (async () => {
+      const results = await Promise.all(missing.map(fid => getBlobUrl(fid)));
+      if (cancelled) return;
+      // 收集失败项 → 写 loadErrors（让 UI 能显示具体错误码对应的文案）
+      const errs = {};
+      results.forEach((r, i) => {
+        if (r?.error) errs[missing[i]] = { error: r.error, message: r.message };
+      });
+      if (Object.keys(errs).length > 0) {
+        setLoadErrors(prev => {
+          const next = new Map(prev);
+          Object.entries(errs).forEach(([k, v]) => next.set(k, v));
+          return next;
+        });
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [fileBlockIds, blobUrlMap, attemptedIds, getBlobUrl]);
+
+  // ★ 2026-08-25 A8：图片点击放大预览
+  //   - 轻量自实现（不引 antd Modal/Image.PreviewGroup），全屏覆盖层 + ESC/遮罩/× 关闭
+  //   - 为什么不引 antd：antd Modal 的 mask 颜色和层级与现有 ChatInput 弹层有冲突，且 Image.PreviewGroup
+  //     要包所有 img，侵入大；自实现只 30 行，覆盖层 + body 两层 click 区分
+  //   - 为什么不引 react-image-lightbox：多一个依赖，且包很大（~50KB）
+  const [preview, setPreview] = useState(null);  // null = 关闭；{src, filename, fid}
+  const openPreview = useCallback((info) => setPreview(info), []);
+  const closePreview = useCallback(() => setPreview(null), []);
+  // ESC 关闭
+  useEffect(() => {
+    if (!preview) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') closePreview();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [preview, closePreview]);
+  // ★ A8 辅助：把 dataURL 转 Blob，便于 download 属性生效（部分浏览器对 dataURL+download 不友好）
+  const dataUrlToBlob = useCallback((dataUrl) => {
+    try {
+      const [head, b64] = dataUrl.split(',');
+      const mime = /data:([^;]+)/.exec(head)?.[1] || 'application/octet-stream';
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i += 1) arr[i] = bin.charCodeAt(i);
+      return new Blob([arr], { type: mime });
+    } catch {
+      return null;
+    }
+  }, []);
+  // ★ A8 下载：dataURL 路径避免每次 render 重建 blob URL（会泄漏）
+  //   - 每次点击用临时 URL.createObjectURL → a.click() → 延迟 revoke
+  const handleDownload = useCallback((e) => {
+    e.stopPropagation();
+    if (!preview) return;
+    const filename = preview.filename || (preview.fid ? `${preview.fid}.png` : 'image');
+    if (preview.isDataUrl) {
+      e.preventDefault();
+      const blob = dataUrlToBlob(preview.src);
+      if (!blob) return;
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      // 给浏览器一帧时间发起下载，再 revoke
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    }
+    // 非 dataURL（blob URL）：让 <a download> 自然工作，不 preventDefault
+  }, [preview, dataUrlToBlob]);
+
   let messageText = '';
   if (!isUser && content) {
-    messageText = content;
+    if (Array.isArray(contentBlocks)) {
+      // ★ vision：拼接所有 text 块；file 块不进 markdown（用户消息气泡内额外渲染）
+      messageText = contentBlocks
+        .filter(b => b && b.type === 'text')
+        .map(b => b.text || '')
+        .join('\n');
+    } else {
+      messageText = content;
+    }
   }
 
   // ★ F7 修复：用 getMarkdownRenderers 替换 createMarkdownRenderers。
@@ -253,7 +382,88 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
         </div>
         <div className="xtsql-msg-bubble">
           {isUser ? (
-            <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{content}</div>
+            // ★ 2026-08-24 vision：user 消息支持多模态
+            //   - contentBlocks 为 null（老字符串）→ pre-wrap 老路径
+            //   - contentBlocks 为数组：先列 file 块缩略图，再列 text 块
+            //   - blobURL 优先（本地缓存）；fallback 显示 file_id 文本
+            Array.isArray(contentBlocks) ? (
+              <div className="xtsql-msg-blocks">
+                {contentBlocks.map((b, i) => {
+                  if (!b || b.type === 'text') {
+                    const text = b?.text || '';
+                    if (!text) return null;
+                    return (
+                      <div key={i} style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>
+                        {text}
+                      </div>
+                    );
+                  }
+                  if (b.type === 'file') {
+                    const fid = b.file_id;
+                    // ★ 2026-08-24 vision 修复：从 React state 读（写时触发重渲）
+                    const localUrl = blobUrlMap?.get(fid);
+                    if (b.file_data) {
+                      // file_data 内联 base64：直接用
+                      return (
+                        <img
+                          key={i}
+                          src={b.file_data}
+                          alt={b.filename || fid || 'inline-image'}
+                          className="xtsql-msg-file-img"
+                          onClick={() => openPreview({
+                            src: b.file_data,
+                            filename: b.filename,
+                            fid,
+                            isDataUrl: true,
+                          })}
+                        />
+                      );
+                    }
+                    if (localUrl) {
+                      return (
+                        <img
+                          key={i}
+                          src={localUrl}
+                          alt={b.filename || fid}
+                          className="xtsql-msg-file-img"
+                          title={b.filename ? `${b.filename}\n${fid}` : fid}
+                          onClick={() => openPreview({
+                            src: localUrl,
+                            filename: b.filename,
+                            fid,
+                            isDataUrl: false,
+                          })}
+                        />
+                      );
+                    }
+                    // ★ 2026-08-25 A6：按错误码区分占位文案
+                    //   - NOT_FOUND：DeepSeek 已清理 + 本地缓存也未命中（A6 上线前的旧历史文件）
+                    //   - 其他：网络/服务器错误，可重试
+                    if (attemptedIds.has(fid)) {
+                      const errInfo = loadErrors.get(fid);
+                      const isGone = errInfo?.error === 'NOT_FOUND';
+                      return (
+                        <div key={i} className="xtsql-msg-file-missing">
+                          📎 {fid}
+                          <br />
+                          <small>（{isGone ? '图片已失效（DeepSeek 已清理）' : (errInfo?.message || '图片加载失败')}）</small>
+                        </div>
+                      );
+                    }
+                    return (
+                      <div key={i} className="xtsql-msg-file-loading">
+                        <FileImageOutlined /> {fid}
+                        <br />
+                        <small>（加载中…）</small>
+                      </div>
+                    );
+                  }
+                  return null;
+                })}
+              </div>
+            ) : (
+              <div style={{ whiteSpace: 'pre-wrap', wordBreak: 'break-word' }}>{content}</div>
+            )
           ) : (
             <>
               {messageText && (
@@ -435,6 +645,59 @@ const ChatMessage = memo(function ChatMessage({ msgId, role, content, isStreamin
                 )}
               </>
             )}
+          </div>
+        )}
+        {/* ★ 2026-08-25 A8：图片点击放大预览
+            - 自实现全屏覆盖层（z-index: 9999）确保在 antd Modal 之上
+            - 遮罩 click 关闭；图片区 click stopPropagation 防止误关
+            - ESC 关闭（上面 useEffect 监听）
+            - 下载：blob URL 用 <a download>；dataURL 先转 Blob 再下（部分浏览器对 dataURL+download 不友好） */}
+        {preview && (
+          <div
+            className="xtsql-img-preview-mask"
+            onClick={closePreview}
+            role="dialog"
+            aria-modal="true"
+          >
+            <div className="xtsql-img-preview-toolbar" onClick={(e) => e.stopPropagation()}>
+              <div className="xtsql-img-preview-title">
+                <ZoomInOutlined />
+                <span title={preview.filename || preview.fid}>
+                  {preview.filename || preview.fid}
+                </span>
+                {preview.fid && (
+                  <small className="xtsql-img-preview-fid">· {preview.fid}</small>
+                )}
+              </div>
+              <div className="xtsql-img-preview-actions">
+                <Tooltip title="下载图片">
+                  <a
+                    className="xtsql-img-preview-btn"
+                    href={preview.isDataUrl ? '#' : preview.src}
+                    download={preview.filename || (preview.fid ? `${preview.fid}.png` : 'image')}
+                    onClick={handleDownload}
+                  >
+                    <DownloadOutlined />
+                  </a>
+                </Tooltip>
+                <Tooltip title="关闭（ESC）">
+                  <button
+                    className="xtsql-img-preview-btn"
+                    onClick={closePreview}
+                  >
+                    <CloseOutlined />
+                  </button>
+                </Tooltip>
+              </div>
+            </div>
+            <div className="xtsql-img-preview-body" onClick={(e) => e.stopPropagation()}>
+              <img
+                src={preview.src}
+                alt={preview.filename || preview.fid}
+                className="xtsql-img-preview-img"
+                draggable={false}
+              />
+            </div>
           </div>
         )}
       </div>

@@ -18,9 +18,11 @@
  *  - 文本输入：input, setInput, onSend, onStop, loading, disabled
  *  - 状态显示：currentModel, currentTokens, sessionMessagesTokens, tokenWarningLevel, onViewMessages
  *  - 思考模式：reasoningEnabled, reasoningEffort, setReasoningEnabled, setReasoningEffort
+ *  - 附件/视觉：filesConfig, uploadedFiles, uploadingFiles, selectedFileIds, blobUrlMapRef,
+ *              onUploadFile, onRemoveFile, onCancelUpload, onToggleSelectFile
  */
 import React, { useRef } from 'react';
-import { Input, Button, Space, Tooltip, Segmented, Progress, Tag } from 'antd';
+import { Input, Button, Space, Tooltip, Segmented, Progress, App } from 'antd';
 import {
   ClockCircleOutlined,
   SendOutlined,
@@ -28,7 +30,9 @@ import {
   PaperClipOutlined,
   CloseOutlined,
   FileImageOutlined,
+  CheckCircleFilled,
 } from '@ant-design/icons';
+import { isVisionModel } from '../constants/vision.js';
 
 const { TextArea } = Input;
 
@@ -70,7 +74,13 @@ export default function ChatInput({
   onUploadFile,            // (file: File) => void
   onRemoveFile,            // (fileId: string) => void
   onCancelUpload,          // (tempId: string) => void
+  // ===== 视觉选择（★ 2026-08-24 vision）=====
+  selectedFileIds,         // Set<string>，本次发送要引用的 file_id 子集
+  blobUrlMapRef,           // useRef(Map<file_id, objectURL>)，用于缩略图
+  onToggleSelectFile,      // (fileId: string) => void
 }) {
+  // ★ 2026-08-24 vision：使用 antd App context 拿 modal（统一走 useApp 避免静态 message 警告）
+  const { modal } = App.useApp();
   const fileInputRef = useRef(null);
   // 拖拽条 mousedown 闭包（捕获 startHeight/handleMove/handleUp）
   const handleResizerMouseDown = (e) => {
@@ -105,13 +115,41 @@ export default function ChatInput({
     fileInputRef.current?.click();
   };
 
-  // 文件选择：每次只传一个（多文件选第一个且只读第一个，避免 batch upload 复杂度）
+  // 文件选择：多文件批量上传（依次排队）
+  //   - 每个文件走 onUploadFile（内部 useFileUpload.uploadFile 是单文件）
+  //   - 清 value：让下次选同一文件也能触发 change
   const handleFileChange = (e) => {
-    const file = e.target.files && e.target.files[0];
-    if (file) onUploadFile?.(file);
-    // 清 value：让下次选同一文件也能触发 change
+    const files = e.target.files;
+    if (files && files.length > 0) {
+      for (let i = 0; i < files.length; i++) {
+        onUploadFile?.(files[i]);
+      }
+    }
     e.target.value = '';
   };
+
+  // ★ 2026-08-24 vision：发送前的二次确认包装
+  //   - 当前模型不支持视觉 + 有 selectedFileIds → 弹 antd modal 确认
+  //   - 选"仅发送文本"：直接走 onSend（后端会静默丢 fileIds，warn log 已在 llm.js）
+  //   - 选"取消"：什么都不做
+  //   - 其他情况（vision 模型 / 无文件）→ 直接 onSend
+  const handleSend = () => {
+    const hasSelected = selectedFileIds && selectedFileIds.size > 0;
+    if (hasSelected && !isVisionModel(currentModel)) {
+      modal.confirm({
+        title: '当前模型不支持视觉',
+        content: `已选 ${selectedFileIds.size} 个附件，发送给 ${currentModel || '当前模型'} 将被忽略（仅发送文本）。确认继续？`,
+        okText: '仅发送文本',
+        cancelText: '取消',
+        onOk: () => onSend(),
+      });
+      return;
+    }
+    onSend();
+  };
+
+  // ★ 把 onPressEnter 内的 onSend 替换为带 vision 守卫的 handleSend
+  //   注意：handleSend 是组件内函数，每次 render 都新建，依赖最新 selectedFileIds / currentModel
 
   return (
     <div className="xtsql-input-wrap">
@@ -156,25 +194,64 @@ export default function ChatInput({
         />
         <div className="xtsql-input-grip" />
 
-        {/* ★ 2026-08-24 附件：已上传文件 chip 列表
-              - 位置：TextArea 之上、resizer 之下（输入框内顶部）
-              - 全局已上传文件展示在此；每个 chip 有一个 × 按钮触发 removeFile
-              - 暂不支持 chip 排序/拖拽；为空时不渲染（不占行高） */}
-        {uploadedFiles && uploadedFiles.length > 0 && (
-          <div className="xtsql-file-chip-list">
-            {uploadedFiles.map((f) => (
-              <Tag
-                key={f.id}
-                className="xtsql-file-chip"
-                icon={<FileImageOutlined />}
-                closable
-                onClose={(e) => { e.preventDefault(); onRemoveFile?.(f.id); }}
-                title={`file_id: ${f.id}\nfilename: ${f.filename}\nsize: ${(f.bytes / 1024).toFixed(1)} KiB`}
-              >
-                <span className="xtsql-file-chip-name">{f.filename}</span>
-              </Tag>
-            ))}
-          </div>
+        {/* ★ 2026-08-24 视觉（v2 picker）：仅显示"本次发送要发"的图
+              - 上传后 useFileUpload 自动 add selected → 立即出现在 picker
+              - meta 事件后 clearSelected → picker 自动消失
+              - × 按钮：从 selected 移除（下次发不再附带）；同时从 uploadedFiles 删除（DeepSeek 端也清）
+              - 不再展示"已上传但未选中的图"——避免视觉噪音；用户想"换一批"：先 × 删掉旧的，再上传新的
+              - 缩略图本身不可点（已经是 selected 态，无需再 toggle；只保留 × 移除） */}
+        {(() => {
+          const selectedList = (uploadedFiles || []).filter(f => selectedFileIds?.has(f.id));
+          if (selectedList.length === 0) return null;
+          return (
+            <div className="xtsql-file-picker">
+              {selectedList.map((f) => {
+                const thumbUrl = blobUrlMapRef?.current?.get(f.id);
+                return (
+                  <div
+                    key={f.id}
+                    className="xtsql-file-thumb selected"
+                    title={`file_id: ${f.id}\nfilename: ${f.filename}\nsize: ${(f.bytes / 1024).toFixed(1)} KiB`}
+                  >
+                    {thumbUrl
+                      ? <img src={thumbUrl} alt={f.filename} />
+                      : <FileImageOutlined className="xtsql-file-thumb-fallback" />}
+                    <CheckCircleFilled className="xtsql-file-thumb-check" />
+                    <Tooltip title="从本次发送移除（同时删除文件）">
+                      <Button
+                        type="text"
+                        size="small"
+                        icon={<CloseOutlined />}
+                        className="xtsql-file-thumb-remove"
+                        onClick={() => onRemoveFile?.(f.id)}
+                      />
+                    </Tooltip>
+                    <span className="xtsql-file-thumb-name">{f.filename}</span>
+                  </div>
+                );
+              })}
+            </div>
+          );
+        })()}
+
+        {/* ★ 2026-08-24 视觉：模型兼容提示条
+              - vision 模型 + 有选中文件 → 蓝条提示（轻量信息）
+              - 非 vision 模型 + 有选中文件 → 红条警告（强提示）
+              - 无选中文件时两条都不渲染（不打扰） */}
+        {selectedFileIds && selectedFileIds.size > 0 && (
+          isVisionModel(currentModel)
+            ? (
+                <div className="xtsql-vision-info">
+                  📎 已选 {selectedFileIds.size} 个图片，将随本次消息发送给视觉模型
+                  {currentModel && <>（<b>{currentModel}</b>）</>}
+                </div>
+              )
+            : (
+                <div className="xtsql-vision-warning">
+                  ⚠️ 当前模型 <b>{currentModel || '未设置'}</b> 不支持视觉，将忽略已选附件。
+                  请切换到 <b>deepseek-v4-flash-vision-exp</b> 后再发送。
+                </div>
+              )
         )}
 
         {/* ★ 2026-08-24 附件：隐藏 file input + paperclip 按钮触发
@@ -191,7 +268,8 @@ export default function ChatInput({
           className="xtsql-input-textarea"
           value={input}
           onChange={e => setInput(e.target.value)}
-          onPressEnter={e => { if (!e.shiftKey) { e.preventDefault(); onSend(); } }}
+          // ★ 2026-08-24 vision：走 handleSend（含二次确认守卫）
+          onPressEnter={e => { if (!e.shiftKey) { e.preventDefault(); handleSend(); } }}
           // ★ 2026-08-24 多会话并行流式：3 种禁用场景
           //   - disabled: 弹窗阻塞（userChoiceRequest.visible）
           //   - isCurrentSessionStreaming: 当前会话在流 → 不可改 prompt
@@ -299,10 +377,12 @@ export default function ChatInput({
           ) : (
             <Button
               className="xtsql-send-btn"
-              onClick={onSend}
+              // ★ 2026-08-24 vision：走 handleSend（含二次确认守卫）
+              onClick={handleSend}
               // ★ 禁用条件：input 为空 / 弹窗阻塞 / 其他会话在流
               //   - otherSessionStreaming 时虽然按钮显示为"发送"语义，但实际点了也无效
               //     所以 disabled 掉 + placeholder 已经提示
+              //   - 注意：vision 兼容检查不阻止发送（二次确认弹窗接管），所以这里不判断 vision
               disabled={!input.trim() || disabled || otherSessionStreaming}
               icon={<SendOutlined />}
             />

@@ -224,6 +224,39 @@ export async function initDatabase() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_my_queries_user_id ON my_queries(user_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_my_queries_add_time ON my_queries(add_time)`);
 
+  // ★ 2026-08-25 A10：本地副本的路径索引表
+  //   背景：DeepSeek 的 `user_data` purpose 的 content 端点永远是 404（即使刚上传），
+  //     必须自建副本才能稳定回显历史图片
+  //   设计：二进制落在 backend/file_cache/<file_id>（A6 目录，复用现有 readCache/writeCache），
+  //     DB 只存 file_id → file_path 的映射 + 元数据（mimetype/bytes/saved_at）
+  //   用途：downloadFile 时先查这里，命中就按 file_path 读磁盘，**不再依赖 DeepSeek content 端点**
+  //   旧文件（A10 之前上传的）DB 里没有，仍 404 → 用户需重新上传
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS file_storage (
+      file_id TEXT PRIMARY KEY,
+      file_path TEXT NOT NULL,
+      mimetype TEXT,
+      bytes INTEGER,
+      saved_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_file_storage_saved_at ON file_storage(saved_at)`);
+  // ★ 2026-08-25 A10 v2：老表升级迁移
+  //   早期 A10 设计是 BLOB 存二进制（content BLOB NOT NULL），现改为路径索引（file_path TEXT NOT NULL）。
+  //   表结构不兼容，老表直接 DROP 让新 schema 接管。
+  //   - 已上传的文件历史回显在老表里没意义（无法降级），反正用户重传即可
+  //   - 磁盘 file_cache/ 目录保留不动（兼容 A6 期间上传的旧文件兜底读）
+  try {
+    const cols = db.prepare("PRAGMA table_info(file_storage)").all();
+    const hasContent = cols.some((c) => c.name === 'content');
+    if (hasContent) {
+      db.exec("DROP TABLE file_storage");
+      logger.info('Migration: dropped old file_storage (BLOB schema), recreating as path index');
+    }
+  } catch (e) {
+    logger.warn('Failed to migrate file_storage', { error: e.message });
+  }
+
   // 所有迁移完成后才标记为已初始化，getDb() 才允许返回实例
   initialized = true;
   console.log('SQLite initialized');

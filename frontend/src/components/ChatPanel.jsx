@@ -41,6 +41,8 @@ export default function ChatPanel({
   onOpenSqlTab,         // (sql) => void
   onCopyAndExecute,     // (sql) => void
   globalStreaming,      // ★ 2026-08-24 多会话并行：是否全局有 LLM 流在跑，透传 ChatMessage 禁用"复制并执行"
+  blobUrlMap,          // ★ 2026-08-24 vision：file_id → objectURL（React state），透传 ChatMessage 渲染缩略图
+  getBlobUrl,          // ★ 2026-08-24 vision：历史图懒加载接口（带 inflight 去重），ChatMessage 渲染时按需拉
 }) {
   // 头像首字母提取（与原 inline 逻辑保持一致）
   const userAvatar = (user?.display_name || user?.username || 'U').slice(0, 1).toUpperCase();
@@ -74,15 +76,17 @@ export default function ChatPanel({
         if (group.type === 'roundGroup') {
           return (
             <RoundGroup
-              key={group.id}
-              round={group.round}
-              logs={group.logs}
-              onToggleCollapse={onToggleCollapse}
-              onFavorite={onFavorite}
-              userQuestion={userQuestion}
-              userAvatar={userAvatar}
-              favoriteStates={favoriteStates}
-            />
+            key={group.id}
+            round={group.round}
+            logs={group.logs}
+            onToggleCollapse={onToggleCollapse}
+            onFavorite={onFavorite}
+            userQuestion={userQuestion}
+            userAvatar={userAvatar}
+            favoriteStates={favoriteStates}
+            blobUrlMap={blobUrlMap}
+            getBlobUrl={getBlobUrl}
+          />
           );
         }
         // single message (user / assistant / 单条 log)
@@ -117,6 +121,8 @@ export default function ChatPanel({
             userAvatar={userAvatar}
             interrupted={msg.interrupted}  // ★ 2026-07-29：从 DB 或 SSE error 传入，渲染"已中断" badge
             globalStreaming={globalStreaming}  // ★ 2026-08-24：透传全局流状态，用于禁用"复制并执行"按钮
+            blobUrlMap={blobUrlMap}             // ★ 2026-08-24 vision：state，触发缩略图重渲
+            getBlobUrl={getBlobUrl}             // ★ 2026-08-24 vision：懒加载历史图
           />
         );
       })}

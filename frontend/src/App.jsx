@@ -111,10 +111,25 @@ function AuthenticatedApp({ user, logout }) {
   //   - uploadedFiles: 全局（跨会话）已上传文件列表
   //   - uploadingFiles: 正在上传中的任务（带 progress，UI 显示进度条）
   //   - filesConfig: 后端返回的 allowlist（前端按钮的 accept 字符串同步生成）
+  //   - selectedFileIds: 本次发送要使用的 file_id 子集（Set）；发完由 meta 事件触发 clearSelected
+  //   - blobUrlMap: file_id → 本地 objectURL，state；用于触发 ChatMessage 缩略图重渲
+  //   - getBlobUrl(fileId): 懒加载历史图片（后端代理 → blob → createObjectURL）
+  // ★ 2026-08-24 vision 修复（历史图片懒加载）：
+  //   - 历史回看时，blobURL 必须从后端代理（DeepSeek /files/{id}/content）按需拉取，
+  //     单靠本地 createObjectURL 在跨页面/刷新后失效。
+  //   - blobUrlMap 改为 useState 写入会触发重渲；getBlobUrl(fileId) 是懒加载入口（带 inflight 去重）。
+  //   - 上传时仍然走 createObjectURL(本地 File) → 写 blobUrlMap；历史回看时 getBlobUrl → fetchFileContent → createObjectURL。
+  //   - 同时为 ChatInput picker 暴露 blobUrlMapRef 形式（同步读最新值），避免在 picker 渲染期产生额外 ref-of-ref 中转。
   const {
     uploadedFiles, uploadingFiles, filesConfig,
+    selectedFileIds, blobUrlMap, getBlobUrl,
     uploadFile, cancelUpload, removeFile, refreshFiles,
+    toggleSelectFile, clearSelected,
   } = useFileUpload();
+  // ★ picker 同步读用 ref（避免 picker 内部还要再 .current）
+  //   ref 每次 render 都同步指向最新 blobUrlMap，保证 picker 拿到最新
+  const blobUrlMapRef = useRef(blobUrlMap);
+  blobUrlMapRef.current = blobUrlMap;
   const [currentSessionId, setCurrentSessionId] = useState(null);
   // ★ 2026-08-24 多会话并行流式重构：消息按 sessionId 索引
   //   旧：单一 messages 数组，切会话时必须 abort 当前流
@@ -615,8 +630,32 @@ function AuthenticatedApp({ user, logout }) {
     const flowSessionId = targetSessionId;
     const now = new Date().toISOString();
     const startTime = Date.now();
+    // ★ 2026-08-25 A7：user 消息 content 必须与后端存的格式一致
+    //   - 修前：content 永远是纯文本（'用户问题'），file_ids 单独通过 api.fileIds 传给后端
+    //     → 本地 user 气泡只有文字，contentBlocks 是 null → 不渲染 file 块缩略图（实时消息看不见图片）
+    //   - 后端：fileIds 非空时把 content 存成 JSON 数组 `[{type:'text',text:'...'},{type:'file',file_id:'...'}]`
+    //     → 历史回看由 ChatMessage.contentBlocks 自动 parse → file 块渲染
+    //   - 修后：本地构造 user 消息时也用同样的 JSON 数组格式
+    //     → ChatMessage 看到的是数组（Array.isArray 短路），直接当 contentBlocks 用
+    //     → DB reload 后是 JSON 字符串，contentBlocks 会再 parse 一次 → 两种入口统一渲染
+    //   - 顺便带上 filename（从 uploadedFiles 取），让 alt/tooltip 不只是 file_id（更友好）
+    const fileIdsArr = [...selectedFileIds];
+    const userMessageContent = fileIdsArr.length > 0
+      ? [
+          { type: 'text', text: userMessage },
+          ...fileIdsArr.map(id => {
+            const meta = uploadedFiles.find(f => f.id === id);
+            return {
+              type: 'file',
+              file_id: id,
+              filename: meta?.filename,
+              bytes: meta?.bytes,
+            };
+          }),
+        ]
+      : userMessage;
     const newMessages = [...(messagesBySession[flowSessionId] || []),
-      { id: `c-${++clientMsgIdRef.current}`, role: 'user', content: userMessage, timestamp: now },
+      { id: `c-${++clientMsgIdRef.current}`, role: 'user', content: userMessageContent, timestamp: now },
       { id: `c-${++clientMsgIdRef.current}`, role: 'assistant', content: '', isStreaming: true, timestamp: now, startTime }
     ];
     setMessagesBySession(prev => ({ ...prev, [flowSessionId]: newMessages }));
@@ -660,11 +699,12 @@ function AuthenticatedApp({ user, logout }) {
         // ★ 用户控件：思考模式（每次请求透传当前 UI 选择）
         //   v5.20c 移除 enabled 状态：始终为 true，不再透传
         reasoning: { enabled: true, effort: reasoningEffort },
-        // ★ 2026-08-24：附件 file_ids（DeepSeek Files API；全局已上传文件）
-        //   - 后端在 routes/query.js 入口做白名单清洗（^file-api-[A-Za-z0-9]+$）
-        //   - 仅 deepseek-v4-flash-vision-exp 模型能消费，其他模型 400 由后端报错
-        //   - 当前若没有任何已上传文件 → 字段省略（更轻的 payload）
-        ...(uploadedFiles.length > 0 ? { fileIds: uploadedFiles.map(f => f.id) } : {}),
+        // ★ 2026-08-24 vision：附件 file_ids
+        //   - 用 selectedFileIds（用户实际选中的子集），不是 uploadedFiles（全量）
+        //   - 后端在 routes/query.js 入口做白名单清洗（^file-api-[A-Za-z0-9-]+$）
+        //   - 后端 llm.js 还会按 model 二次过滤：非 vision 模型静默丢 + log warn
+        //   - 选 0 个文件时省略字段（更轻的 payload，path 与旧版兼容）
+        ...(selectedFileIds.size > 0 ? { fileIds: [...selectedFileIds] } : {}),
       }, abortController.signal);
 
       if (!response.ok) {
@@ -738,6 +778,11 @@ function AuthenticatedApp({ user, logout }) {
             });
             setSessionsTotal(prev => prev + 1);
           }
+          // ★ 2026-08-24 vision：后端已接受请求（流首事件）→ 清空本次选中的 file_ids
+          //   - 在 meta 事件里清而非 send 时清：若请求失败（网络/4xx/超时）selected 仍保留，
+          //     用户修一下重发即可，不会丢"已选上下文"
+          //   - blobUrlMap 不动：已上传文件的本地缩略图仍保留，用户可再次点击 chip 选中
+          clearSelected();
           return;  // meta 不参与消息体渲染
         }
         if (data.type === 'chunk') {
@@ -1504,6 +1549,11 @@ const explainColumns = useMemo(() => explainResults.length > 0
                   // ★ 2026-08-24 多会话并行：isStreaming 是全局 LLM 流状态（任何会话在流都为 true）
                   //   透传给 ChatPanel → ChatMessage，禁用"复制并执行"按钮
                   globalStreaming={isStreaming}
+                  // ★ 2026-08-24 vision：缩略图 URL 表 + 懒加载历史图
+                  //   - blobUrlMap: React state，写入触发重渲（用于历史图懒加载完成后刷新）
+                  //   - getBlobUrl(fileId): 懒加载接口，命中缓存即返回，否则 fetch 后端代理
+                  blobUrlMap={blobUrlMap}
+                  getBlobUrl={getBlobUrl}
                 />
               ) : (
                 <SqlPanel
@@ -1605,6 +1655,10 @@ const explainColumns = useMemo(() => explainResults.length > 0
                 onUploadFile={uploadFile}
                 onRemoveFile={removeFile}
                 onCancelUpload={cancelUpload}
+                // ★ 2026-08-24 vision：选择集 + 缩略图 + toggle
+                selectedFileIds={selectedFileIds}
+                blobUrlMapRef={blobUrlMapRef}
+                onToggleSelectFile={toggleSelectFile}
               />
             )}
           </Content>

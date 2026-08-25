@@ -30,6 +30,8 @@ import exportRouter from './routes/export.js';
 import authRouter from './routes/auth.js';
 import favoriteQueryRouter from './routes/favoriteQuery.js';
 import filesRouter from './routes/files.js';
+// ★ 2026-08-25 A6：本地文件缓存目录初始化（不阻塞启动；失败也允许 server 起来，缓存写时会再报错）
+import { ensureFileCacheDir } from './services/files.js';
 
 app.use('/api/auth', authRouter);
 app.use('/api/config', configRouter);
@@ -85,6 +87,7 @@ process.on('uncaughtException', (err) => {
   try {
     await initDatabase();
     await initSkillLogTable();
+    ensureFileCacheDir();   // ★ 2026-08-25 A6：本地文件缓存目录
     console.log('Server running on port ' + PORT);
     app.listen(PORT);
   } catch (e) {

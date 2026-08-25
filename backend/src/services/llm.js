@@ -1,4 +1,5 @@
 import { getLlmConfig, getAgentConfig } from "./config.js";
+import { isVisionModel } from "./vision.js";
 import { logger } from "../logger.js";
 import {
   loadTableIndex,
@@ -1222,6 +1223,19 @@ export async function* runSqlAgent(
   const providerCfg = getProviderConfig(provider, model);
   const baseURL = providerCfg.baseURL;
   const llmModel = providerCfg.llmModel;
+
+  // ★ 2026-08-24 vision：非 vision 模型时静默丢 fileIds + log warn
+  //   - 前端 ChatInput 已做二次确认（用户同意后 onSend 才会发 fileIds）
+  //   - 后端再守一道：万一前端用了老版本或别的入口绕过确认，这里兜底
+  //   - 不抛错：用户已经看过二次确认 → 期望行为就是"只发文本"，warning 即可
+  if (Array.isArray(fileIds) && fileIds.length > 0 && !isVisionModel(model)) {
+    logger.warn('fileIds ignored: model does not support vision', {
+      model,
+      fileIdsCount: fileIds.length,
+      // 不打印具体 id，避免日志含敏感 file_id
+    });
+    fileIds = null;
+  }
 
   const skillMd = await loadSkillMd();
 

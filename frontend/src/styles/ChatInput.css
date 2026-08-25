@@ -194,43 +194,279 @@
   flex-shrink: 0;
   color: var(--xtsql-text);
 }
-/* 文件 chip 列表：TextArea 之上、resizer 之下 */
-.xtsql-file-chip-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px 6px;
-  padding: 8px 18px 0;
-  max-height: 64px;
+/* ★ 2026-08-24 vision：缩略图 picker（替换原 .xtsql-file-chip-list）
+     - grid 自适应列宽，每格 ~90px
+     - 选中态：accent 边框 + 不透明；未选中态：灰边框 + 0.6 透明
+     - × 按钮在右上角，hover 时颜色变 danger
+     - 文件名省略号裁剪
+     - 整体 padding 与 .xtsql-input-inner 对齐（左右 18px）*/
+.xtsql-file-picker {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 6px;
+  padding: 8px 18px 4px;
+  max-height: 140px;
   overflow-y: auto;
 }
-.xtsql-file-chip.ant-tag {
+.xtsql-file-thumb {
+  position: relative;
+  border: 2px solid var(--xtsql-border);
+  border-radius: var(--xtsql-radius-md);
+  padding: 2px;
+  cursor: pointer;
+  opacity: 0.55;
+  transition: opacity 0.15s, border-color 0.15s;
+  background: var(--xtsql-bg);
+  overflow: hidden;
+}
+.xtsql-file-thumb:hover {
+  opacity: 0.85;
+}
+.xtsql-file-thumb.selected {
+  border-color: var(--xtsql-accent);
+  opacity: 1;
+  background: var(--xtsql-accent-soft);
+}
+.xtsql-file-thumb img {
+  width: 100%;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 4px;
+  display: block;
+}
+.xtsql-file-thumb-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 64px;
+  font-size: 24px;
+  color: var(--xtsql-text-tertiary);
+}
+.xtsql-file-thumb-check {
+  position: absolute;
+  top: 4px;
+  left: 4px;
+  color: var(--xtsql-accent);
+  font-size: 14px;
+  background: var(--xtsql-bg);
+  border-radius: 50%;
+  line-height: 1;
+  padding: 1px;
+}
+.xtsql-file-thumb-remove.ant-btn {
+  position: absolute;
+  top: 2px;
+  right: 2px;
+  width: 18px;
+  height: 18px;
+  min-width: 0;
+  padding: 0;
+  font-size: 10px;
+  background: rgba(0, 0, 0, 0.55);
+  color: #fff;
+  border-radius: 50%;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 1px 8px;
-  font-size: 10.5px;
-  line-height: 20px;
-  background: var(--xtsql-accent-soft);
-  border-color: var(--xtsql-accent);
-  color: var(--xtsql-accent);
-  border-radius: var(--xtsql-radius-pill);
-  max-width: 200px;
+  justify-content: center;
+  border: none;
+  opacity: 0;
+  transition: opacity 0.15s;
 }
-.xtsql-file-chip-name {
-  display: inline-block;
+.xtsql-file-thumb:hover .xtsql-file-thumb-remove,
+.xtsql-file-thumb.selected .xtsql-file-thumb-remove {
+  opacity: 1;
+}
+.xtsql-file-thumb-remove.ant-btn:hover {
+  background: var(--xtsql-danger);
+  color: #fff;
+}
+.xtsql-file-thumb-name {
+  display: block;
+  font-size: 10px;
+  line-height: 14px;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  margin-top: 2px;
+  color: var(--xtsql-text-secondary);
+}
+
+/* ★ 2026-08-24 vision：模型兼容提示条
+     - warning 红条：非 vision 模型 + 有选中文件
+     - info 蓝条：vision 模型 + 有选中文件
+     - 仅在 .xtsql-input-inner 内显示（picker 之下、TextArea 之上）*/
+.xtsql-vision-warning {
+  margin: 4px 18px 2px;
+  padding: 6px 10px;
+  background: rgba(245, 34, 45, 0.08);
+  border: 1px solid rgba(245, 34, 45, 0.4);
+  color: rgba(245, 34, 45, 0.95);
+  border-radius: var(--xtsql-radius-md);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+.xtsql-vision-info {
+  margin: 4px 18px 2px;
+  padding: 6px 10px;
+  background: rgba(105, 177, 255, 0.10);
+  border: 1px solid rgba(105, 177, 255, 0.4);
+  color: rgba(105, 177, 255, 0.95);
+  border-radius: var(--xtsql-radius-md);
+  font-size: 11.5px;
+  line-height: 1.5;
+}
+
+/* ★ 2026-08-24 vision：消息气泡内的多模态图片 + 失效 fallback */
+.xtsql-msg-blocks {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.xtsql-msg-file-img {
+  max-width: 240px;
+  max-height: 240px;
+  border-radius: var(--xtsql-radius-md);
+  border: 1px solid var(--xtsql-border);
+  display: block;
+  object-fit: contain;
+  background: var(--xtsql-bg);
+}
+/* ★ 2026-08-25 A8：可点击图片 → 鼠标变放大镜 + hover 轻微高亮 */
+.xtsql-msg-file-img {
+  cursor: zoom-in;
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+}
+.xtsql-msg-file-img:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+/* ★ 2026-08-25 A8：全屏图片预览（自实现覆盖层）
+   - z-index 高于 antd Modal（默认 1000）
+   - 主题适配：mask 用半透明黑；toolbar 半透明深灰（与 Monaco tooltip 风格一致）
+   - 图片：object-fit: contain 防止大图撑爆屏幕 */
+.xtsql-img-preview-mask {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.86);
+  z-index: 9999;
+  display: flex;
+  flex-direction: column;
+  animation: xtsql-img-preview-fade 0.12s ease-out;
+  cursor: zoom-out;
+}
+@keyframes xtsql-img-preview-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+.xtsql-img-preview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  background: rgba(20, 20, 20, 0.6);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-shrink: 0;
+}
+.xtsql-img-preview-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgba(255, 255, 255, 0.92);
+  font-size: 13px;
+  font-weight: 500;
+  min-width: 0;
+  flex: 1;
+}
+.xtsql-img-preview-title > span {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  max-width: 160px;
-  vertical-align: bottom;
+  max-width: 50vw;
 }
-.xtsql-file-chip .anticon-close {
-  color: var(--xtsql-accent);
-  font-size: 10px;
-  margin-left: 2px;
+.xtsql-img-preview-fid {
+  color: rgba(255, 255, 255, 0.5);
+  font-size: 11px;
+  font-family: var(--xtsql-font-mono, ui-monospace, SFMono-Regular, monospace);
+  font-weight: 400;
+  flex-shrink: 0;
 }
-.xtsql-file-chip .anticon-close:hover {
-  color: var(--xtsql-danger);
+.xtsql-img-preview-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex-shrink: 0;
+}
+.xtsql-img-preview-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.88);
+  border-radius: 6px;
+  cursor: pointer;
+  text-decoration: none;
+  font-size: 14px;
+  transition: background 0.12s ease, border-color 0.12s ease;
+}
+.xtsql-img-preview-btn:hover {
+  background: rgba(255, 255, 255, 0.14);
+  border-color: rgba(255, 255, 255, 0.22);
+  color: #fff;
+}
+.xtsql-img-preview-btn:focus-visible {
+  outline: 2px solid rgba(105, 177, 255, 0.6);
+  outline-offset: 1px;
+}
+.xtsql-img-preview-body {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 16px;
+  cursor: default;
+}
+.xtsql-img-preview-img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  user-select: none;
+  -webkit-user-drag: none;
+  border-radius: 4px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+}
+.xtsql-msg-file-missing {
+  display: inline-block;
+  padding: 4px 8px;
+  background: var(--xtsql-hover);
+  border: 1px dashed var(--xtsql-border);
+  border-radius: var(--xtsql-radius-md);
+  color: var(--xtsql-text-secondary);
+  font-size: 10.5px;
+  line-height: 1.4;
+  max-width: 240px;
+}
+/* ★ 2026-08-24 vision 修复：历史图懒加载占位（"加载中…"） */
+.xtsql-msg-file-loading {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 8px;
+  background: var(--xtsql-hover);
+  border: 1px dashed var(--xtsql-border);
+  border-radius: var(--xtsql-radius-md);
+  color: var(--xtsql-text-tertiary);
+  font-size: 10.5px;
+  line-height: 1.4;
+  max-width: 240px;
+  font-style: italic;
 }
 /* paperclip 按钮：在 footer meta 最左侧 */
 .xtsql-paperclip-btn.ant-btn {

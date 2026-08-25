@@ -25,6 +25,8 @@ const RoundGroup = memo(function RoundGroup({
   userQuestion,
   userAvatar,
   favoriteStates,
+  blobUrlMap,          // ★ 2026-08-24 vision：file_id → objectURL，透传 ChatMessage 渲染多模态 user 缩略图
+  getBlobUrl,          // ★ 2026-08-24 vision：历史图懒加载接口
 }) {
   // 本地折叠状态：默认展开，点击圆圈切换
   const [collapsed, setCollapsed] = useState(false);
@@ -65,6 +67,8 @@ const RoundGroup = memo(function RoundGroup({
               favoriteState={favoriteStates?.[log.id]}
               onFavorite={userQuestion ? ({ userQuestion: uq, sqlOutput }) => onFavorite?.({ msgId: log.id, userQuestion: uq, sqlOutput }) : undefined}
               userAvatar={userAvatar}
+              blobUrlMap={blobUrlMap}
+              getBlobUrl={getBlobUrl}
             />
           ))}
         </div>
