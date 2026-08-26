@@ -1,0 +1,26 @@
+{
+  "table_name": "goods_list",
+  "field_aliases": {
+    "name": ["商品名称"],
+    "monovalent": ["商品单价", "单价"]
+  },
+  "field_enums": {
+    "type": {
+      "1": "实物商品",
+      "2": "虚拟商品"
+    },
+    "is_auto": {
+      "1": "手动添加",
+      "2": "自动添加"
+    },
+    "rel": {
+      "0": "未发布",
+      "1": "已发布"
+    }
+  },
+  "virtual_associations": [],
+  "calculated_fields": {},
+  "business_constraints": {  },
+  "business_rules": [
+  ]
+}

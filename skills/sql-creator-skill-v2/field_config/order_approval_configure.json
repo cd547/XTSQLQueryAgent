@@ -1,0 +1,26 @@
+{
+  "table_name": "order_approval_configure",
+  "field_aliases": {},
+  "field_enums": {},
+  "virtual_associations": [
+    {
+      "name": "关联校区",
+      "target_table": "edu_campus",
+      "join_condition": "edu_campus.id = order_approval_configure.edu_campus_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联项目名称",
+      "target_table": "order_entry",
+      "join_condition": "order_entry.id = order_approval_configure.order_entry_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}

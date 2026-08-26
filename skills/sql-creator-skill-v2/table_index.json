@@ -153,13 +153,6 @@
       ]
     },
     {
-      "name": "tk_paper_new",
-      "description": "试卷表",
-      "tags": [
-        "试卷"
-      ]
-    },
-    {
       "name": "admin_user_campus",
       "description": "所属校区",
       "tags": [
@@ -1724,6 +1717,121 @@
         "admin_user",
         "order_approval_configure"
       ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "admin_division",
+      "description": "事业部",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "tk_paper_new",
+      "description": "考卷（2025新版）",
+      "tags": [],
+      "related_tables": [
+        "edu_course",
+        "edu_course_exam",
+        "edu_course_exam_subject",
+        "edu_course_exam_subject_name",
+        "edu_course_exam_module",
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "tk_season",
+      "description": "季节表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "order_approval_configure",
+      "description": "审批流程配置",
+      "tags": [],
+      "related_tables": [
+        "edu_campus",
+        "order_entry"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "t_exam_result_rule",
+      "description": "成绩规则表",
+      "tags": [],
+      "related_tables": [
+        "edu_course_exam_subject_name",
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "cms_type",
+      "description": "文章类型",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_goods_year",
+      "description": "产品年份表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "keqiao_study_leave",
+      "description": "排课请假",
+      "tags": [],
+      "related_tables": [
+        "edu_student",
+        "admin_user",
+        "my_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "keqiao_class_category",
+      "description": "班级类别",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_level_mapping",
+      "description": "成绩映射规则-列表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "admin_teacher_scheme",
+      "description": "老师课时规则-方案",
+      "tags": [],
+      "related_tables": [
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "goods_list",
+      "description": "商品表",
+      "tags": [],
+      "related_tables": [],
       "business_constraints": [],
       "business_rules": []
     }

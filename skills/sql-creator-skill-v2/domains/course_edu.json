@@ -24,6 +24,9 @@
     "edu_video_address",
     "edu_study_feedback",
     "edu_study_feedback_type",
-    "edu_adjust_study"
+    "edu_adjust_study",
+    "tk_season",
+    "t_exam_result_rule",
+    "edu_level_mapping"
   ]
 }

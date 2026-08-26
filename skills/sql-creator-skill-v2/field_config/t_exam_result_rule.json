@@ -1,0 +1,52 @@
+{
+  "table_name": "t_exam_result_rule",
+  "field_aliases": {
+    "subject_name_id": ["四级科目id", "科目名称id"],
+    "low_limit": ["下限"],
+    "up_limit": ["上限"]
+  },
+  "field_enums": {
+    "type": {
+      "1": "字母",
+      "2": "数字",
+      "3": "百分比",
+      "4": "自定义"
+    },
+    "deleted": {
+      "0": "未删除",
+      "1": "已删除"
+    },
+    "places": {
+      "0": "整数",
+      "1": "1位小数",
+      "2": "2位小数"
+    },
+    "letter_case": {
+      "1": "大写",
+      "2": "小写",
+      "3": "混合"
+    }
+  },
+  "virtual_associations": [
+    {
+      "name": "关联四级科目",
+      "target_table": "edu_course_exam_subject_name",
+      "join_condition": "edu_course_exam_subject_name.id = t_exam_result_rule.subject_name_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联创建人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = t_exam_result_rule.admin_user_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+  ]
+}

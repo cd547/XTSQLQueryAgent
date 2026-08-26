@@ -4,6 +4,8 @@
   "tables": [
     "edu_goods",
     "edu_goods_subject_name",
-    "edu_goods_section"
+    "edu_goods_section",
+    "admin_division",
+    "edu_goods_year"
   ]
 }

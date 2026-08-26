@@ -18,6 +18,7 @@
     "crm_tag_definition",
     "crm_target_school",
     "crm_current_school",
-    "sys_dict_item"
+    "sys_dict_item",
+    "admin_teacher_scheme"
   ]
 }

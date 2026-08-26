@@ -1,0 +1,65 @@
+{
+  "table_name": "tk_paper_new",
+  "field_aliases": {},
+  "field_enums": {
+    "season_id": {
+      "1": "Summer",
+      "2": "Spring",
+      "3": "Winter",
+      "4": "附加考试"
+    }
+  },
+  "virtual_associations": [
+     {
+      "name": "关联一级科目",
+      "target_table": "edu_course",
+      "join_condition": "edu_course.id = tk_paper_new.edu_course_id",
+      "type": "one_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联二级科目",
+      "target_table": "edu_course_exam",
+      "join_condition": "edu_course_exam.order_id = tk_paper_new.edu_course_exam_id",
+      "type": "one_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联三级科目",
+      "target_table": "edu_course_exam_subject",
+      "join_condition": "edu_course_exam_subject.id = tk_paper_new.edu_course_exam_subject_id",
+      "type": "one_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联四级科目名称",
+      "target_table": "edu_course_exam_subject_name",
+      "join_condition": "edu_course_exam_subject_name.id = tk_paper_new.edu_course_exam_subject_name_id",
+      "type": "one_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联五级模块",
+      "target_table": "edu_course_exam_module",
+      "join_condition": "edu_course_exam_module.id = tk_paper_new.edu_course_exam_module_id",
+      "type": "one_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联操作人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = tk_paper_new.admin_user_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}

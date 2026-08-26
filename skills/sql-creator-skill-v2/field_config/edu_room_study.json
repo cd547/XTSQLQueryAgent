@@ -1,12 +1,18 @@
 {
   "table_name": "edu_room_study",
   "field_aliases": {
-    "id": ["关联ID","班课预排ID"],
-    "edu_study_id": ["排课ID"],
-    "edu_room_id": ["班级ID"]
+    "id": [
+      "关联ID",
+      "班课预排ID"
+    ],
+    "edu_study_id": [
+      "排课ID"
+    ],
+    "edu_room_id": [
+      "班级ID"
+    ]
   },
   "field_enums": {
-    "del": {"0": "正常", "1": "删除"}
   },
   "virtual_associations": [
     {
@@ -20,6 +26,46 @@
       "target_table": "edu_study",
       "join_condition": "edu_study.id = edu_room_study.edu_study_id",
       "type": "many_to_one"
+    },
+    {
+      "name": "关联科目名称",
+      "target_table": "edu_course_exam_subject_name",
+      "join_condition": "edu_course_exam_subject_name.id = edu_room_study.edu_course_exam_subject_name_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联班级类型",
+      "target_table": "edu_class_type",
+      "join_condition": "edu_class_type.id = edu_room_study.edu_class_type_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联上课老师",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_room_study.edu_admin_user_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联操作人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_room_study.admin_user_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联教室",
+      "target_table": "edu_campus_school_class",
+      "join_condition": "edu_campus_school_class.id = edu_room_study.edu_campus_school_class_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
     }
   ],
   "calculated_fields": {},

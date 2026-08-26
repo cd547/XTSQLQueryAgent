@@ -2,7 +2,32 @@
   "table_name": "edu_activities_student",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联课外活动",
+      "target_table": "edu_activities",
+      "join_condition": "edu_activities.id = edu_activities_student.edu_activities_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联学生",
+      "target_table": "edu_student",
+      "join_condition": "edu_student.id = edu_activities_student.edu_student_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联操作人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_activities_student.admin_user_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": []

@@ -1,17 +1,40 @@
 {
   "table_name": "edu_room",
   "field_aliases": {
-    "id": ["班级ID", "教室ID"],
-    "name": ["班级名称", "教室名称"]
+    "id": [
+      "班级ID",
+      "教室ID"
+    ],
+    "name": [
+      "班级名称",
+      "教室名称"
+    ]
   },
   "field_enums": {},
   "virtual_associations": [
     {
-      "name": "关联排课",
-      "target_table": "edu_room_study",
-      "join_condition": "edu_room_study.edu_room_id = edu_room.id",
-      "type": "one_to_many",
-      "description": "一个班级可有多个排课记录"
+      "name": "关联产品",
+      "target_table": "edu_goods",
+      "join_condition": "edu_goods.id = edu_room.edu_goods_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联创建人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_room.admin_user_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联一级校区",
+      "target_table": "edu_campus",
+      "join_condition": "edu_campus.id = edu_room.edu_campus_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
     }
   ],
   "calculated_fields": {},

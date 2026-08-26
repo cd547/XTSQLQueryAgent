@@ -21,6 +21,9 @@
     "order_pattern",
     "order_approval_order_student_log",
     "order_student_reject",
-    "order_approval_configure_user"
+    "order_approval_configure_user",
+    "admin_division",
+    "order_approval_configure",
+    "goods_list"
   ]
 }

@@ -21,5 +21,6 @@ CREATE TABLE `tk_paper_new` (
   KEY `tk_paper_new_edu_course_exam_subject_id` (`edu_course_exam_subject_id`) USING BTREE,
   KEY `tk_paper_new_edu_course_exam_subject_name_id` (`edu_course_exam_subject_name_id`) USING BTREE,
   KEY `tk_paper_new_edu_course_exam_module_id` (`edu_course_exam_module_id`) USING BTREE,
-  KEY `tk_paper_new_admin_user_id` (`admin_user_id`) USING BTREE
-) ENGINE=InnoDB AUTO_INCREMENT=10030 DEFAULT CHARSET=utf8mb4 COMMENT='考卷（2025新版）'
+  KEY `tk_paper_new_admin_user_id` (`admin_user_id`) USING BTREE,
+  KEY `idx_subject_levels` (`edu_course_id`,`edu_course_exam_id`,`edu_course_exam_subject_id`,`edu_course_exam_subject_name_id`,`edu_course_exam_module_id`,`deleted`)
+) ENGINE=InnoDB AUTO_INCREMENT=11070 DEFAULT CHARSET=utf8mb4 COMMENT='考卷（2025新版）'
