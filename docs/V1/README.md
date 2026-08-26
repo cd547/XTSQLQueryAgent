@@ -45,12 +45,13 @@ http://localhost:5173
 
 首次启动自动创建默认管理员：`admin / admin123`（**生产环境务必立即改密，并设置 `ALLOW_DEFAULT_ADMIN=false`**）。
 
-## 四、当前状态速览（2026-08-12 核对）
+## 四、当前状态速览（2026-08-25 核对）
 
-- 后端 9 组路由 / 21 个业务服务模块 / 30 个测试脚本
-- 前端 1 个主应用文件（`App.jsx`，约 2497 行）+ 13 个组件/上下文/工具模块
+- 后端 10 组路由（含 `/api/files` 附件代理）/ 18 个服务模块 / 28 个测试脚本（`backend/test/*.mjs`，自研轻量风格）
+- 前端主应用 `App.jsx` 约 **1655 行**（经多阶段 hooks 拆分，持续重构中）+ 19 个组件（含 modals）+ 7 个 hooks + 9 个 utils
 - Electron 壳：splash 启动页 + 后端子进程托管 + Cookie 兼容层
-- Skill 资产：`table_index.json`（123 张表）、`domain_router_index.json`（10 个域注册）、`domains/`（11 个域文件，其中 `report` 未注册）、`ddl/`（121 个）、`field_config/`（120 个）
+- Skill 资产：`table_index.json`（135 张表）、`domain_router_index.json`（11 个域注册）、`domains/`（12 个域文件，其中 `report` 未注册）、`ddl/`（134 个）、`field_config/`（133 个）
+- 附件能力：DeepSeek Files API 代理 + 本地磁盘缓存（`backend/file_cache/`）+ SQLite `file_storage` 元数据索引表（路径由 file_id 推导）
 - 本地 SQLite：users 8、sessions 338、messages 10028、llm_messages 306、my_queries 9、skill_logs 197（均为核对时实时数据）
 
 > 注意：现有根目录 `README.md`、`docs/执行流程.md`、`docs/agent-flow-mermaid.md` 及 `docs/superpowers/` 下的计划/评审文档是**历史材料**，部分内容已过时（例如工具数量、函数名、Provider 支持度）。本文档集以**当前代码为准**，历史材料作为背景参考，差异详见 [06-问题清单.md](./06-问题清单.md) 与各文档内“与历史文档的差异”小节。

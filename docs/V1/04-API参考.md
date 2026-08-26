@@ -113,9 +113,9 @@ data: {"type":"chunk","content":"…","round":0}
 
 data: {"type":"usage","usage":{"prompt_tokens":1200,"completion_tokens":300,"total_tokens":1500,"cached_tokens":800},"round":0}
 
-data: {"type":"tool","log":"🔧 调用工具: get_domain_index","round":0}
+data: {"type":"tool","log":"🔧 调用工具: get_sliced_index","round":0}
 
-data: {"type":"tool_return","log":"📋 工具 get_domain_index 返回:\n…","round":0}
+data: {"type":"tool_return","log":"📋 工具 get_sliced_index 返回:\n…","round":0}
 
 data: {"type":"done","sql":"SELECT …","message":"…","sessionId":5,"totalTokens":3210,"elapsedMs":18432}
 ```

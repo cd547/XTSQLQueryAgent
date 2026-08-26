@@ -1,4 +1,4 @@
-/**
+﻿/**
  * DeepSeek Files API 代理
  *
  * 文档：
@@ -98,25 +98,29 @@ function removeCache(fileId) {
   }
 }
 
-// ★ 2026-08-25 A10 v2：本地副本 + DB 路径索引
+// ★ 2026-08-25 A10 v2：本地副本 + DB 元数据索引
 //   背景：DeepSeek `user_data` purpose 的 content 端点永远是 404（即使是刚上传的文件）
 //     A6 磁盘缓存只能服务"上线后上传的文件"，旧历史文件无法恢复
 //   解法：上传成功后立即把 buffer 落盘到 backend/file_cache/<file_id>（A6 复用），
-//     DB file_storage 表只存 file_id → file_path 的映射 + 元数据
+//     DB file_storage 表只存 file_id + 元数据（mimetype/bytes/saved_at）
 //     - 二进制不进 DB（避免 BLOB 膨胀）
-//     - DB 是路径索引，readStorage 命中后按 file_path 读磁盘
+//     - **不存路径**：缓存目录扁平，磁盘路径 = FILE_CACHE_DIR/<file_id>，由本文件直接推导；
+//       项目挪目录 / Electron 便携模式换盘符后索引天然有效
+//       （历史注记：v2/v3 曾在 DB 存过绝对路径 / 相对文件名，均已迁移/去列完毕）
 //     - 删除时同步清 DB 记录 + 磁盘文件
-//     - 读取优先级：DB 路径索引 → 磁盘兜底（A6 期间上传的文件可能没有 DB 记录） → DeepSeek
+//     - 读取优先级：DB 索引 → 磁盘兜底（A6 期间上传的文件可能没有 DB 记录） → DeepSeek
+
 function readStorage(fileId) {
   try {
-    const row = getDb().prepare('SELECT file_path, mimetype FROM file_storage WHERE file_id = ?').get(fileId);
+    const row = getDb().prepare('SELECT mimetype FROM file_storage WHERE file_id = ?').get(fileId);
     if (!row) return null;
-    if (!existsSync(row.file_path)) {
+    const bufPath = join(FILE_CACHE_DIR, fileId);
+    if (!existsSync(bufPath)) {
       // 索引还在但文件没了 → 当作未命中，让上层走兜底
-      logger.warn('file_storage path missing on disk', { fileId, filePath: row.file_path });
+      logger.warn('file_storage file missing on disk', { fileId });
       return null;
     }
-    const buffer = readFileSync(row.file_path);
+    const buffer = readFileSync(bufPath);
     return { contentType: row.mimetype || 'application/octet-stream', buffer };
   } catch (e) {
     logger.warn('file_storage read failed', { fileId, error: e.message });
@@ -126,13 +130,12 @@ function readStorage(fileId) {
 
 function writeStorage(fileId, contentType, buffer) {
   try {
-    const filePath = join(FILE_CACHE_DIR, fileId);
     // 1) 写磁盘（A6 目录，二进制落这里）
-    writeFileSync(filePath, buffer);
-    // 2) DB 仅记录路径 + 元数据（无 BLOB）
+    writeFileSync(join(FILE_CACHE_DIR, fileId), buffer);
+    // 2) DB 只存元数据（无 BLOB、无路径；磁盘路径由 fileId 推导，目录可移植）
     getDb().prepare(
-      'INSERT OR REPLACE INTO file_storage (file_id, file_path, mimetype, bytes, saved_at) VALUES (?, ?, ?, ?, ?)'
-    ).run(fileId, filePath, contentType || 'application/octet-stream', buffer.length, new Date().toISOString());
+      'INSERT OR REPLACE INTO file_storage (file_id, mimetype, bytes, saved_at) VALUES (?, ?, ?, ?)'
+    ).run(fileId, contentType || 'application/octet-stream', buffer.length, new Date().toISOString());
   } catch (e) {
     // 副本写失败不应阻塞主流程（DeepSeek 上传已成功），log warn 即可
     logger.warn('file_storage write failed', { fileId, error: e.message });
@@ -141,11 +144,9 @@ function writeStorage(fileId, contentType, buffer) {
 
 function removeStorage(fileId) {
   try {
-    // 1) 拿路径，删磁盘文件
-    const row = getDb().prepare('SELECT file_path FROM file_storage WHERE file_id = ?').get(fileId);
-    if (row?.file_path && existsSync(row.file_path)) {
-      unlinkSync(row.file_path);
-    }
+    // 1) 删磁盘文件（路径由 fileId 推导）
+    const bufPath = join(FILE_CACHE_DIR, fileId);
+    if (existsSync(bufPath)) unlinkSync(bufPath);
     // 2) DB 记录删除
     getDb().prepare('DELETE FROM file_storage WHERE file_id = ?').run(fileId);
   } catch (e) {
@@ -243,7 +244,7 @@ export async function uploadFile(file) {
   const result = JSON.parse(text);
   // ★ 2026-08-25 A10 v2：上传成功后立即把 buffer 存到本地（DeepSeek content 端点永远 404）
   //   - multer 还在内存里，buffer 现成，不需要再向 DeepSeek 拉一次
-  //   - writeStorage 自包含：写磁盘 + INSERT DB 路径索引
+  //   - writeStorage 自包含：写磁盘 + INSERT DB 元数据索引
   //   - 写失败不阻塞主流程（DeepSeek 上传已成功，log warn 即可）
   if (result?.id && file.buffer) {
     const mimetype = file.mimetype || 'application/octet-stream';
@@ -288,7 +289,7 @@ export async function deleteFile(fileId) {
     throw new Error(`DeepSeek files.delete 失败：HTTP ${resp.status}`);
   }
   // ★ 2026-08-25 A10 v2：同步清理本地副本（DB 索引 + 磁盘文件）
-  //   - removeStorage 自包含：按 DB 里的 file_path 删文件 + DELETE 记录
+  //   - removeStorage 自包含：按 fileId 推导路径删文件 + DELETE DB 记录
   //   - 删除后历史会话指向该 file_id 会落到 404（DB/磁盘都没了）
   removeStorage(fileId);
   return JSON.parse(text);
@@ -298,7 +299,7 @@ export async function deleteFile(fileId) {
  * 下载 file 二进制内容。
  *
  * ★ 2026-08-25 A10 v2：读取优先级
- *   1. DB file_storage 路径索引（命中后按 file_path 读磁盘，永远可用）
+ *   1. DB file_storage 元数据索引（命中后按 fileId 推导路径读磁盘，永远可用）
  *   2. 磁盘 file_cache（A6 期间上传但 A10 上线前没有 DB 索引的旧文件兜底）
  *   3. DeepSeek /files/{id}/content（永远是 404，但保留以防 DeepSeek 行为变化）
  *
@@ -315,7 +316,7 @@ export async function downloadFile(fileId) {
     err.code = 'INVALID_ID';
     throw err;
   }
-  // 1) DB 路径索引优先（命中后按 file_path 读磁盘）
+  // 1) DB 元数据索引优先（命中后按 fileId 推导路径读磁盘）
   const stored = readStorage(fileId);
   if (stored) {
     return stored;
@@ -346,7 +347,7 @@ export async function downloadFile(fileId) {
   const arrayBuffer = await resp.arrayBuffer();
   const buffer = Buffer.from(arrayBuffer);
   const contentType = resp.headers.get('content-type') || 'application/octet-stream';
-  // 顺手写本地：writeStorage 自包含（磁盘 + DB 路径索引）
+  // 顺手写本地：writeStorage 自包含（磁盘 + DB 元数据索引）
   writeStorage(fileId, contentType, buffer);
   return { contentType, buffer };
 }

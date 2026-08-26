@@ -215,7 +215,9 @@
         "edu_student_status",
         "edu_student_type_project",
         "edu_student_certificates_type",
-        "customer_clue_info"
+        "customer_clue_info",
+        "crm_target_school",
+        "crm_tag_definition"
       ]
     },
     {
@@ -1291,46 +1293,6 @@
           "description": "用于统一管理留学业务模块中的动态字段或标准字段，方便不同业务表进行字段映射、字段展示和AI查询。"
         }
       ]
-    },
-    {
-      "name": "order_student",
-      "description": "订单表",
-      "tags": [
-        "订单"
-      ],
-      "related_tables": [
-        "order_type",
-        "edu_student_type",
-        "order_pattern",
-        "edu_goods",
-        "admin_user",
-        "edu_student",
-        "order_entry",
-        "edu_campus",
-        "order_contract_template",
-        "edu_student_type_project"
-      ],
-      "business_constraints": []
-    },
-    {
-      "name": "edu_student",
-      "description": "学生基础信息表",
-      "tags": [
-        "学生",
-        "基础信息"
-      ],
-      "related_tables": [
-        "my_user",
-        "customer_clue_info",
-        "edu_campus_school",
-        "edu_student_type",
-        "edu_student_status",
-        "edu_student_type_project",
-        "edu_student_certificates_type",
-        "crm_target_school",
-        "crm_tag_definition"
-      ],
-      "business_constraints": []
     },
     {
       "name": "auth_role",
