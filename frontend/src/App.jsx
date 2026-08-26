@@ -1675,7 +1675,13 @@ const explainColumns = useMemo(() => explainResults.length > 0
           open={configOpen}
         >
           <div className="config-drawer" style={{ padding: '0 10px' }}>
-            <ConfigPanel compact />
+            {/* ★ 2026-08-25 修复"改模型后聊天页模型标签不更新"：
+                保存成功后回调刷新 useAppConfig 的 currentModel / tokenWarningLevel */}
+            <ConfigPanel
+              compact
+              onLlmConfigSaved={loadCurrentModel}
+              onAgentConfigSaved={loadAgentConfig}
+            />
           </div>
         </Drawer>
 

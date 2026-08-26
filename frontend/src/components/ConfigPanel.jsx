@@ -2,7 +2,13 @@ import React, { useState, useEffect } from 'react';
 import { Input, Button, Select, InputNumber, Space, App as AntdApp } from 'antd';
 import * as api from '../api';
 
-function ConfigPanel() {
+function ConfigPanel({ onLlmConfigSaved, onAgentConfigSaved }) {
+  // ★ 2026-08-25 修复"改模型后聊天页模型标签不更新"：
+  //   currentModel 状态在 App.jsx 的 useAppConfig 里，仅在挂载时加载一次；
+  //   本面板保存成功后必须回调通知 App 刷新，否则聊天页要刷新页面才能看到新模型。
+  //   - onLlmConfigSaved：LLM 配置保存成功后触发（App 传 loadCurrentModel）
+  //   - onAgentConfigSaved：Agent 配置保存成功后触发（App 传 loadAgentConfig，
+  //     同类问题：token 警告阈值改动后进度条阈值也是旧的）
   // ★ antd AntdApp.useApp()：让 message 走动态主题上下文，消除静态 message 警告
   const { message: messageApi } = AntdApp.useApp();
   const [dbConfig, setDbConfig] = useState({ host: 'localhost', port: 3306, user: 'root', password: '', database: '' });
@@ -95,16 +101,27 @@ function ConfigPanel() {
     setTesting(true);
     try {
       const data = await api.testConnection(dbConfig);
-      message[data.success ? 'success' : 'error'](data.message);
+      // ★ 修复：原来写的是 message[...](未定义变量) → ReferenceError 被 catch 吞掉，
+      //   无论成功失败都提示"连接失败"；改用 messageApi 并透传后端消息
+      if (data.success) {
+        messageApi.success(data.message || '连接成功');
+      } else {
+        messageApi.error(data.message || '连接失败');
+      }
     } catch (e) { messageApi.error('连接失败'); }
     finally { setTesting(false); }
   };
-  
+
   const saveDb = async () => {
     setTesting(true);
     try {
       const data = await api.saveDbConfig(dbConfig);
-      message[data.success ? 'success' : 'error'](data.success ? '数据库配置已保存' : '保存失败');
+      // ★ 同 testDb：message → messageApi，成功/失败分支正确提示
+      if (data.success) {
+        messageApi.success('数据库配置已保存');
+      } else {
+        messageApi.error('保存失败');
+      }
     } catch (e) { messageApi.error('保存失败'); }
     finally { setTesting(false); }
   };
@@ -140,6 +157,8 @@ function ConfigPanel() {
         }
         // ★ 2026-08-17：apiKey 可能改了 → 重新拉一次余额
         fetchBalance();
+        // ★ 2026-08-25：通知 App 刷新 currentModel（聊天页模型标签立即更新）
+        onLlmConfigSaved?.();
       } else {
         messageApi.error('保存失败');
       }
@@ -154,6 +173,8 @@ function ConfigPanel() {
       await api.updateAgentConfig('timeout_ms', agentConfig.timeout_ms);
       await api.updateAgentConfig('token_warning_level', agentConfig.token_warning_level);
       messageApi.success('Agent配置已保存');
+      // ★ 2026-08-25：通知 App 刷新 token 警告阈值（进度条阈值立即生效）
+      onAgentConfigSaved?.();
     } catch (e) { messageApi.error('保存失败'); }
     finally { setSavingAgent(false); }
   };
