@@ -480,23 +480,29 @@ router.post('/generate', async (req, res) => {
       }
       // apiMode === 'chat_completions' 或无配置（旧用户） → 原代码 0 改动
 
+      // ★ 2026-08-25 Bug 修复：流式累积变量必须声明在 try 块之外
+      //   原写法把这些变量声明在 try 内，catch 块（下方）引用它们时抛
+      //   ReferenceError: messageSaved is not defined → ①真实错误信息被吞，
+      //   用户看到"生成失败：messageSaved is not defined"；②catch 分支的
+      //   中断 partial 落库 + token 累计成为死代码。提升到 try 之前。
+      let fullContent = '';
+      let sql = '';
+      let message = '';
+      const allLogs = [];
+      let totalPromptTokens = 0;
+      let totalCompletionTokens = 0;
+      let totalTokens = 0;
+      // ★ 防止 happy path 落库后 catch 块重复插入 partial（流中断 partial 保存时会检查此标志）
+      let messageSaved = false;
+      // ★ 跟踪当前 chunk 的 round，中断时 partial 落库需要正确的 round 用于前端轮次轴分组
+      //   2026-07-29 修复：之前漏写 round 字段，partial 消息 round=0 与第一轮日志混淆
+      let lastRound = 0;
+      // ★ request_user_choice 弹窗请求：捕获 llm.js yield done 中的事件字段
+      // 用于穿透到 SSE doneData，驱动前端 UserChoiceDialog
+      let userChoiceRequestFromStream = null;
+
       try {
         const generator = runSqlAgent(question, historyText, abortController.signal, sessionId, req.user.username, reasoning, fileIds);
-        let fullContent = '';
-        let sql = '';
-        let message = '';
-        const allLogs = [];
-        let totalPromptTokens = 0;
-        let totalCompletionTokens = 0;
-        let totalTokens = 0;
-        // ★ 防止 happy path 落库后 catch 块重复插入 partial（流中断 partial 保存时会检查此标志）
-        let messageSaved = false;
-        // ★ 跟踪当前 chunk 的 round，中断时 partial 落库需要正确的 round 用于前端轮次轴分组
-        //   2026-07-29 修复：之前漏写 round 字段，partial 消息 round=0 与第一轮日志混淆
-        let lastRound = 0;
-        // ★ request_user_choice 弹窗请求：捕获 llm.js yield done 中的事件字段
-        // 用于穿透到 SSE doneData，驱动前端 UserChoiceDialog
-        let userChoiceRequestFromStream = null;
 
         for await (const chunk of generator) {
           if (abortController.signal.aborted) break;
