@@ -1,7 +1,6 @@
 {
   "table_name": "goods_list",
   "field_aliases": {
-    "name": ["商品名称"],
     "monovalent": ["商品单价", "单价"]
   },
   "field_enums": {

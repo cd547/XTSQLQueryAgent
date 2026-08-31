@@ -2,11 +2,7 @@
   "table_name": "customer_auto_assign_result",
   "field_aliases": {
     "customer_code": [
-      "线索编码",
       "客户编码"
-    ],
-    "admin_user_id": [
-      "分配员工ID"
     ],
     "assign_status": [
       "分配状态"
@@ -15,26 +11,11 @@
       "失败原因",
       "未分配原因"
     ],
-    "business_status": [
-      "线索业务状态"
-    ],
-    "rank_num": [
-      "员工序号"
-    ],
     "active_flag": [
       "主动咨询标识"
     ],
     "pool_id": [
       "线索池ID"
-    ],
-    "rank_code": [
-      "队列编码"
-    ],
-    "lesson_intention_code": [
-      "课程意向编码"
-    ],
-    "campus_value": [
-      "有效校区"
     ],
     "consult_campus_value": [
       "原始咨询校区"

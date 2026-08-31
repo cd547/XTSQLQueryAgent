@@ -8,11 +8,10 @@
     "class_time_end": ["上课结束时间"],
     "class_hour": ["课时"],
     "class_week": ["星期"],
-    "edu_campus_school_class_id": ["教室ID"],
     "edu_course_exam_subject_name_id": ["四级科目名ID"],
     "edu_class_type_id": ["班型ID"],
     "edu_admin_user_id": ["授课老师ID"],
-    "admin_user_id": ["操作人ID", "创建人ID"],
+    "admin_user_id": ["创建人ID"],
     "classin_course_id": ["classin网课ID"],
     "is_video": ["是否关联视频"]
   },

@@ -927,9 +927,11 @@ export const tools = [
       // 返回结构化对象（caller 从 rawResult 读 valid / errors 写入 registry）
       //   - content 字段：序列化后的字符串，给 LLM 看的（content 必须是 string/list）
       //   - valid / errors / summary 字段：结构化数据，给 llm.js 写 registry 用
+      //   紧凑 JSON（与 get_table_schema 一致，省 20-30% token）；
+      //   前端 ChatMessage 对紧凑 JSON 会自动 pretty 后再展示，人类阅读不受影响
       const result = await validateSqlFields({ sql });
       return {
-        content: JSON.stringify(result, null, 2),
+        content: JSON.stringify(result),
         valid: result.valid,
         errors: result.errors,
         summary: result.summary,
@@ -996,7 +998,6 @@ export async function buildSystemMessage(skillMd) {
     `> 传给 get_sliced_index 的 domain_ids 必须是左侧 \`id\`（英文部分），不是括号里的中文名。\n` +
     `${domainList}\n\n` +
     `## 输出风格（硬规则）\n` +
-    `- **禁止自言自语**：不要输出"让我搜索一下""让我考虑一下""让我看看是否有 X"等思考性短句。\n` +
     `- **遇到信息不足时立即询问用户**：如果连续调用 2 次工具仍无法定位所需字段或表，**必须立刻调 \`request_user_choice\` 询问用户**，不要继续调工具。\n` +
     `- **每个工具调用前必须明确目的**：在调用工具前先用一句话说明要查什么、为什么查。`
   );

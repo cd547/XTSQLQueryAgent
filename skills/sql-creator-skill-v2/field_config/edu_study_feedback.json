@@ -2,7 +2,6 @@
   "table_name": "edu_study_feedback",
   "field_aliases": {
     "id": ["反馈ID"],
-    "edu_study_id": ["排课ID"],
     "edu_study_feedback_type_id": ["反馈类型ID"],
     "admin_user_id": ["反馈人ID"]
   },

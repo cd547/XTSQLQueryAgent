@@ -2,11 +2,9 @@
   "table_name": "study_abroad_proofread_book",
   "field_aliases": {
     "application_major": [
-      "专业方向",
-      "申请专业"
+      "专业方向"
     ],
     "course_code": [
-      "课程代码",
       "专业代码"
     ],
     "course_website_address": [
@@ -14,11 +12,7 @@
       "专业链接"
     ],
     "course_name": [
-      "课程名称",
       "专业名称"
-    ],
-    "study_abroad_major_id": [
-      "专业方向ID"
     ]
   },
   "field_enums": {

@@ -1,10 +1,6 @@
 {
   "table_name": "admin_user_campus",
-  "field_aliases": {
-    "edu_campus_id": [
-      "校区ID"
-    ]
-  },
+  "field_aliases": {},
   "field_enums": {},
   "virtual_associations": [
     {

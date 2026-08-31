@@ -1,9 +1,7 @@
 {
   "table_name": "t_exam_result_rule",
   "field_aliases": {
-    "subject_name_id": ["四级科目id", "科目名称id"],
-    "low_limit": ["下限"],
-    "up_limit": ["上限"]
+    "subject_name_id": ["科目名称id"]
   },
   "field_enums": {
     "type": {

@@ -2,9 +2,8 @@
   "table_name": "order_entry",
   "field_aliases": {
     "id": ["项目ID", "订单项目ID"],
-    "name": ["项目名称", "订单项目名称"],
-    "simple": ["字母简称", "项目简称"],
-    "del": ["删除标记"]
+    "name": ["订单项目名称"],
+    "simple": ["项目简称"]
   },
   "field_enums": {},
   "virtual_associations": [

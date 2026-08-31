@@ -2,11 +2,10 @@
   "table_name": "order_student_reject",
   "field_aliases": {
     "id": ["驳回记录ID"],
-    "order_student_id": ["订单ID", "学生订单ID"],
-    "admin_user_id": ["审批人ID", "驳回人ID"],
-    "level": ["审批等级"],
-    "remarks": ["驳回原因", "驳回备注", "备注"],
-    "created_time": ["驳回时间", "创建时间"]
+    "order_student_id": ["学生订单ID"],
+    "admin_user_id": ["驳回人ID"],
+    "remarks": ["驳回原因", "驳回备注"],
+    "created_time": ["驳回时间"]
   },
   "field_enums": {},
   "virtual_associations": [

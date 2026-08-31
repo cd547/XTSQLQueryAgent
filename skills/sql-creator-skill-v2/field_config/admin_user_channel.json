@@ -4,18 +4,6 @@
     "type": [
       "渠道类型"
     ],
-    "category": [
-      "渠道类别"
-    ],
-    "to_company": [
-      "所在公司"
-    ],
-    "to_post": [
-      "所在岗位"
-    ],
-    "responsible_admin_user_id": [
-      "协作人用户ID"
-    ],
     "maintainer_id": [
       "维护人ID"
     ],
@@ -28,23 +16,11 @@
     "settlement": [
       "结算方式"
     ],
-    "collection_name": [
-      "收款账户名"
-    ],
     "my_contract_company": [
       "我方签约公司"
     ],
-    "contract_time": [
-      "签约日期"
-    ],
-    "channel_phone": [
-      "渠道联系方式"
-    ],
     "third_protocal": [
       "第三方协议"
-    ],
-    "remark": [
-      "渠道协议重要条款"
     ],
     "channel_tag": [
       "渠道标签"

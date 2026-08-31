@@ -2,7 +2,6 @@
   "table_name": "customer_label",
   "field_aliases": {
     "code": [
-      "标签编码",
       "标签code"
     ],
     "name": [

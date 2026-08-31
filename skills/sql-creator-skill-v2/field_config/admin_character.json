@@ -2,7 +2,6 @@
   "table_name": "admin_character",
   
   "field_aliases": {
-    "characterName": ["角色名称"],
     "is_system_reserved": ["是否系统保留"]
   },
   

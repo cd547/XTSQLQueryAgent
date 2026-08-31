@@ -1,17 +1,11 @@
 {
   "table_name": "study_abroad_planning_info",
   "field_aliases": {
-    "clue_number": [
-      "线索编号"
-    ],
     "send": [
       "是否发送"
     ],
     "plan_status": [
       "当前进度"
-    ],
-    "study_abroad_major_id": [
-      "专业方向ID"
     ]
   },
   "field_enums": {

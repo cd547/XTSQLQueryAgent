@@ -1,9 +1,6 @@
 {
   "table_name": "tk_knowledge_course",
   "field_aliases": {
-    "tk_knowledge_id": [
-      "知识点ID"
-    ],
     "course_id": [
       "一级科目ID"
     ],

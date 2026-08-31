@@ -3,9 +3,9 @@
   "field_aliases": {
     "id": ["审批记录ID"],
     "order_student_id": [ "订单ID"],
-    "level": ["审批等级", "审批级别"],
-    "admin_user_id": ["审批人ID", "订单审批人ID"],
-    "created_time": ["审批时间", "订单审批时间", "创建时间"],
+    "level": ["审批级别"],
+    "admin_user_id": ["订单审批人ID"],
+    "created_time": ["审批时间", "订单审批时间"],
     "remarks": [ "审批备注"]
   },
   "field_enums": {},

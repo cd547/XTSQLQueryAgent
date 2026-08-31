@@ -1,10 +1,6 @@
 {
   "table_name": "admin_department_children",
-  "field_aliases": {
-    "department_id": [
-      "一级部门ID"
-    ]
-  },
+  "field_aliases": {},
   "field_enums": {},
   "virtual_associations": [
     {

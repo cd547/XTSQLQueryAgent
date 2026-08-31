@@ -90,7 +90,6 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL SQL
 ## 用户交互
 如有疑问或缺信息时调 `request_user_choice(questions: [...])`，传入 1-3 个完整问题。
 - 调用前在 content 中自然语言描述问题
-- 调用后程序自动结束本轮并弹出对话框
 
 **multi_select 决策**：
 - 互斥（必选其一）→ false，例：`"时间范围：近7天 / 近30天"`

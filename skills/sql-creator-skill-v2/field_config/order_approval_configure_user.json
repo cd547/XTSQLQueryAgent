@@ -2,9 +2,8 @@
   "table_name": "order_approval_configure_user",
   "field_aliases": {
     "id": ["记录ID"],
-    "order_approval_configure_id": ["审批流程配置ID", "流程ID"],
-    "level": ["审批等级"],
-    "admin_user_id": ["审批人ID", "用户ID"]
+    "order_approval_configure_id": ["审批流程配置ID"],
+    "admin_user_id": ["审批人ID"]
   },
   "field_enums": {},
   "virtual_associations": [
