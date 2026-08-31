@@ -15,6 +15,7 @@ import {
   initMessagesForRun,
   getPrunedToolsForRun,
   executeToolCallsInStages,
+  recordExecResultsToCallHistory,
   recordPendingUserChoices,
   saveRunState,
   convertMessagesToInputItems,
@@ -22,7 +23,6 @@ import {
 import {
   LLM_TIMEOUTS, withTimeout, withPromiseTimeout,
   loadSkillMd, splitThinkingFromContent,
-  buildToolCallChecklistMessage, compactConsumedToolResults,
   getOrCreateRegistry, resetRegistryForNewQuestion,
   queueLog, flushLogs, getProviderConfig,
 } from "./llm.js";
@@ -405,11 +405,14 @@ async function* _runSqlAgentResponsesStreamGen({
   let maxToolCalls = parseInt(maxToolCallsInput || "30", 10);
   const maxToolCallsInitial = maxToolCalls;
   let responseText = "";
+  // ★ 2026-08-25 方案 3：记录最近一轮 API 权威 prompt_tokens（Responses API
+  //   的 input_tokens），传给 saveRunState → saveMessagesToDb，替代每轮全量 BPE
+  let latestPromptTokens = null;
   let pendingUserChoiceList = [];
   const MAX_USER_CHOICE = MAX_USER_CHOICE_PER_TURN;
 
-  // 6) 折叠缓存
-  const foldedCache = new Map();
+  // 6) ★ 2026-08-25 移除折叠缓存（方案 B：不折叠，与 CC path 同步）
+  //   原因见 llm.js 同名注释 + docs/V1/changelog/2026-08-25.md §G。
 
   while (maxToolCalls > 0) {
     const currentRound = maxToolCallsInitial - maxToolCalls;
@@ -419,16 +422,15 @@ async function* _runSqlAgentResponsesStreamGen({
       return;
     }
 
-    // 6.1) 已调用工具清单消息
-    const checklistMsg = sessionId
-      ? buildToolCallChecklistMessage(getOrCreateRegistry(sessionId))
-      : null;
+    // 6.1) ★ 2026-08-25 与 CC path 对齐（F23 同款改造）：
+    //   移除旧版 checklistMsg（每轮追加在 messages 末尾 → 字节不稳定 →
+    //   DeepSeek prefix cache 每轮必失效，全部 token 按原价计）。
+    //   "已调用工具"信息改由 get_call_history 合成注入承担（见下方 assistant push 段，
+    //   与 executeToolCallsInStages 的拦截器），字节稳定，cache 可跨轮命中。
 
-    // 6.2) Compact consumed tool results + 剥离无 tool_calls 的 reasoning_content
-    const compactedMessages = await compactConsumedToolResults(messages, foldedCache);
-    const requestMessages = (
-      checklistMsg ? [...compactedMessages, checklistMsg] : compactedMessages
-    ).map((m) => {
+    // 6.2) ★ 方案 B：不折叠 —— messages 直接作为请求体（仅做 reasoning 剥离），
+    //   与 CC path 完全一致；related_tables 全程可见，支持批量 schema 调用
+    const requestMessages = messages.map((m) => {
       if (m.role === "assistant" && m.reasoning_content && !m.tool_calls) {
         const { reasoning_content, ...rest } = m;
         return rest;
@@ -496,6 +498,12 @@ async function* _runSqlAgentResponsesStreamGen({
           streamToolCalls, responseText, reasoningContent, currentRound, username,
         });
         for (const ev of result.events) {
+          // ★ 2026-08-25 方案 3：记录本轮 API 权威 prompt_tokens
+          //   （Responses API 的 input_tokens），传给 saveRunState →
+          //   saveMessagesToDb，省去每轮全量 BPE 重计算（与 CC path 对齐）
+          if (ev?.type === "usage" && ev.usage?.prompt_tokens > 0) {
+            latestPromptTokens = ev.usage.prompt_tokens;
+          }
           yield ev;
         }
         responseText = result.responseText;
@@ -553,6 +561,26 @@ async function* _runSqlAgentResponsesStreamGen({
       }
 
       // 6.8) 保存 assistant 消息
+      // ★ 2026-08-25 与 CC path 对齐（F23 v3 同款）：push 前把 get_call_history
+      //   合成到 tool_calls 头部。字节稳定的关键：synthetic tool_call_id 必须是常量字符串。
+      //   LLM_TOOLS 已过滤 get_call_history（LLM 看不到），synthetic 是唯一来源。
+      //   仅当本轮实际调用了非 get_call_history 工具时才注入；防重复：LLM 误调则跳过。
+      const hasCallHistory = validToolCalls.some(
+        (tc) => tc.function?.name === "get_call_history",
+      );
+      const hasRealToolCall = validToolCalls.some(
+        (tc) => tc.function?.name !== "get_call_history",
+      );
+      if (hasRealToolCall && !hasCallHistory) {
+        validToolCalls.unshift({
+          id: "synthetic_get_call_history",
+          type: "function",
+          function: {
+            name: "get_call_history",
+            arguments: "{}",
+          },
+        });
+      }
       const assistantMsg = {
         role: "assistant",
         content: finalResponseText || "",
@@ -570,7 +598,7 @@ async function* _runSqlAgentResponsesStreamGen({
       }
       messages.push(assistantMsg);
       // 用 helper 5 同步 lastMessages + saveMessagesToDb
-      saveRunState({ sessionId, messages });
+      saveRunState({ sessionId, messages, messageTokens: latestPromptTokens });
 
       if (validToolCalls.length > 0) {
         // 6.9) 工具执行
@@ -578,6 +606,55 @@ async function* _runSqlAgentResponsesStreamGen({
           validToolCalls, toolsMap, prunedTools,
           sessionId, messages, username, currentRound,
         });
+
+        // 6.9.1) ★ 2026-08-25 与 CC path 对齐（F23）：登记本轮成功调用的工具到
+        //   reg.callHistory（get_call_history 拦截器下一轮读取）
+        recordExecResultsToCallHistory({ execResults, sessionId, currentRound });
+
+        // 6.9.2) ★ 2026-08-25 与 CC path 对齐（F23 v2）：get_call_history 循环检测
+        //   连续两轮 LLM 仅调用 get_call_history（无其它工具）→ 强制终止。
+        //   必须判断 LLM "实际调用"而非 execResults —— 后者永远含 synthetic。
+        let gchLoopBreak = false;
+        {
+          const llmActualCalls = validToolCalls.filter(
+            (tc) => tc.function?.name !== "get_call_history",
+          );
+          const llmOnlyCalledGch =
+            validToolCalls.length > 0 && llmActualCalls.length === 0;
+          const reg = getOrCreateRegistry(sessionId);
+          if (llmOnlyCalledGch && reg) {
+            reg.gchLoopCount = (reg.gchLoopCount || 0) + 1;
+            logger.info("get_call_history loop detection (responses)", {
+              sessionId,
+              currentRound,
+              gchLoopCount: reg.gchLoopCount,
+            });
+            if (reg.gchLoopCount >= 2) {
+              logger.warn(
+                "LLM stuck in get_call_history loop, forcing end (responses)",
+                { sessionId, currentRound, gchLoopCount: reg.gchLoopCount },
+              );
+              pendingUserChoiceList.length = 0; // 清空 user_choice 避免干扰 break
+              gchLoopBreak = true;
+            }
+          } else if (reg) {
+            if (reg.gchLoopCount !== 0) {
+              logger.info("get_call_history loop reset (LLM called other tool)", {
+                sessionId,
+                currentRound,
+              });
+            }
+            reg.gchLoopCount = 0;
+          }
+        }
+        if (gchLoopBreak) {
+          yield {
+            type: "error",
+            content: "检测到 LLM 重复调用 get_call_history，已强制终止。",
+            round: currentRound,
+          };
+          break;
+        }
 
         // 6.10) yield tool_return 事件
         for (const p of execResults) {
@@ -661,7 +738,7 @@ async function* _runSqlAgentResponsesStreamGen({
     let dbSaveOk = true;
     if (sessionId) {
       try {
-        saveRunState({ sessionId, messages });
+        saveRunState({ sessionId, messages, messageTokens: latestPromptTokens });
       } catch (e) {
         dbSaveOk = false;
         logger.error("CRITICAL: saveMessagesToDb failed for user_choice flow", { sessionId, error: e.message });

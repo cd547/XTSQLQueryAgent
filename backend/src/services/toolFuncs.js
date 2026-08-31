@@ -614,9 +614,10 @@ export function requestUserChoice(questions) {
 }
 
 // 表格卡片格式化：与 get_tables 输出保持一致，供 get_sliced_index 共用
-// 注意：business_constraints / business_rules 五分支防御与 formatTableInfoCompact
-//   保持一致，避免 `${label}: ${desc}` 在任一为空时产生 "undefined: D" / "X: undefined"。
-//   历史：L659-660 注释曾称"两处并行修复了"，实际仅 compact 修了，此为补漏。
+// 注意：business_constraints / business_rules 五分支防御（避免 `${label}: ${desc}`
+//   在任一为空时产生 "undefined: D" / "X: undefined"）。
+// ★ 2026-08-25：formatTableInfoCompact 已随折叠机制移除（方案 B 不折叠），
+//   本函数成为唯一的表格卡片格式化实现。
 function formatTableInfo(tables) {
   return tables
     .map((t) => {
@@ -658,49 +659,9 @@ function formatTableInfo(tables) {
     .join("\n\n");
 }
 
-// 折叠版表格卡片：去掉 related_tables（schema 的 virtual_associations 可替代），
-// 保留 name/description/tags/business_constraints/business_rules。
-// 供 compactConsumedToolResults 使用，与 formatTableInfo 区别仅在于不输出 related_tables。
-// 五分支防御与 formatTableInfo 一致（详见 formatTableInfo 上方注释）。
-export function formatTableInfoCompact(tables) {
-  return tables
-    .map((t) => {
-      let info = `- ${t.name}: ${t.description || ""}`;
-      if (t.tags?.length) info += `\n  标签: ${t.tags.join(", ")}`;
-      // 注意：不输出 related_tables，由 schema 的 virtual_associations 替代
-      if (t.business_constraints?.length) {
-        info += `\n  业务约束:`;
-        t.business_constraints.forEach((c) => {
-          if (typeof c === "string") {
-            info += `\n    - ${c}`;
-          } else if (c.name) {
-            info += `\n    - ${c.name}: ${c.description || ""}`;
-          } else if (c.description) {
-            info += `\n    - ${c.description}`;
-          } else {
-            info += `\n    - (空约束)`;
-          }
-        });
-      }
-      if (t.business_rules?.length) {
-        info += `\n  业务规则:`;
-        t.business_rules.forEach((r) => {
-          if (typeof r === "string") {
-            info += `\n    - ${r}`;
-          } else if (r.rule) {
-            info += `\n    - ${r.rule}: ${r.description || ""}`;
-          } else if (r.description) {
-            info += `\n    - ${r.description}`;
-          } else {
-            info += `\n    - (空规则)`;
-          }
-          if (r.query) info += `\n      示例: ${r.query}`;
-        });
-      }
-      return info;
-    })
-    .join("\n\n");
-}
+// ★ 2026-08-25：formatTableInfoCompact 已删除 —— 它随折叠机制（compactConsumedToolResults）
+//   一起移除（方案 B 不折叠）。它与 formatTableInfo 的唯一差异是不输出 related_tables，
+//   实测该差异仅占完整版 token 的 ~47%，却导致模型无法批量规划多表 schema 调用。
 
 export const tools = [
   // new DynamicTool({
