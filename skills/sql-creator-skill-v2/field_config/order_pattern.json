@@ -6,8 +6,7 @@
     "admin_division": ["事业部"],
     "type": ["订单模式类型"],
     "contract_type": ["合同类型"],
-    "include_calc": ["是否纳入渠道佣金结算统计"],
-    "del": ["删除标记"]
+    "include_calc": ["是否纳入渠道佣金结算统计"]
   },
   "field_enums": {
     "type": {

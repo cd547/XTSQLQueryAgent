@@ -19,7 +19,6 @@
   ],
   "calculated_fields": {},
   "business_constraints": {
-    "del_must_be_zero": "所有查询必须加 del = 0"
   },
   "business_rules": []
 }

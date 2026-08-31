@@ -1,8 +1,7 @@
 {
   "table_name": "admin_teacher_scheme",
   "field_aliases": {
-    "name": ["课时方案名称", "方案名称"],
-    "teacher_level": ["老师等级", "教师等级"]
+    "name": ["课时方案名称", "方案名称"]
   },
   "field_enums": {
     "del": {

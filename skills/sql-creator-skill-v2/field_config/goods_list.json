@@ -20,7 +20,7 @@
   },
   "virtual_associations": [],
   "calculated_fields": {},
-  "business_constraints": {  },
+  "business_constraints": {},
   "business_rules": [
   ]
 }

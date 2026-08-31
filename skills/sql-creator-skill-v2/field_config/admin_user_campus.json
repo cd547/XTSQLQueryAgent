@@ -1,19 +1,8 @@
 {
   "table_name": "admin_user_campus",
   "field_aliases": {
-    "id": [
-      "ID",
-      "编号"
-    ],
-    "admin_user_id": [
-      "后台用户ID",
-      "用户ID"
-    ],
     "edu_campus_id": [
       "校区ID"
-    ],
-    "created_time": [
-      "创建时间"
     ]
   },
   "field_enums": {},
