@@ -399,6 +399,8 @@ export async function getTableSchema(tableNames, options = {}) {
         const config = JSON.parse(fcContent);
         const simplified = removeEmptyProperties(config);
         if (simplified) Object.assign(result, simplified);
+        // 外层 key 已是表名，剔除配置文件里冗余的 table_name 字段
+        delete result.table_name;
       }
 
       // 2. DDL 部分：fields（含类型/索引/外键）
