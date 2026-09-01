@@ -1,5 +1,5 @@
 /**
- * validate_sql_fields 工具的 4 类校验器 + 主入口
+ * validate_sql_fields 工具的 4 类校验器 + R6 EXPLAIN 对账 + 主入口
  *
  * 设计：4 个验证器放在单文件，未来如某个 > 200 行再单独拆出到 validators/r1.js 等。
  *
@@ -8,6 +8,11 @@
  * - R2 字段别名反引号：纯 regex（non-greedy + lookahead 避免吃掉后续 SQL 关键字）
  * - R3 MySQL 5.7 限制（CTE / 窗口函数 / JSON_TABLE）：parser 顺带
  * - R5 LIMIT 子句：regex（不用 AST 避免子查询 LIMIT 误判）
+ *
+ * R6 EXPLAIN 对账（2026-08-31）：
+ * - 仅 R1-R5 全通过后执行；对真实库跑 EXPLAIN（只读，不执行语句）
+ * - EXPLAIN 语义错（表/字段在真实库不存在）→ errors 追加 R6_EXPLAIN，valid=false
+ * - 环境性失败（DB 未配置/连不上）→ explain.status='skipped'，不阻断
  *
  * 核心约束：
  * - 工具只"报错"（errors[]），不"开方"（无 suggestion 字段）
@@ -36,6 +41,9 @@ import {
 } from './sqlParser.js';
 import { loadColumnsMap } from './ddlUtils.js';
 import { getTableDDL, MISSING_DDL_BLOCK } from './toolFuncs.js';
+import { validateReadOnlySql } from './sqlValidator.js';
+import { poolQuery } from './mysqlPool.js';
+import { logger } from '../logger.js';
 
 
 // =================================================================
@@ -261,6 +269,85 @@ export function validateR5LimitClause(ctx) {
 
 
 // =================================================================
+//  R6: EXPLAIN 真实库对账（只读，不执行语句）
+// =================================================================
+
+// EXPLAIN 语句类型白名单：与 validate_sql_fields 的合法输出类型一致。
+// MySQL 5.7 的 EXPLAIN 支持 SELECT/INSERT/UPDATE/DELETE（只走优化器，不执行）。
+const EXPLAIN_SQL_OPTIONS = { allowedPrefixes: ['SELECT', 'INSERT', 'UPDATE', 'DELETE'] };
+
+// 全表扫描行数估算阈值：超过则写入性能 warnings（不阻断）
+const EXPLAIN_FULL_SCAN_ROWS = 100000;
+
+/**
+ * R6 EXPLAIN 真实库对账
+ *
+ * 安全设计（三层）：
+ * 1. validateReadOnlySql：与 /query/explain 路由同一套校验——注释剥离、
+ *    前缀白名单（SELECT/INSERT/UPDATE/DELETE）、危险函数黑名单、多语句检测。
+ *    且 mysqlPool 层 multipleStatements: false，驱动级再兜一道。
+ * 2. 危险模式兜底：INTO OUTFILE/DUMPFILE、LOAD_FILE 直接拒绝
+ *    （EXPLAIN 虽不执行语句，保守起见仍不放行写文件类子句）。
+ * 3. EXPLAIN 本身只走优化器、不执行语句、不加行锁，是只读操作。
+ *
+ * 结果分级：
+ * - status 'ok'     ：EXPLAIN 成功，plan 为压缩执行计划，warnings 为性能提示（不阻断）
+ * - status 'failed' ：EXPLAIN 报错（Unknown column / 表不存在 / 语法错等），
+ *                     视为硬错误由调用方写入 errors（真实库对账失败，必须重写）
+ * - status 'skipped'：环境性原因（DB 未配置/连不上/被安全校验拒绝），
+ *                     不影响 valid —— 生成可用性优先，/execute 还有 sqlValidator 兜底
+ *
+ * @param {string} sql - 已通过 R1-R5 静态校验的 SQL
+ * @returns {Promise<{status: 'ok'|'failed'|'skipped', plan: string, warnings: string[], reason?: string}>}
+ */
+async function runExplainAudit(sql) {
+  // 1) 安全校验（注释剥离/前缀白名单/危险函数/多语句）
+  const check = validateReadOnlySql(sql, EXPLAIN_SQL_OPTIONS);
+  if (!check.valid) {
+    return { status: 'skipped', plan: '', warnings: [], reason: `安全校验未通过: ${check.message}` };
+  }
+
+  // 2) 危险模式兜底（写文件类子句）
+  if (/\bINTO\s+(OUTFILE|DUMPFILE)\b/i.test(check.cleaned) || /\bLOAD_FILE\s*\(/i.test(check.cleaned)) {
+    return { status: 'skipped', plan: '', warnings: [], reason: 'SQL 含 INTO OUTFILE/DUMPFILE/LOAD_FILE，拒绝 EXPLAIN' };
+  }
+
+  // 3) 执行 EXPLAIN（poolQuery 自带 acquire 15s / query 30s 双层超时）
+  try {
+    const [rows] = await poolQuery(`EXPLAIN ${check.cleaned}`);
+
+    // 4) 压缩执行计划（全字段 10+ 列太费 token，只留对 LLM 有用的 5 列）
+    const planLines = [];
+    const warnings = [];
+    for (const r of rows) {
+      planLines.push(
+        `${r.table || '-'} [${r.type}] key=${r.key || 'NONE'} rows=${r.rows ?? '?'}${r.Extra ? ` | ${r.Extra}` : ''}`
+      );
+      if (r.type === 'ALL' && Number(r.rows) > EXPLAIN_FULL_SCAN_ROWS) {
+        warnings.push(`表 ${r.table} 全表扫描(type=ALL, 估算 rows≈${r.rows})，建议确认索引`);
+      }
+      if (/Using filesort/i.test(r.Extra || '')) {
+        warnings.push(`表 ${r.table} 需要额外排序(Using filesort)`);
+      }
+      if (/Using temporary/i.test(r.Extra || '')) {
+        warnings.push(`表 ${r.table} 使用临时表(Using temporary)`);
+      }
+    }
+    return { status: 'ok', plan: planLines.join('\n'), warnings };
+  } catch (e) {
+    // mysql2 语义错误码（ER_ 开头：ER_BAD_FIELD_ERROR / ER_NO_SUCH_TABLE / ER_PARSE_ERROR 等）
+    // → SQL 与真实库不一致，硬错误；连接类错误（未配置/连不上/超时）→ 降级 skipped
+    if (e && typeof e.code === 'string' && e.code.startsWith('ER_')) {
+      logger.warn('R6 EXPLAIN semantic error', { code: e.code, message: e.message });
+      return { status: 'failed', plan: '', warnings: [], reason: `[${e.code}] ${e.message}` };
+    }
+    logger.warn('R6 EXPLAIN skipped (env)', { message: e.message });
+    return { status: 'skipped', plan: '', warnings: [], reason: e.message };
+  }
+}
+
+
+// =================================================================
 //  主入口（编排 + 共享 ctx）
 // =================================================================
 
@@ -273,9 +360,10 @@ export function validateR5LimitClause(ctx) {
  * 3. 检测 missingDdl
  * 4. 跑 4 个验证器（R1 异步，其他同步）
  * 5. 汇总 errors
+ * 6. errors 为空时跑 R6 EXPLAIN 真实库对账（硬错误回写 errors）
  *
  * @param {{sql: string}} input
- * @returns {Promise<{valid: boolean, errors: Array, summary: string}>}
+ * @returns {Promise<{valid: boolean, errors: Array, summary: string, explain?: {status: string, plan: string, warnings: string[], reason?: string}}>}
  */
 export async function validateSqlFields({ sql }) {
   // 1. parse SQL
@@ -337,9 +425,25 @@ export async function validateSqlFields({ sql }) {
     ...validateR5LimitClause(ctx),
   ];
 
+  // 6. R6: EXPLAIN 真实库对账（★ 仅静态校验全通过后执行；硬错误回写 errors）
+  //    - EXPLAIN 报语义错（字段/表在真实库不存在）→ errors 追加 R6_EXPLAIN，valid=false，LLM 重写
+  //    - 环境性失败（DB 未配置/连不上）→ explain.status='skipped'，不阻断
+  let explain = null;
+  if (errors.length === 0) {
+    explain = await runExplainAudit(sql);
+    if (explain.status === 'failed') {
+      errors.push({
+        rule: 'R6_EXPLAIN',
+        message: `真实库 EXPLAIN 失败（SQL 可能与真实库结构不一致）: ${explain.reason}`,
+        sqlSnippet: sql.slice(0, 80),
+      });
+    }
+  }
+
   return {
     valid: errors.length === 0,
     errors,
     summary: `${errors.length} error${errors.length === 1 ? '' : 's'}`,
+    ...(explain ? { explain } : {}),
   };
 }

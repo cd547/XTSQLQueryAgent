@@ -903,7 +903,8 @@ export const tools = [
       "  R2 字段别名反引号\n" +
       "  R3 MySQL 5.7 限制\n" +
       "  R5 必须含 LIMIT\n" +
-      "返回 {valid, errors, summary}。",
+      "  R6 真实库 EXPLAIN 对账\n" +
+      "返回 {valid, errors, summary, explain}。",
     params: {
       type: "object",
       properties: {

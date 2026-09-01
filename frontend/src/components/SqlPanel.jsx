@@ -16,7 +16,7 @@
  *  - 不做 React.memo（state setter 已稳定，但回调在父组件是新创建的，memo 收益低）。
  */
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Button, Table, Collapse } from 'antd';
+import { Button, Table, Collapse, Tooltip } from 'antd';
 import { SelectOutlined } from '@ant-design/icons';
 import Editor from '@monaco-editor/react';
 import AppIcon from './AppIcon.jsx';
