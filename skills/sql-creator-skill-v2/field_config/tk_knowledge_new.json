@@ -1,17 +1,9 @@
 {
   "table_name": "tk_knowledge_new",
   "field_aliases": {
-    "id": [
-      "ID",
-      "编号",
-      "知识点ID"
-    ],
-    "parent_id": [
-      "上级ID"
-    ],
-    "title": [
-      "知识点"
-    ]
+    "id": ["ID", "编号", "知识点ID"],
+    "parent_id": ["上级ID"],
+    "title": ["知识点"]
   },
   "field_enums": {},
   "virtual_associations": [
@@ -31,6 +23,10 @@
       "rule": "知识点体系",
       "description": "parent_id=1的知识点也叫做知识点体系",
       "query": "SELECT * FROM tk_knowledge_new WHERE parent_id=1"
+    },
+    {
+      "name": "关于知识点的层级的限制",
+      "description": "本表目前层级最多4层，第一层：知识点体系，第二层：一级知识点，第三层：二级知识点，第四层：三级知识点"
     }
   ]
 }
