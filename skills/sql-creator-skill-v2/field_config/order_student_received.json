@@ -118,6 +118,37 @@
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": [
-    "collection_date字段存的是13位时间戳"
+    {
+      "name": "时间戳格式",
+      "description": "collection_date 字段存的是13位时间戳"
+    },
+    {
+      "name": "统计去重",
+      "description": "JOIN order_contract/admin_pay_order_student 等一对多表会产生重复行：列表查询用 SELECT DISTINCT，计数用 COUNT(DISTINCT a.id)"
+    },
+    {
+      "name": "欠费排课账户筛选",
+      "description": "account_title_id = 22（欠费排课账户）"
+    },
+    {
+      "name": "退款回款",
+      "description": "type=2 为退款自动生成的回款，金额业务含义为负数"
+    }
+  ],
+  "common_sqls": [
+    {
+      "id": "received_basic_list",
+      "title": "回款列表基础JOIN链",
+      "main_table": "order_student_received",
+      "tables": ["order_student_received AS a", "order_student AS b", "edu_student AS c", "edu_campus AS e", "order_entry AS f", "order_pattern AS g", "edu_goods AS h", "edu_goods_section AS egs"],
+      "sql": "LEFT JOIN order_student b ON a.order_student_id = b.id\nLEFT JOIN edu_student c ON b.student_id = c.id\nLEFT JOIN edu_campus e ON e.id = b.edu_campus_id\nLEFT JOIN order_entry f ON f.id = b.order_entry_id\nLEFT JOIN order_pattern g ON g.id = b.pattern_id\nLEFT JOIN edu_goods h ON h.id = b.goods_id\nLEFT JOIN edu_goods_section egs ON h.edu_goods_section_id = egs.id"
+    },
+    {
+      "id": "received_pay_order",
+      "title": "回款关联支付单（经订单）",
+      "main_table": "order_student_received",
+      "tables": ["order_student_received AS a", "order_student AS b", "admin_pay_order_student AS apos"],
+      "sql": "LEFT JOIN order_student b ON a.order_student_id = b.id\nLEFT JOIN admin_pay_order_student apos ON b.id = apos.order_student_id"
+    }
   ]
 }

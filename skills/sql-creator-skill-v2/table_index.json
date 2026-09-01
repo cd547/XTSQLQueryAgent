@@ -63,9 +63,7 @@
       ],
       "related_tables": [],
       "business_constraints": [],
-      "business_rules": [
-       
-      ]
+      "business_rules": []
     },
     {
       "name": "tk_knowledge_course",
@@ -1815,6 +1813,26 @@
     {
       "name": "goods_list",
       "description": "商品表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "order_approval_order_student_received_log",
+      "description": "回款审批记录",
+      "tags": [],
+      "related_tables": [
+        "order_student",
+        "admin_user",
+        "order_student_received"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "order_student_received_annex",
+      "description": "回款附件",
       "tags": [],
       "related_tables": [],
       "business_constraints": [],

@@ -24,6 +24,8 @@
     "order_approval_configure_user",
     "admin_division",
     "order_approval_configure",
-    "goods_list"
+    "goods_list",
+    "order_approval_order_student_received_log",
+    "order_student_received_annex"
   ]
 }
