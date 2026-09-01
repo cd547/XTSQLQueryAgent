@@ -1742,10 +1742,10 @@ export async function* runSqlAgent(
               const stableContent = JSON.stringify({
                 called_count: callHistory.length,
                 called_tools: callHistory,
+                // ★ 2026-09-01 精简 _instruction（原 ~100 字 → 38 字）：
+                //   每轮新增一条、内容必变 → 恒为 cache miss 尾部，按全价计费
                 _instruction:
-                  "本工具由系统自动注入，每轮 LLM 响应后程序强制调用一次，LLM 不需要主动调用。" +
-                  "如已掌握所有信息请直接输出最终答案；如需继续推理可调用其它工具。" +
-                  "重复调用本工具不会获得新信息。",
+                  "系统自动注入，无需主动调用。",
               });
               return {
                 ...p,

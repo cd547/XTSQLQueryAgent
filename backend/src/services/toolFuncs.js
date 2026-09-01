@@ -148,7 +148,9 @@ export async function loadSkillMd() {
       "SKILL.md 未找到，请确保目录存在 skills/sql-creator-skill-v2/SKILL.md",
     );
   }
-  return content;
+  // ★ 2026-09-01：CRLF → LF 归一化（SKILL.md 在 Windows 下保存为 CRLF，
+  //   实测 97 个 \r 原样进入 system 消息，纯浪费 token；归一化后字节也跨环境稳定）
+  return content.replace(/\r\n/g, "\n");
 }
 
 /**
