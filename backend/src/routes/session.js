@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getDb } from '../db/sqlite.js';
 import { getLlmConfig } from '../services/config.js';
-import { clearSessionRegistry } from '../services/llm.js';
+import { clearSessionRegistry, getProviderConfig } from '../services/llm.js';
 import { authRequired, sessionBelongsToUser } from '../services/auth.js';
 import { logger } from '../logger.js';
 
@@ -200,27 +200,12 @@ router.post('/:id/summarize', async (req, res) => {
 对话内容：
 ${conversationText}`;
     
-    let baseURL, llmModel;
-    switch (provider) {
-      case 'openai':
-        baseURL = 'https://api.openai.com/v1';
-        llmModel = model || 'gpt-4o';
-        break;
-      case 'deepseek':
-        baseURL = 'https://api.deepseek.com';
-        llmModel = model || 'deepseek-chat';
-        break;
-      case 'minimax':
-        baseURL = 'https://api.minimax.chat/v1';
-        llmModel = model || 'abab6.5s-chat';
-        break;
-      case 'ollama':
-        baseURL = apiKey || 'http://localhost:11434';
-        llmModel = model || 'llama3.2';
-        break;
-      default:
-        return res.status(400).json({ error: `不支持的provider: ${provider}`, summary: '', name: '' });
+    // ★ 2026-09-02：总结仅支持 deepseek，baseURL/默认模型复用 getProviderConfig 单一来源
+    //   （旧代码自带一份 switch，默认模型漂移成 deepseek-chat，与 llm.js 的 deepseek-v4-flash 不一致）
+    if (provider !== 'deepseek') {
+      return res.status(400).json({ error: `总结仅支持 deepseek，当前 provider: ${provider}`, summary: '', name: '' });
     }
+    const { baseURL, llmModel } = getProviderConfig(provider, model);
     
     const response = await fetch(`${baseURL}/chat/completions`, {
       method: 'POST',
@@ -231,7 +216,8 @@ ${conversationText}`;
       body: JSON.stringify({
         model: llmModel,
         messages: [{ role: 'user', content: prompt }],
-        temperature: 0
+        temperature: 0,
+        thinking: { type: 'disabled' }  // 总结任务无需思考模式，避免 reasoning token 开销
       })
     });
     
