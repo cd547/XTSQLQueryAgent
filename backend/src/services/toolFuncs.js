@@ -622,12 +622,17 @@ export function requestUserChoice(questions) {
 //   在任一为空时产生 "undefined: D" / "X: undefined"）。
 // ★ 2026-08-25：formatTableInfoCompact 已随折叠机制移除（方案 B 不折叠），
 //   本函数成为唯一的表格卡片格式化实现。
+// ★ 2026-09-02：related_tables 行改为开关控制（默认关闭）——关联发现职责移交
+//   get_table_schema 的 virtual_associations（含 join_condition，信息更精确），
+//   置 true 可恢复旧格式（恢复前需补齐 37 张空 VA 表的数据，见 06-问题清单.md）。
+const SHOW_RELATED_TABLES_IN_CARDS = false;
+
 function formatTableInfo(tables) {
   return tables
     .map((t) => {
       let info = `- ${t.name}: ${t.description || ""}`;
       if (t.tags?.length) info += `\n  标签: ${t.tags.join(", ")}`;
-      if (t.related_tables?.length)
+      if (SHOW_RELATED_TABLES_IN_CARDS && t.related_tables?.length)
         info += `\n  关联表: ${t.related_tables.join(", ")}`;
       if (t.business_constraints?.length) {
         info += `\n  业务约束:`;

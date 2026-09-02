@@ -154,10 +154,7 @@
       "tags": [
         "一级校区"
       ],
-      "related_tables": [
-        "admin_user_campus",
-        "customer_clue_info"
-      ]
+      "related_tables": []
     },
     {
       "name": "admin_department_type",
