@@ -23,7 +23,7 @@ router.get('/', (req, res) => {
     // 显式 JOIN 后总是 1 次扫描 messages 表（可走 idx_messages_session_role 索引），
     // 避免 N+1 风险（每个 session 一次 SUM 扫描）。
     const sessions = db.prepare(`
-      SELECT s.id, s.name, s.sort_order, s.created_at,
+      SELECT s.id, s.name, s.summary, s.sort_order, s.created_at,
              COALESCE(SUM(CASE WHEN m.role = 'usage' THEN m.total_tokens END), 0) AS total_tokens
       FROM sessions s
       LEFT JOIN messages m ON m.session_id = s.id

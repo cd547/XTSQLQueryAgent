@@ -520,7 +520,7 @@ function AuthenticatedApp({ user, logout }) {
       if (res.error) {
         messageApi.error({ content: res.error, key: 'summarize' });
       } else {
-        updateSessionName(sessionId, res.name);
+        updateSessionName(sessionId, res.name, res.summary);
         if (currentSessionId === sessionId) {
           setCurrentSessionName(`${res.name}#${sessionId}`);
         }

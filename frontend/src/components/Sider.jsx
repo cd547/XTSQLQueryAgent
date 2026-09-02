@@ -96,11 +96,16 @@ export default function Sider({
           ) : (
             <>
               {sessions.map(item => (
-                <div
+                <Tooltip
                   key={item.id}
-                  className={`xtsql-session-item ${currentSessionId === item.id ? 'active' : ''}`}
-                  onClick={() => onSessionClick(item)}
+                  title={item.summary || ''}
+                  placement="right"
+                  styles={{ root: { maxWidth: 320 } }}
                 >
+                  <div
+                    className={`xtsql-session-item ${currentSessionId === item.id ? 'active' : ''}`}
+                    onClick={() => onSessionClick(item)}
+                  >
                   <div className="xtsql-session-meta">
                     {editingSessionId === item.id ? (
                       <Input
@@ -137,7 +142,8 @@ export default function Sider({
                       </button>
                     </Dropdown>
                   </div>
-                </div>
+                  </div>
+                </Tooltip>
               ))}
               {loadingMoreSessions && (
                 <div className="xtsql-sider-loading">加载中...</div>

@@ -43,9 +43,9 @@ export function useSessionList() {
     setSessionsTotal(prev => Math.max(0, prev - 1));
   }, []);
 
-  // 重命名后同步本地列表（仅更新 name 字段）
-  const updateSessionName = useCallback((sessionId, newName) => {
-    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, name: newName } : s));
+  // 重命名后同步本地列表（可选同步 summary，供会话列表 tooltip 展示）
+  const updateSessionName = useCallback((sessionId, newName, summary) => {
+    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, name: newName, ...(summary !== undefined ? { summary } : {}) } : s));
   }, []);
 
   // 分页加载下一页会话
