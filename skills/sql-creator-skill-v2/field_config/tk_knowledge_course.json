@@ -19,6 +19,15 @@
   },
   "field_enums": {},
   "virtual_associations": [
+    
+    {
+      "name": "关联知识点",
+      "target_table": "tk_knowledge_new",
+      "join_condition": "tk_knowledge_new.id = tk_knowledge_course.tk_knowledge_id",
+      "type": "one_to_one",
+      "description": "",
+      "business_rule": ""
+    },
     {
       "name": "关联一级科目",
       "target_table": "edu_course",

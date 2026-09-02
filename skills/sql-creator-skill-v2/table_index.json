@@ -73,6 +73,7 @@
         "科目关联知识点"
       ],
       "related_tables": [
+        "tk_knowledge_new",
         "edu_course",
         "edu_course_exam",
         "edu_course_exam_subject",
