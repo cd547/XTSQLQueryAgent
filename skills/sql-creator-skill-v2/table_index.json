@@ -1945,7 +1945,7 @@
     },
     {
       "name": "edu_feed_teacher",
-      "description": "课程反馈(老师)",
+      "description": "课程反馈(老师)（废弃）",
       "tags": [],
       "related_tables": [
         "edu_study",
@@ -2009,7 +2009,7 @@
     {
       "name": "edu_teacher_feedback",
       "description": "老师反馈（新）",
-      "tags": [],
+      "tags": ["课程反馈"],
       "related_tables": [],
       "business_constraints": [],
       "business_rules": []
