@@ -39,6 +39,13 @@
     "exams_year_quarter",
     "exams_year_type",
     "exams_year_season_type",
-    "edu_teacher_feedback"
+    "edu_teacher_feedback",
+    "edu_achievement",
+    "edu_achievement_type",
+    "edu_achievement_rule",
+    "edu_achievement_annex",
+    "edu_achievement_knowledge",
+    "edu_achievement_teacher",
+    "edu_achievement_collect_task"
   ]
 }

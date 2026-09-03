@@ -1,0 +1,31 @@
+{
+  "table_name": "edu_achievement_knowledge",
+  "field_aliases": {},
+  "field_enums": {},
+  "virtual_associations": [
+    {
+      "name": "关联成绩记录",
+      "target_table": "edu_achievement",
+      "join_condition": "edu_achievement.id = edu_achievement_knowledge.edu_achievement_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联知识点",
+      "target_table": "tk_knowledge_new",
+      "join_condition": "tk_knowledge_new.id = edu_achievement_knowledge.tk_knowledge_id",
+      "type": "many_to_one",
+      "description": "该成绩关联考察的知识点，一条成绩可对应多个知识点",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "成绩-知识点多对多桥表",
+      "description": "本表是成绩与知识点的桥表（一条成绩多行知识点），统计知识点错误分布时按 tk_knowledge_id GROUP BY"
+    }
+  ]
+}

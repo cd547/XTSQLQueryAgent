@@ -2013,6 +2013,83 @@
       "related_tables": [],
       "business_constraints": [],
       "business_rules": []
+    },
+    {
+      "name": "edu_achievement",
+      "description": "测试成绩-成绩",
+      "tags": [],
+      "related_tables": [
+        "edu_student",
+        "edu_achievement_type",
+        "edu_course",
+        "edu_course_exam",
+        "edu_course_exam_subject",
+        "edu_course_exam_subject_name",
+        "admin_user",
+        "exams_year_season_type",
+        "edu_achievement_collect_task",
+        "exams_year_quarter"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_achievement_type",
+      "description": "测试成绩-类型",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_achievement_rule",
+      "description": "测试成绩-规则",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_achievement_annex",
+      "description": "测试成绩-附件",
+      "tags": [],
+      "related_tables": [
+        "edu_achievement"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_achievement_knowledge",
+      "description": "测试成绩-知识点",
+      "tags": [],
+      "related_tables": [
+        "edu_achievement"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_achievement_teacher",
+      "description": "测试成绩-任课老师",
+      "tags": [],
+      "related_tables": [
+        "edu_achievement",
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_achievement_collect_task",
+      "description": "测试成绩-分数采集任务表",
+      "tags": [],
+      "related_tables": [
+        "admin_user",
+        "exams_year_season"
+      ],
+      "business_constraints": [],
+      "business_rules": []
     }
   ]
 }

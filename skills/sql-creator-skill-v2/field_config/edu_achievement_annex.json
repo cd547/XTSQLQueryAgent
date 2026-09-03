@@ -1,0 +1,23 @@
+{
+  "table_name": "edu_achievement_annex",
+  "field_aliases": {},
+  "field_enums": {},
+  "virtual_associations": [
+    {
+      "name": "关联成绩记录",
+      "target_table": "edu_achievement",
+      "join_condition": "edu_achievement.id = edu_achievement_annex.edu_achievement_id",
+      "type": "many_to_one",
+      "description": "一条成绩可有多张附件（成绩单/证书图片）",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "附件为图片地址",
+      "description": "img_url 存附件地址，无 del 字段，附件随主表生命周期管理"
+    }
+  ]
+}

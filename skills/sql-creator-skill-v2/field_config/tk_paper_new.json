@@ -21,7 +21,7 @@
     {
       "name": "关联二级科目",
       "target_table": "edu_course_exam",
-      "join_condition": "edu_course_exam.order_id = tk_paper_new.edu_course_exam_id",
+      "join_condition": "edu_course_exam.id = tk_paper_new.edu_course_exam_id",
       "type": "one_to_one",
       "description": "",
       "business_rule": ""

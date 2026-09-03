@@ -1,0 +1,32 @@
+{
+  "table_name": "edu_achievement_rule",
+  "field_aliases": {},
+  "field_enums": {
+    "deleted": {
+      "0": "未删除",
+      "1": "删除"
+    }
+  },
+  "virtual_associations": [
+    {
+      "name": "关联四级科目名称",
+      "target_table": "edu_course_exam_subject_name",
+      "join_condition": "edu_course_exam_subject_name.id = edu_achievement_rule.subject_name_id",
+      "type": "many_to_one",
+      "description": "每条规则绑定一个四级科目",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "成绩档位模式",
+      "description": "achievement_type 定义该科目的成绩档位模式：0=无规则自定义，1=数字档位 1-9，2=字母档位 A*/A/B/C/D/E/U/no result 及小写 a/b/c/d/e/u；解读 edu_achievement.achievement 值时需先查本表确定档位体系"
+    },
+    {
+      "name": "逻辑删除字段是 deleted",
+      "description": "本表用 deleted（0未删除 1删除）标记删除，过滤用 deleted = 0"
+    }
+  ]
+}

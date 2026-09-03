@@ -28,6 +28,11 @@ export default function AddTableModal({ open, onClose, onCreated }) {
   const [relatedTables, setRelatedTables] = useState([]);
   const [creating, setCreating] = useState(false);
 
+  // 每次 Modal 打开时重置所有 state，避免显示上次操作的最后一步界面
+  useEffect(() => {
+    if (open) resetForm();
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // 业务域：进入 step 3 时拉取一次
   useEffect(() => {
     if (step === 3 && domains.length === 0 && !domainsLoading) {
