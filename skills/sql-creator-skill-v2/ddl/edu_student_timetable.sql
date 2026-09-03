@@ -1,0 +1,21 @@
+CREATE TABLE `edu_student_timetable` (
+  `id` bigint(20) unsigned NOT NULL AUTO_INCREMENT COMMENT 'ID主键',
+  `date` timestamp NULL DEFAULT NULL COMMENT '日期',
+  `course_id` bigint(20) NOT NULL DEFAULT '0' COMMENT '课程 id',
+  `course_name` varchar(500) NOT NULL DEFAULT '' COMMENT '课程名称',
+  `type` tinyint(4) NOT NULL DEFAULT '0' COMMENT '课程类型',
+  `edu_student_id` bigint(20) NOT NULL DEFAULT '0' COMMENT '学生ID',
+  `start_time` bigint(20) DEFAULT NULL COMMENT '开始时间',
+  `end_time` bigint(20) DEFAULT NULL COMMENT '结束时间',
+  `edu_campus_school_class_id` bigint(20) NOT NULL DEFAULT '0' COMMENT '教室ID',
+  `edu_admin_user_id` bigint(20) NOT NULL DEFAULT '0' COMMENT '上课老师ID',
+  `teaching_status` tinyint(4) NOT NULL DEFAULT '0' COMMENT '授课状态:-1-失败 0-未确定 1-成功 ',
+  `source` tinyint(4) NOT NULL DEFAULT '0' COMMENT '来源：1-study，2-activity，3-exams',
+  `deleted` tinyint(4) NOT NULL DEFAULT '0' COMMENT '是否删除 0 未删除 1 删除 默认是0',
+  `create_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '记录创建时间，默认当前时间',
+  `update_time` datetime NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '记录更新时间，默认当前时间',
+  PRIMARY KEY (`id`),
+  KEY `idx_create_time` (`create_time`),
+  KEY `idx_update_time` (`update_time`),
+  KEY `idx_studentId_date` (`edu_student_id`,`date`)
+) ENGINE=InnoDB AUTO_INCREMENT=4190 DEFAULT CHARSET=utf8mb4 COMMENT='学生课表'

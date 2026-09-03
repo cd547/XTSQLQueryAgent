@@ -1835,6 +1835,184 @@
       "related_tables": [],
       "business_constraints": [],
       "business_rules": []
+    },
+    {
+      "name": "edu_teacher_class_type",
+      "description": "老师可教班级类型",
+      "tags": [],
+      "related_tables": [
+        "admin_user",
+        "edu_class_type"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_teacher_class_subject_name",
+      "description": "老师可教科目名称",
+      "tags": [],
+      "related_tables": [
+        "admin_user",
+        "edu_course_exam_subject_name"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_teacher_annex",
+      "description": "老师附件",
+      "tags": [],
+      "related_tables": [
+        "edu_teacher",
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_teacher_school",
+      "description": "老师所属校区",
+      "tags": [],
+      "related_tables": [
+        "admin_user",
+        "edu_campus_school"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_teacher_handbook",
+      "description": "老师师资册信息表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_student_timetable",
+      "description": "学生课表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_course_exam_subject_tag",
+      "description": "# 科目标签",
+      "tags": [],
+      "related_tables": [
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_task",
+      "description": "作业",
+      "tags": [],
+      "related_tables": [
+        "edu_feed_teacher",
+        "edu_student"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_task_feed",
+      "description": "作业反馈",
+      "tags": [],
+      "related_tables": [
+        "edu_task",
+        "edu_feed_teacher"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "exams_year_apply_info",
+      "description": "年度报考-学生报考信息",
+      "tags": [],
+      "related_tables": [
+        "order_list",
+        "exams_year_season",
+        "edu_student",
+        "my_user",
+        "goods_list",
+        "exams_year_season_goods"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_feed_teacher",
+      "description": "课程反馈(老师)",
+      "tags": [],
+      "related_tables": [
+        "edu_study",
+        "edu_student",
+        "admin_user",
+        "keqiao_study",
+        "edu_course_exam_subject_name"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "exams_year_season",
+      "description": "年度报考-考试季",
+      "tags": [],
+      "related_tables": [
+        "cms_article",
+        "exams_year_type",
+        "exams_year_quarter",
+        "exams_year_season_type"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "exams_year_season_goods",
+      "description": "年度报考-商品列表",
+      "tags": [],
+      "related_tables": [
+        "goods_list",
+        "admin_user",
+        "exams_year_season"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "exams_year_quarter",
+      "description": "年度报考-季度",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "exams_year_type",
+      "description": "年度报考-考试分类",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "exams_year_season_type",
+      "description": "年度报考-考试类型分类",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_teacher_feedback",
+      "description": "老师反馈（新）",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
     }
   ]
 }

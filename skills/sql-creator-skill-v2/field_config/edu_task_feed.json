@@ -1,0 +1,31 @@
+{
+  "table_name": "edu_task_feed",
+  "field_aliases": {},
+  "field_enums": {},
+  "virtual_associations": [
+    {
+      "name": "关联作业",
+      "target_table": "edu_task",
+      "join_condition": "edu_task.id = edu_task_feed.task_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联教师反馈",
+      "target_table": "edu_feed_teacher",
+      "join_condition": "edu_feed_teacher.id = edu_task_feed.feed_teacher_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "num 评分默认值",
+      "description": "num 为评分字段，-1 表示未填写，统计平均分时需排除 num = -1 的记录"
+    }
+  ]
+}

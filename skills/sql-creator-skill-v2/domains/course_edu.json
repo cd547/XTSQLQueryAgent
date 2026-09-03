@@ -27,6 +27,18 @@
     "edu_adjust_study",
     "tk_season",
     "t_exam_result_rule",
-    "edu_level_mapping"
+    "edu_level_mapping",
+    "edu_student_timetable",
+    "edu_course_exam_subject_tag",
+    "edu_task",
+    "edu_task_feed",
+    "exams_year_apply_info",
+    "edu_feed_teacher",
+    "exams_year_season",
+    "exams_year_season_goods",
+    "exams_year_quarter",
+    "exams_year_type",
+    "exams_year_season_type",
+    "edu_teacher_feedback"
   ]
 }

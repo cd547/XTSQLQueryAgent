@@ -1,0 +1,23 @@
+{
+  "table_name": "exams_year_season_type",
+  "field_aliases": {},
+  "field_enums": {
+    "id": {
+      "1": "学科",
+      "2": "竞赛"
+    },
+    "del": {
+      "0": "正常",
+      "1": "删除"
+    }
+  },
+  "virtual_associations": [],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "枚举维表",
+      "description": "本表为考试类型分类枚举维表，id 即枚举值（1=学科，2=竞赛），被 exams_year_season.exams_year_season_type_id 引用；查询分类名称时可直接 CASE WHEN 也可 JOIN 本表"
+    }
+  ]
+}

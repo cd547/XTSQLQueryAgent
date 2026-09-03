@@ -1,0 +1,28 @@
+{
+  "table_name": "edu_teacher_handbook",
+  "field_aliases": {},
+  "field_enums": {
+    "handbook_status": {
+      "0": "未完成",
+      "1": "已完成"
+    }
+  },
+  "virtual_associations": [
+    {
+      "name": "关联老师",
+      "target_table": "edu_teacher",
+      "join_condition": "edu_teacher.id = edu_teacher_handbook.teacher_id",
+      "type": "one_to_one",
+      "description": "teacher_id 有唯一索引（idx_teacherId），与老师表严格 1:1，JOIN 不会产生重复行",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "飞书同步来源",
+      "description": "本表数据由飞书师资册同步（record_id 为飞书记录ID，lark_status 为同步状态），姓名/性别等基础信息不在本表，需 JOIN edu_teacher 获取"
+    }
+  ]
+}

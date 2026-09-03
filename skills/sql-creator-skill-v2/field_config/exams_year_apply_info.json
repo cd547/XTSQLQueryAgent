@@ -1,0 +1,68 @@
+{
+  "table_name": "exams_year_apply_info",
+  "field_aliases": {},
+  "field_enums": {
+    "apply_type": {
+      "0": "用户录入",
+      "1": "老师录入"
+    },
+    "del": {
+      "0": "未删除",
+      "1": "已删除"
+    }
+  },
+  "virtual_associations": [
+    {
+      "name": "关联学生",
+      "target_table": "edu_student",
+      "join_condition": "edu_student.id = exams_year_apply_info.edu_student_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联考试季",
+      "target_table": "exams_year_season",
+      "join_condition": "exams_year_season.id = exams_year_apply_info.exams_year_season_id",
+      "type": "many_to_one",
+      "description": "考试年度季度",
+      "business_rule": ""
+    },
+    {
+      "name": "关联考试季商品",
+      "target_table": "exams_year_season_goods",
+      "join_condition": "exams_year_season_goods.id = exams_year_apply_info.exams_year_season_goods_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联网站支付订单",
+      "target_table": "order_list",
+      "join_condition": "order_list.id = exams_year_apply_info.order_list_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联注册用户",
+      "target_table": "my_user",
+      "join_condition": "my_user.id = exams_year_apply_info.my_user_id",
+      "type": "many_to_one",
+      "description": "用户报名时关联的 C 端用户，可为空",
+      "business_rule": ""
+    },
+    {
+      "name": "关联商品",
+      "target_table": "goods_list",
+      "join_condition": "goods_list.id = exams_year_apply_info.goods_list_id",
+      "type": "many_to_one",
+      "description": "考试季商品对应的商品，可为空",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+  ]
+}

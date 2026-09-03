@@ -29,6 +29,12 @@
     "keqiao_grade",
     "keqiao_study_leave",
     "keqiao_class_category",
-    "edu_level_mapping"
+    "edu_level_mapping",
+    "exams_year_season",
+    "exams_year_season_goods",
+    "exams_year_quarter",
+    "exams_year_type",
+    "exams_year_season_type",
+    "edu_teacher_feedback"
   ]
 }

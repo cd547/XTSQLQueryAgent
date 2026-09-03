@@ -1,0 +1,151 @@
+{
+  "table_name": "edu_teacher_feedback",
+  "field_aliases": {},
+  "field_enums": {
+    "status": {
+      "1": "草稿",
+      "2": "已发送",
+      "3": "已反馈",
+      "4": "驳回"
+    },
+    "course_type": {
+      "1": "新课",
+      "2": "复习课"
+    },
+    "last_homework_status": {
+      "1": "已完成",
+      "2": "部分完成",
+      "3": "完全没做",
+      "4": "首课无上次作业"
+    },
+    "attendance": {
+      "1": "正常上课",
+      "2": "迟到",
+      "3": "早退",
+      "4": "旷课"
+    },
+    "focus": {
+      "1": "高效专注",
+      "2": "认真听讲",
+      "3": "积极主动",
+      "4": "渐入佳境",
+      "5": "缺乏主动",
+      "6": "投入不足",
+      "7": "走神敷衍"
+    },
+    "interaction": {
+      "1": "互动活跃",
+      "2": "踊跃发言",
+      "3": "积极应答",
+      "4": "尝试互动",
+      "5": "应答缓慢",
+      "6": "沉默寡言",
+      "7": "不敢表达"
+    },
+    "ability": {
+      "1": "举一反三",
+      "2": "触类旁通",
+      "3": "快速理解",
+      "4": "尝试拓展",
+      "5": "有所领悟",
+      "6": "理解困难",
+      "7": "不善总结"
+    },
+    "type": {
+      "1": "老数据",
+      "2": "新数据"
+    },
+    "homework_status": {
+      "0": "未布置",
+      "1": "已布置（班主任）",
+      "2": "已布置",
+      "3": "已反馈"
+    }
+  },
+  "virtual_associations": [
+    {
+      "name": "关联学生",
+      "target_table": "edu_student",
+      "join_condition": "edu_student.id = edu_teacher_feedback.student_id",
+      "type": "many_to_one",
+      "description": "主学生，可为空；group 课的全体学生见 student_ids",
+      "business_rule": ""
+    },
+    {
+      "name": "关联学通排课",
+      "target_table": "edu_study",
+      "join_condition": "edu_study.id = edu_teacher_feedback.study_id",
+      "type": "many_to_one",
+      "description": "学通排课，与科桥课程二选一",
+      "business_rule": ""
+    },
+    {
+      "name": "关联科桥课程",
+      "target_table": "keqiao_study",
+      "join_condition": "keqiao_study.id = edu_teacher_feedback.kq_study_id",
+      "type": "many_to_one",
+      "description": "科桥课程，与学通排课二选一",
+      "business_rule": ""
+    },
+    {
+      "name": "关联四级科目名称",
+      "target_table": "edu_course_exam_subject_name",
+      "join_condition": "edu_course_exam_subject_name.id = edu_teacher_feedback.subject_name_id",
+      "type": "many_to_one",
+      "description": "默认 0 表示未关联科目",
+      "business_rule": ""
+    },
+    {
+      "name": "关联创建老师",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_teacher_feedback.admin_user_id",
+      "type": "many_to_one",
+      "description": "创建人老师ID（反馈填写人）",
+      "business_rule": ""
+    },
+    {
+      "name": "关联授课老师",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_teacher_feedback.teacher_id",
+      "type": "many_to_one",
+      "description": "授课老师ID，与 admin_user_id（创建人）可能不同",
+      "business_rule": ""
+    },
+    {
+      "name": "关联校区学校",
+      "target_table": "edu_campus_school",
+      "join_condition": "edu_campus_school.id = edu_teacher_feedback.school_id",
+      "type": "many_to_one",
+      "description": "校区（分校学校），不是 edu_campus",
+      "business_rule": ""
+    },
+    {
+      "name": "关联旧版老师反馈",
+      "target_table": "edu_feed_teacher",
+      "join_condition": "edu_feed_teacher.id = edu_teacher_feedback.id",
+      "type": "one_to_one",
+      "description": "旧版老师反馈表与本表同主键 1:1 扩展（助教反馈 edu_feed_assistant 亦同主键）",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "双排课来源二选一",
+      "description": "study_id（学通排课）与 kq_study_id（科桥课程）通常只有一个有值，关联排课时按 COALESCE 或业务来源判断，禁止两个都 INNER JOIN"
+    },
+    {
+      "name": "student_ids 多值字段",
+      "description": "student_ids 为逗号分隔的学生ID串（group 课全体学生），不能直接 JOIN edu_student，统计需按业务口径拆分处理"
+    },
+    {
+      "name": "双老师字段",
+      "description": "admin_user_id 是反馈创建人，teacher_id 是授课老师（均指向 admin_user），二者可能不同，按查询意图选择"
+    },
+    {
+      "name": "评分语义字段为 varchar 编码",
+      "description": "focus/interaction/ability 是 varchar 列但存数字编码（1-7），枚举含义见 field_enums；comprehensive_evaluation 为五星评价"
+    }
+  ]
+}

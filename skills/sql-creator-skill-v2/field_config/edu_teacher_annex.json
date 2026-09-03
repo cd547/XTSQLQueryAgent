@@ -1,0 +1,48 @@
+{
+  "table_name": "edu_teacher_annex",
+  "field_aliases": {},
+  "field_enums": {
+    "type": {
+      "1": "普通附件",
+      "2": "师资册图片"
+    },
+    "auto_flag": {
+      "0": "手动创建",
+      "1": "系统自动创建"
+    }
+  },
+  "virtual_associations": [
+    {
+      "name": "关联老师",
+      "target_table": "edu_teacher",
+      "join_condition": "edu_teacher.id = edu_teacher_annex.edu_teacher_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联创建人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_teacher_annex.created_admin_user_id",
+      "type": "many_to_one",
+      "description": "创建人（管理员）",
+      "business_rule": ""
+    },
+    {
+      "name": "关联删除人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_teacher_annex.del_admin_user_id",
+      "type": "many_to_one",
+      "description": "执行删除的管理员，未删除时为空",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "师资册图片自动创建",
+      "description": "type=2（师资册图片）的附件由系统自动生成（auto_flag=1），人工上传的为 type=1 普通附件"
+    }
+  ]
+}

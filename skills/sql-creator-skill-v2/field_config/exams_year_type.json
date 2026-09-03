@@ -1,0 +1,14 @@
+{
+  "table_name": "exams_year_type",
+  "field_aliases": {},
+  "field_enums": {
+    "del": {
+      "0": "正常",
+      "1": "删除"
+    }
+  },
+  "virtual_associations": [],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}
