@@ -2090,6 +2090,32 @@
       ],
       "business_constraints": [],
       "business_rules": []
+    },
+    {
+      "name": "tk_paper_topic",
+      "description": "试题",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "tk_paper_topic_info",
+      "description": "题干",
+      "tags": [],
+      "related_tables": [
+        "tk_paper_topic"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "tk_paper_topic_parsing",
+      "description": "试题解析表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
     }
   ]
 }

@@ -46,6 +46,9 @@
     "edu_achievement_annex",
     "edu_achievement_knowledge",
     "edu_achievement_teacher",
-    "edu_achievement_collect_task"
+    "edu_achievement_collect_task",
+    "tk_paper_topic",
+    "tk_paper_topic_info",
+    "tk_paper_topic_parsing"
   ]
 }

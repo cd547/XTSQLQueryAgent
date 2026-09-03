@@ -1,0 +1,61 @@
+{
+  "table_name": "tk_paper_topic",
+  "field_aliases": {},
+  "field_enums": {
+    "type": {
+      "1": "选择题",
+      "2": "简答题"
+    },
+    "answer_type": {
+      "1": "文本",
+      "2": "图片"
+    },
+    "grade": {
+      "1": "简单",
+      "2": "中等",
+      "3": "难"
+    },
+    "parsing_type": {
+      "1": "文本/代码",
+      "2": "图片"
+    },
+    "err_status": {
+      "0": "无错误",
+      "1": "有错误"
+    },
+    "del": {
+      "0": "正常",
+      "1": "删除"
+    }
+  },
+  "virtual_associations": [
+    {
+      "name": "关联试卷",
+      "target_table": "tk_paper_new",
+      "join_condition": "tk_paper_new.id = tk_paper_topic.paper_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "题干与解析分表存储",
+      "description": "题干正文在 tk_paper_topic_info（多行 text/img 混排，按 sort 拼接），新版解析在 tk_paper_topic_parsing；本表的 parsing/parsing_img 列为旧版冗余，取解析优先用解析表"
+    },
+    {
+      "name": "按试卷取题的过滤条件",
+      "description": "存在 (paper_id, rel, del) 复合索引，按试卷取题时同时过滤 rel 与 del"
+    },
+    {
+      "name": "解析报错标记",
+      "description": "err_status=1 表示该题解析生成报错，详情见 err_msg，统计有效题库时应排除"
+    },
+    {
+      "name": "use_count 组卷次数",
+      "description": "use_count 记录该题被组卷使用的次数"
+    }
+  ]
+}

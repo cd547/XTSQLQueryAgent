@@ -1,0 +1,36 @@
+{
+  "table_name": "tk_paper_topic_parsing",
+  "field_aliases": {},
+  "field_enums": {
+    "parsing_type": {
+      "1": "文本/代码",
+      "2": "图片"
+    },
+    "deleted": {
+      "0": "未删除",
+      "1": "删除"
+    }
+  },
+  "virtual_associations": [
+    {
+      "name": "关联试题",
+      "target_table": "tk_paper_topic",
+      "join_condition": "tk_paper_topic.id = tk_paper_topic_parsing.topic_id",
+      "type": "many_to_one",
+      "description": "列注释明确：题目ID，关联 tk_paper_topic.id",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "新版解析表",
+      "description": "本表为试题解析的独立分表（一题可多行解析），取解析优先于 tk_paper_topic 主表的旧版 parsing/parsing_img 列"
+    },
+    {
+      "name": "逻辑删除字段是 deleted",
+      "description": "本表用 deleted（0未删除 1删除）标记删除，不是 del；过滤用 deleted = 0"
+    }
+  ]
+}

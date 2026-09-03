@@ -10,11 +10,11 @@
  *    也要 setSkillSaving）。
  *  - 纯 UI 状态（skillTreeCollapsed / skillContentCollapsed / skillTreeHeight
  *    / skillEditorHeight / skillDrawerWidth）下沉到本组件内部，父组件无需感知。
- *  - 5 个 internal state 都是拖拽条/折叠开关，与业务逻辑无关。
+ *  - 7 个 internal state 都是拖拽条/折叠开关/搜索过滤，与业务逻辑无关。
  *  - 不用 React.memo（父组件 state 更新频繁，memo 收益低）。
  */
-import React, { useState, useRef, useCallback } from 'react';
-import { Drawer, Button, Tree } from 'antd';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { Drawer, Button, Tree, Input } from 'antd';
 import {
   LockOutlined,
   UnlockOutlined,
@@ -24,6 +24,7 @@ import {
   FileTextOutlined,
   TableOutlined,
   EditOutlined,
+  SearchOutlined,
 } from '@ant-design/icons';
 import Editor from '@monaco-editor/react';
 
@@ -53,6 +54,57 @@ export default function SkillDrawer({
   const [skillTreeHeight, setSkillTreeHeight] = useState(200);
   const [skillEditorHeight, setSkillEditorHeight] = useState(300);
   const [skillDrawerWidth, setSkillDrawerWidth] = useState(480);
+  const [treeSearch, setTreeSearch] = useState('');
+
+  // ===== 目录树关键字过滤 =====
+  // 递归过滤：文件命中（title/key 包含关键字）则保留；文件夹自身命中则保留整个子树，
+  // 否则仅当后代有命中时保留过滤后的 children
+  const filterTree = useCallback((nodes, kw) => {
+    const result = [];
+    for (const node of nodes) {
+      const selfMatch = node.title.toLowerCase().includes(kw) || node.key.toLowerCase().includes(kw);
+      if (node.isFolder) {
+        if (selfMatch) {
+          result.push({ ...node, children: node.children || [] });
+        } else {
+          const children = filterTree(node.children || [], kw);
+          if (children.length > 0) result.push({ ...node, children });
+        }
+      } else if (selfMatch) {
+        result.push(node);
+      }
+    }
+    return result;
+  }, []);
+
+  const filteredTree = useMemo(() => {
+    const kw = treeSearch.trim().toLowerCase();
+    if (!kw) return skillTree;
+    return filterTree(skillTree, kw);
+  }, [skillTree, treeSearch, filterTree]);
+
+  // 展开状态始终受控：任何情况下手动折叠/展开都直接更新此 state
+  const [expandedKeys, setExpandedKeys] = useState([]);
+
+  // 搜索关键字变化时：有关键字 → 自动展开过滤结果中的所有文件夹（之后仍可手动折叠）；
+  // 清空关键字 → 恢复默认全折叠
+  useEffect(() => {
+    if (!treeSearch.trim()) {
+      setExpandedKeys([]);
+      return;
+    }
+    const keys = [];
+    const walk = (nodes) => {
+      for (const n of nodes) {
+        if (n.isFolder) {
+          keys.push(n.key);
+          walk(n.children || []);
+        }
+      }
+    };
+    walk(filteredTree);
+    setExpandedKeys(keys);
+  }, [treeSearch]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ===== 拖拽条 handlers（捕获 startX/Y + startHeight/Width）=====
   const handleDrawerResizerMouseDown = useCallback((e) => {
@@ -160,15 +212,26 @@ export default function SkillDrawer({
           <span style={{ fontSize: 12, fontWeight: 500 }}>目录结构</span>
         </div>
 
-        {!skillLocked && !skillTreeCollapsed && (
+        {!skillTreeCollapsed && (
           <div style={{ marginBottom: 8, display: 'flex', gap: 8 }}>
-            <Button
+            <Input
               size="small"
-              icon={<TableOutlined style={{ color: '#1890ff' }} />}
-              style={{ fontSize: 11, color: '#1890ff' }}
-              title="添加表格"
-              onClick={() => setAddTableModalOpen(true)}
-            >添加</Button>
+              placeholder="输入关键字搜索文件"
+              prefix={<SearchOutlined style={{ color: 'var(--xtsql-text-tertiary)', fontSize: 11 }} />}
+              allowClear
+              value={treeSearch}
+              onChange={(e) => setTreeSearch(e.target.value)}
+              style={{ fontSize: 11, flex: 1 }}
+            />
+            {!skillLocked && (
+              <Button
+                size="small"
+                icon={<TableOutlined style={{ color: '#1890ff' }} />}
+                style={{ fontSize: 11, color: '#1890ff' }}
+                title="添加表格"
+                onClick={() => setAddTableModalOpen(true)}
+              >添加</Button>
+            )}
           </div>
         )}
 
@@ -201,10 +264,12 @@ export default function SkillDrawer({
             />
             <div style={{ height: '100%' }} className="skill-drawer-scroll">
               <div>
-                {skillTree.length > 0 ? (
+                {filteredTree.length > 0 ? (
                   <Tree
-                    treeData={skillTree}
+                    treeData={filteredTree}
                     showIcon={true}
+                    expandedKeys={expandedKeys}
+                    onExpand={(keys) => setExpandedKeys(keys)}
                     onSelect={(selectedKeys, { node }) => {
                       if (!node.isFolder) {
                         handleSkillFileSelect(node.key);
@@ -214,7 +279,9 @@ export default function SkillDrawer({
                     icon={(node) => node.isFolder ? <FolderOpenOutlined style={{ color: '#faad14' }} /> : <FileTextOutlined style={{ color: '#1890ff' }} />}
                   />
                 ) : (
-                  <div style={{ color: '#999', fontSize: 12 }}>暂无内容</div>
+                  <div style={{ color: '#999', fontSize: 12 }}>
+                    {treeSearch.trim() ? '无匹配文件' : '暂无内容'}
+                  </div>
                 )}
               </div>
             </div>
