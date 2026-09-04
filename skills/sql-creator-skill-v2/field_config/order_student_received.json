@@ -133,6 +133,10 @@
     {
       "name": "退款回款",
       "description": "type=2 为退款自动生成的回款，金额业务含义为负数"
+    },
+    {
+      "name": "默认排除内部调整专户",
+      "description": "account_title_id <>7"
     }
   ],
   "common_sqls": [
