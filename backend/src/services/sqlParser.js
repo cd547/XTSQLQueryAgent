@@ -174,18 +174,35 @@ export function hasCte(ast) {
 }
 
 /**
- * SQL 中是否含 LIMIT 子句（regex 简单检测）
+ * 检测最外层 SELECT（含 UNION 链）是否有约束整体结果集的 LIMIT
  *
- * 不依赖 parser，因为：
- * 1. parser 对复杂 LIMIT 表达式可能解析失败
- * 2. LIMIT 是 SQL 末尾的简单子句，regex 准确率高
+ * 只认"约束最终结果集"的 LIMIT，子查询 / derived table 内的 LIMIT 不计：
+ * - 简单 SELECT：ast.limit 非空
+ * - UNION 链（_next 串联）：链尾节点的 limit 作用于整个 UNION 结果；
+ *   或链上每个分支都自带 limit（各分支有界 → 整体行数有界）
  *
- * @param {string} sql - 原始 SQL
+ * ★ 2026-09-07：替换旧 regex 版 hasLimitClause——旧实现把子查询里的
+ *   LIMIT 误判为"外层已有 LIMIT"（R5 被绕过，漏报全表扫描）
+ *
+ * @param {object|Array} ast - parseSql 返回的 AST（多语句/带分号时为数组）
  * @returns {boolean}
  */
-export function hasLimitClause(sql) {
-  // 匹配 LIMIT 关键字（后跟数字 / OFFSET / 变量）
-  return /\bLIMIT\s+(?:\d+|@[\w_]+|\([^)]+\))/i.test(sql);
+export function hasOuterLimit(ast) {
+  if (!ast) return false;
+  // 多语句 / 带分号：每条都必须有 LIMIT（保守）
+  if (Array.isArray(ast)) {
+    return ast.length > 0 && ast.every(hasOuterLimit);
+  }
+  if (ast.type !== 'select') return false;
+  const hasLimit = (node) =>
+    !!(node && node.limit && Array.isArray(node.limit.value) && node.limit.value.length > 0);
+  // 沿 UNION 链收集节点
+  const chain = [];
+  for (let node = ast; node; node = node._next) chain.push(node);
+  // 链尾 LIMIT 作用于整个 UNION 结果（MySQL 语义）
+  if (hasLimit(chain[chain.length - 1])) return true;
+  // 各分支均自带 LIMIT → 整体有界
+  return chain.every(hasLimit);
 }
 
 /**

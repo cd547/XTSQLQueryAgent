@@ -7,7 +7,7 @@
  * - R1 字段-表归属（防幻觉核心）：extractColumnRefs + buildAliasMap + loadColumnsMap
  * - R2 字段别名反引号：纯 regex（non-greedy + lookahead 避免吃掉后续 SQL 关键字）
  * - R3 MySQL 5.7 限制（CTE / 窗口函数 / JSON_TABLE）：parser 顺带
- * - R5 LIMIT 子句：regex（不用 AST 避免子查询 LIMIT 误判）
+ * - R5 LIMIT 子句：AST（hasOuterLimit，子查询 LIMIT 不计）
  *
  * R6 EXPLAIN 对账（2026-08-31）：
  * - 仅 R1-R5 全通过后执行；对真实库跑 EXPLAIN（只读，不执行语句）
@@ -37,7 +37,7 @@ import {
   hasCte,
   hasWindowFunction,
   hasJsonTable,
-  hasLimitClause,
+  hasOuterLimit,
 } from './sqlParser.js';
 import { loadColumnsMap } from './ddlUtils.js';
 import { getTableDDL, MISSING_DDL_BLOCK } from './toolFuncs.js';
@@ -241,26 +241,28 @@ export function validateR3Mysql57Limits(ctx) {
 /**
  * R5 LIMIT 子句检测
  *
- * 触发：SELECT 语句无 LIMIT 子句
+ * 触发：SELECT 语句最外层无约束整体结果集的 LIMIT
  *
- * 实现：regex (hasLimitClause) 而非 AST
- *   原因：AST 检查 `ast.limit` 无法处理「子查询含 LIMIT 但外层无 LIMIT」的情况
- *   regex 简单匹配 LIMIT 关键字，子查询的 LIMIT 也算"有 LIMIT"（不报外层 R5）
+ * 实现：AST (hasOuterLimit)
+ *   - 简单 SELECT：ast.limit 非空
+ *   - UNION：链尾 limit（作用于整个结果）或每个分支都自带 limit
+ *   - 子查询 / derived table 内的 LIMIT 不计（★ 2026-09-07 修复：
+ *     旧 regex 实现把子查询 LIMIT 误判为外层有 LIMIT，R5 被绕过）
  *
- * @param {object} ctx - {sql, ast}
+ * @param {object} ctx - {ast}
  * @returns {Array<{rule, message, sqlSnippet}>}
  */
 export function validateR5LimitClause(ctx) {
   const errors = [];
-  const { sql, ast } = ctx;
+  const { ast } = ctx;
 
-  // 只检查 SELECT（含 UNION，AST type 也是 'select'）
-  if (!ast || ast.type !== 'select') return errors;
+  // 只检查 SELECT（含 UNION，AST type 也是 'select'；数组为多语句/带分号形式）
+  if (!ast || (ast.type !== 'select' && !Array.isArray(ast))) return errors;
 
-  if (!hasLimitClause(sql)) {
+  if (!hasOuterLimit(ast)) {
     errors.push({
       rule: 'R5_MISSING_LIMIT',
-      message: 'SELECT 语句无 LIMIT 子句',
+      message: 'SELECT 语句最外层无 LIMIT 子句（子查询内的 LIMIT 不计）',
       sqlSnippet: '(末尾)',
     });
   }

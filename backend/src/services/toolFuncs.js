@@ -718,7 +718,7 @@ export const tools = [
     name: "get_table_schema",
     description:
       "获取指定表的字段信息。返回 JSON：\n" +
-      "• 单表: {fields, aliases?, enums?, virtual_associations?, business_constraints?, business_rules?}\n" +
+      "• 单表: {fields, field_aliases?, field_enums?, virtual_associations?, business_constraints?, business_rules?}\n" +
       "  - fields: {列名: {t:类型, c?:注释, fk?:外键}}\n" +
       "  - 失败: {error: '原因'}\n" +
       "• 多表: {表名: <单表结构>, ...}",

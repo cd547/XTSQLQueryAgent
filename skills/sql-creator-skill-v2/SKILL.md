@@ -12,24 +12,20 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL SQL
    3. 确定目标表后 `get_table_schema` 获取表及字段详情
 
 4. **关联表**：先用`get_sliced_index` 确定主表，调 `get_table_schema` 后从 `virtual_associations` 发现关联表并获取精确 JOIN 条件（含 `join_condition`，必须优先采用）；若关联表尚未获取，可再次 `get_table_schema` 调用。禁止猜测 JOIN 条件。
-4.1 当 `virtual_associations` 的 `type` 为 `conditional_many_to_one` 时：
-   - 必须 LEFT JOIN `default.target_table` 和每个 `conditions[].target_table`。
-   - 使用 `CASE WHEN` 实现字段选择。
-   - 若提供了 `sql_template`，直接按照模板填充变量生成表达式。
-4.2 `del`/`deleted` 连表时**默认不过滤**。
-   - "特殊说明" 仅当 join_condition/business_rules 显式要求时才过滤，且过滤条件放 WHERE（t_b.id IS NULL OR t_b.del=0），不得塞进 ON。
-   - 无法判定（既无特殊说明，业务意图也不清晰）→ 必须询问用户，**禁止自行决定**。
+  1. 当 `virtual_associations` 的 `type` 为 `conditional_many_to_one` 时：
+    - 必须 LEFT JOIN `default.target_table` 和每个 `conditions[].target_table`。
+    - 使用 `CASE WHEN` 实现字段选择。
+    - 若提供了 `sql_template`，直接按照模板填充变量生成表达式。
+  2. `del`/`deleted` 连表时**默认不过滤**。
+    - "特殊说明" 仅当 join_condition/business_rules 显式要求时才过滤，且过滤条件放 WHERE（t_b.id IS NULL OR t_b.del=0），不得塞进 ON。
+    - 无法判定（既无特殊说明，业务意图也不清晰）→ 必须询问用户，**禁止自行决定**。
 
 5. **字段**：
-   - **唯一来源**：`get_table_schema(table_names)` 一次返回该表**全部**信息——物理结构
-     （列名/类型/注释/索引/外键）与业务语义（别名/枚举/关联/规则）已合并，不得再调任何其它工具补充 DDL。
-   - **返回结构**（短键名约定）：
-     - `fields`：`{ 列名: { t:类型, c:注释, fk:外键引用 } }`
-     - `field_aliases`：字段中文别名；`field_enums`：枚举值→业务标签映射
-     - `virtual_associations`：精确 JOIN 条件；`business_rules`：必须以
-       WHERE/JOIN/CASE WHEN 形式显式体现的业务规则
+   - **唯一来源**：`get_table_schema(table_names)` 一次返回该表**全部**信息
+     （物理结构与业务语义已合并，返回结构见工具描述），不得再调任何其它工具补充 DDL。
    - **输出规则**：字段名必须来自 `fields` 里的列名，禁止自造/猜测；
      字段有 `field_enums` 映射时默认用 CASE WHEN 或关联枚举表转业务显示值；
+     `business_rules` 必须以 WHERE/JOIN/CASE WHEN 形式显式体现；
      多表查询时所有字段必须带表别名（如 `t1.id`）。
 
 6. 字段别名含特殊字符（括号/空格/中文等）必须用反引号包裹。

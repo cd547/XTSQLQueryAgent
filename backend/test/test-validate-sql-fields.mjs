@@ -226,14 +226,38 @@ console.log('\n========== R5: LIMIT 子句 ==========');
   assertTrue('R5.3 UNION + LIMIT → 无 R5 error', r5.length === 0);
 }
 
-// Test 4: 子查询 LIMIT（regex 已知限制：内层 LIMIT 算外层也有）
+// Test 4: 子查询 LIMIT，外层无 → R5 error（★ 2026-09-07 修复：AST 只认外层 LIMIT）
 {
-  // 内层有 LIMIT，外层无 - regex 视外层"有 LIMIT"，不报 R5
   const r = await validateSqlFields({
     sql: 'SELECT t.id FROM (SELECT id FROM a LIMIT 5) t',
   });
   const r5 = getErrors(r, 'R5_MISSING_LIMIT');
-  assertTrue('R5.4 子查询 LIMIT → 无 R5 error (regex 已知限制)', r5.length === 0);
+  assertTrue('R5.4 derived table 有 LIMIT 但外层无 → R5 error', r5.length >= 1);
+}
+
+// Test 4b: WHERE IN 子查询 LIMIT，外层无 → R5 error（修复前被绕过）
+{
+  const r = await validateSqlFields({
+    sql: 'SELECT * FROM t WHERE id IN (SELECT id FROM x LIMIT 1)',
+  });
+  const r5 = getErrors(r, 'R5_MISSING_LIMIT');
+  assertTrue('R5.4b WHERE 子查询 LIMIT，外层无 → R5 error', r5.length >= 1);
+}
+
+// Test 4c: UNION 各分支都带 LIMIT（括号包裹）→ 无 R5 error
+{
+  const r = await validateSqlFields({
+    sql: '(SELECT id FROM a LIMIT 1) UNION ALL (SELECT id FROM b LIMIT 2)',
+  });
+  const r5 = getErrors(r, 'R5_MISSING_LIMIT');
+  assertTrue('R5.4c UNION 各分支都带 LIMIT → 无 R5 error', r5.length === 0);
+}
+
+// Test 4d: 带分号且无 LIMIT → R5 error（parser 返回数组，修复前被跳过）
+{
+  const r = await validateSqlFields({ sql: 'SELECT id FROM t;' });
+  const r5 = getErrors(r, 'R5_MISSING_LIMIT');
+  assertTrue('R5.4d 带分号且无 LIMIT → R5 error', r5.length >= 1);
 }
 
 // Test 5: LIMIT 0 → 无 R5 error
