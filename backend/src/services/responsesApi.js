@@ -337,7 +337,7 @@ async function updateSessionTokens({ sessionId, totalTokens }) {
 async function* _runSqlAgentResponsesStreamGen({
   question, historyText, signal, sessionId, username,
   allTools, systemMessage, cfg, maxToolCalls: maxToolCallsInput,
-  reasoningConfig,  // ★ 用户控件：{ enabled: boolean, effort: 'low'|'medium'|'high' }。undefined → 保持向后兼容 (high)
+  reasoningConfig,  // ★ 用户控件：{ enabled: boolean, effort: 'high'|'max' }。undefined → 保持向后兼容 (high)
   fileIds,           // ★ 2026-08-24：DeepSeek Files API 文件 id 列表
 }) {
   logger.info("runSqlAgentResponses called", {
@@ -458,11 +458,14 @@ async function* _runSqlAgentResponsesStreamGen({
     // ★ 用户控件：reasoning 字段根据 reasoningConfig 动态生成
     //   - undefined: 向后兼容旧调用（保持 'high'）
     //   - enabled=false: 完全不发 reasoning 字段（让 API 默认行为生效）
-    //   - enabled=true: 按 effort 透传（low/medium/high）
+    //   - enabled=true: 按 effort 透传（high/max）
+    //   ★ 2026-09-07 对齐 thinking_mode 文档：仅 high/max 有效；
+    //   未识别值（含旧 low/medium）回落 high
+    const VALID_EFFORTS = new Set(['high', 'max']);
     const buildReasoning = (cfg) => {
       if (cfg === null || cfg === undefined) return { effort: "high" };
       if (cfg.enabled === false) return undefined;  // 不传 reasoning 字段
-      return { effort: cfg.effort || "high" };
+      return { effort: VALID_EFFORTS.has(cfg.effort) ? cfg.effort : "high" };
     };
     const reasoningParam = buildReasoning(reasoningConfig);
     const requestParams = {

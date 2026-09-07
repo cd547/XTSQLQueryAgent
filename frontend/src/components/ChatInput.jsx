@@ -62,9 +62,9 @@ export default function ChatInput({
   tokenWarningLevel,       // number, token 警告阈值
   onViewMessages,          // () => void, 点击 token 条查看消息详情
 
-  // ===== 思考模式（v5.20d 3 档：低/中/高）=====
+  // ===== 思考模式（v5.21 2 档：标准/深度）=====
   //   移除 reasoningEnabled prop（始终为 true，App.jsx 硬编码）
-  reasoningEffort,         // 'low' | 'medium' | 'high'
+  reasoningEffort,         // 'high' | 'max'
   setReasoningEffort,      // (s) => void
 
   // ===== 附件（★ 2026-08-24 新增：DeepSeek Files API）=====
@@ -101,7 +101,7 @@ export default function ChatInput({
     document.addEventListener('mouseup', handleUp);
   };
 
-  // 思考模式 onChange：v5.20d 恢复 3 档（低/中/高），enabled 永远 true
+  // 思考模式 onChange：v5.21 两档（标准/深度），enabled 永远 true
   const handleReasoningChange = (v) => {
     setReasoningEffort(v);
   };
@@ -317,23 +317,23 @@ export default function ChatInput({
                 - 位置：模型名称 与 累计 tokens 之间
                 - 持久化：localStorage（刷新后保留）
                 - v5.20a 移除"关"档：deepseek-v4-flash effort=0 下易循环
-                - v5.20b 移除"低"档 → v5.20d 恢复（误判 low 无 reasoning_content，根因是 buildThinking 嵌套 bug，已修）
                 - v5.20c 移除 reasoningEnabled 状态：始终为 true，App.jsx 硬编码
-                - 默认选中"中"（medium）
-                - Segmented 单控件表达「低/中/高」3 档
+                - v5.21 对齐 DeepSeek thinking_mode 文档（2026-09）：reasoning_effort
+                  仅 high/max 有效，low/medium 被服务端映射为 high → 三档改两档
+                  「标准(high)/深度(max)」，消除"选低档没省 token"的误导
+                - Segmented 单控件表达「标准/深度」2 档
                 - label + Segmented 用 Space size=2 收紧（meta 容器 gap:10px 太大） */}
             <Space size={2}>
               <span className="xtsql-input-meta-label">思考模式：</span>
-              <Tooltip title="思考模式：高=深度推理（耗 token），中=适度推理，低=轻量推理">
+              <Tooltip title="思考模式：标准(high)=常规推理，深度(max)=最强推理（更耗 token 与时间）">
                 <Segmented
                   size="small"
                   className="xtsql-reasoning-segmented"
                   value={reasoningEffort}
                   onChange={handleReasoningChange}
                   options={[
-                    { value: 'low', label: '低' },
-                    { value: 'medium', label: '中' },
-                    { value: 'high', label: '高' },
+                    { value: 'high', label: '标准' },
+                    { value: 'max', label: '深度' },
                   ]}
                 />
               </Tooltip>

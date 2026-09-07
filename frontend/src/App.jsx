@@ -20,7 +20,7 @@ import ExplainAnalyzeModal from './components/modals/ExplainAnalyzeModal.jsx';
 import { useAuth } from './context/AuthContext.jsx';
 import { useTheme } from './context/ThemeContext.jsx';
 import * as api from './api/index.js';
-import { CloseOutlined, MenuOutlined, CheckOutlined, SendOutlined, LoadingOutlined, BulbOutlined, BulbFilled, ClockCircleOutlined } from '@ant-design/icons';
+import { CloseOutlined, MenuOutlined, CheckOutlined, SendOutlined, LoadingOutlined, BulbOutlined, BulbFilled, ClockCircleOutlined, ExclamationCircleOutlined } from '@ant-design/icons';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import Editor from '@monaco-editor/react';
@@ -191,7 +191,8 @@ function AuthenticatedApp({ user, logout }) {
   //     修复后顶层 reasoning_effort 正确传给 API，low/medium/high 三档都能看到思考过程）
   //   v5.20c: 移除 reasoningEnabled 状态（始终为 true，无意义切换）
   //     兼容老数据：localStorage 'xtsql.reasoning.enabled' 残留 false 时强制重置 true
-  //   兼容老数据：localStorage '关'/'off' 自动重置为 'medium'（v5.20b 期间重置过 'low'，也兼容）
+  //   兼容老数据：'关'/'off' → 'high'；v5.21 起档位对齐 DeepSeek 实际能力（仅 high/max，
+  //   low/medium 被服务端映射为 high）→ 旧 localStorage 'low'/'medium' 归一为 'high'
   const [reasoningEffort, setReasoningEffort] = useState(() => {
     try {
       // 清理老 localStorage 'xtsql.reasoning.enabled' 残留 false
@@ -199,10 +200,10 @@ function AuthenticatedApp({ user, logout }) {
         localStorage.removeItem('xtsql.reasoning.enabled');
       }
       const v = localStorage.getItem('xtsql.reasoning.effort');
-      // 兼容老值：'关'/'off' → 'medium'；'low'/'medium'/'high' 保留
-      if (v === '关' || v === 'off' || v === 'null' || v === null) return 'medium';
-      return ['low', 'medium', 'high'].includes(v) ? v : 'medium';
-    } catch (e) { return 'medium'; }
+      // 兼容老值：'关'/'off'/'low'/'medium' → 'high'
+      if (v === 'high' || v === 'max') return v;
+      return 'high';
+    } catch (e) { return 'high'; }
   });
   useEffect(() => { try { localStorage.setItem('xtsql.reasoning.effort', reasoningEffort); } catch (e) {} }, [reasoningEffort]);
   const [skillLocked, setSkillLocked] = useState(true);
@@ -618,6 +619,38 @@ function AuthenticatedApp({ user, logout }) {
       const activeSid = Object.keys(streamBatchesRef.current)[0];
       messageApi.warning(`会话 ${activeSid ? activeSid.slice(0, 8) : ''} 正在生成中，请先等待或停止`);
       return;
+    }
+
+    // ★ 2026-09-07 B1-P0 长会话成本告警（发送前主动提示）
+    //   背景：sessionMessagesTokens = 上一轮 API 权威 prompt_tokens ≈ 本次请求输入规模；
+    //   llm_messages 无限追加（B1），1M 上下文下不会撑爆但成本线性膨胀。
+    //   阈值 agent_token_warning_level（默认 30000）本意即"单轮输入成本预算"，
+    //   这里在发送前主动确认：≥90% 提示、≥100% 警告，均不硬阻断（用户可选仍要发送）。
+    //   注：user_choice 提交也走 handleSend（overrideSessionId）→ 同样受保护。
+    const warnLevel = Number(tokenWarningLevel) || 30000;
+    const ctxTokens = Number(sessionMessagesTokens) || 0;
+    if (targetSessionId === currentSessionId && ctxTokens >= warnLevel * 0.9) {
+      const overLimit = ctxTokens >= warnLevel;
+      const pct = Math.round((ctxTokens / warnLevel) * 100);
+      const wantSend = await new Promise((resolve) => {
+        Modal.confirm({
+          title: overLimit ? '会话上下文已超出预算' : '会话上下文接近预算上限',
+          icon: <ExclamationCircleOutlined style={{ color: overLimit ? 'var(--xtsql-danger, #ff4d4f)' : '#faad14' }} />,
+          content: (
+            <div>
+              <p>当前会话上下文约 <b>{ctxTokens.toLocaleString()}</b> tokens（预算 {warnLevel.toLocaleString()} 的 {pct}%）。本次请求将把这整段历史作为输入发送给模型，成本较高。</p>
+              <p style={{ marginTop: 8, color: '#888', fontSize: 12 }}>继续提问会话历史会继续膨胀；如问题与新话题无关，建议新开会话（输入 token 更省）。</p>
+            </div>
+          ),
+          okText: '仍要发送',
+          cancelText: '取消',
+          // 超预算时把确认按钮标红强化警示
+          okButtonProps: overLimit ? { danger: true } : {},
+          onCancel: () => resolve(false),
+          onOk: () => resolve(true),
+        });
+      });
+      if (!wantSend) return;
     }
 
     // 清空 input 框（仅当是从 input 触发的）

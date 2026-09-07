@@ -317,10 +317,13 @@ router.post('/generate', async (req, res) => {
   // ★ 用户控件：思考模式参数
   //   - 前端不传 → undefined → 后端两条路径都按各自默认值（保持向后兼容）
   //   - enabled=false → 关闭思考
-  //   - enabled=true → 按 effort 启用（low/medium/high）
+  //   - enabled=true → 按 effort 启用（high/max）
   //   这里只做白名单清洗，不做默认值填充（让 handler 内部决定）
+  //   ★ 2026-09-07 对齐 DeepSeek thinking_mode 文档：reasoning_effort 仅支持
+  //   high/max（low/medium 被服务端映射为 high，xhigh→max）；旧前端残留的
+  //   low/medium 在此统一归一为 high
   if (reasoning && typeof reasoning === 'object') {
-    const allowedEffort = ['low', 'medium', 'high'];
+    const allowedEffort = ['high', 'max'];
     if (reasoning.effort && !allowedEffort.includes(reasoning.effort)) {
       reasoning.effort = 'high';
     }

@@ -3,6 +3,7 @@
 > 分析日期：2026-09-07
 > 范围：token 消耗链路、严重 bug、SKILL.md 提示词、domains / field_config / table_index.json 文件结构
 > 数据来源：对 backend/src 全量代码走查 + 对 skills/sql-creator-skill-v2 全量数据统计（脚本实测）
+> 修订：2026-09-07 已对照 DeepSeek 官方文档（pricing / thinking_mode / multi_round_chat / tool_calls / kv_cache）校对，修正内容见各节「✎ 修订」标注及附录 A
 
 ---
 
@@ -149,12 +150,13 @@ llm.js L1233-L1239 注释称"带 tool_calls 的 assistant 必须回传 reasoning
 
 ## 四、严重 Bug 清单（按严重程度排序）
 
-### B1【高】会话历史无上限，长会话 token 成本持续膨胀
+### B1【高】会话历史无上限，长会话 token 成本持续膨胀（⏳ 2026-09-07 第一步已实施：发送前 90% 成本告警；P0 主体待做）
 
 - 位置：[llm.js](file:///D:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L1154-L1182)、[llm.js](file:///D:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L875-L911)
 - 问题：`llm_messages` 每会话一行，messages 数组无限追加（含全部 tool 结果、每轮 get_call_history 注入、reasoning_content）；无窗口、无摘要、无上限。
 - 触发：同一会话连续提问 10+ 轮，单请求 prompt_tokens 破万。✎ 修订（1M 上下文）：v4 模型上下文已达 1M，"撑爆上下文导致会话报废"的紧迫性下降；主要危害转为**成本**——缓存未命中时输入按 1 元/百万 tokens（v4-flash）计费，长会话每轮都是大输入。另注意 SQLite 单行 messages JSON 无限增大也带来读写与内存压力。
-- 修复：见 1.4 P0（跨问题压缩 + 最近 K 问题窗口 + 阈值告警）。
+- 已实施（✅ 2026-09-07，P0 第三组件"阈值告警"）：发送前主动确认——[App.jsx](file:///D:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L624-L654) handleSend 在流式守卫后检查 `sessionMessagesTokens`（= 上一轮权威 prompt_tokens ≈ 本次输入规模）与 `agent_token_warning_level`（默认 30000，config 表可配）：≥90% 弹 Modal.confirm（黄），≥100% 红色警示 + 确认按钮标红；均不硬阻断，用户可选「仍要发送」或「取消」；user_choice 提交共用 handleSend 同样受保护；仅对当前视图会话弹窗（targetSessionId === currentSessionId），后台代发不弹。构建产物已验证。
+- 剩余：P0 主体（跨问题压缩 + 最近 K 问题窗口）另行实施——告警只能"知情后手动止损"，token 消耗本身的下降仍靠压缩。
 
 ### B2【中】旧问题的 reasoning_content 与 get_call_history 消息永久重放
 
@@ -171,32 +173,37 @@ llm.js L1233-L1239 注释称"带 tool_calls 的 assistant 必须回传 reasoning
 - 修复（已实施）：regex `hasLimitClause` 替换为 AST 版 `hasOuterLimit(ast)`——只认约束整体结果集的 LIMIT：简单 SELECT 看 `ast.limit`；UNION 链（`_next` 串联）看链尾 limit（MySQL 语义：作用于整个 UNION 结果）或每个分支都自带 limit（各分支有界→整体有界）。顺带修复了旧实现"带分号的 SQL 返回数组 AST 时 R5 被整体跳过"的次生漏洞。错误消息同步改为「最外层无 LIMIT（子查询内的 LIMIT 不计）」。
 - 验证：`test-validate-sql-fields.mjs` R5 全部 9 条断言通过（含新增 4 条：derived table 内 LIMIT、WHERE IN 子查询 LIMIT、各分支带 LIMIT 的 UNION、带分号无 LIMIT）；套件 50 断言中唯一失败项 R1.5 为修复前既有失败（stash 验证 HEAD 同样失败），与本次无关。
 
-### B4【中】reasoning effort 模型已过时：low/medium 均被映射为 high，前端三档实为两档
+### B4【中】reasoning effort 模型已过时：low/medium 均被映射为 high，前端三档实为两档（✅ 2026-09-07 已修复）
 
-- 位置：[query.js](file:///D:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/query.js#L322-L328)、[llm.js](file:///D:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L1293-L1302)、前端思考档位选项
+- 位置：[query.js](file:///D:/Ai_Program_Files/XTSQLQueryAgent/backend/src/routes/query.js#L325-L331)、[llm.js](file:///D:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L1292-L1302)、[responsesApi.js](file:///D:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/responsesApi.js#L464-L469)、[App.jsx](file:///D:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/App.jsx#L196-L207)、[ChatInput.jsx](file:///D:/Ai_Program_Files/XTSQLQueryAgent/frontend/src/components/ChatInput.jsx#L326-L340)
 - 问题（✎ 整体重写，原"两层回落不一致"已次要化）：官方 thinking_mode 文档确认当前 `reasoning_effort` 仅支持 **`high` / `max`**；出于兼容 **`low`、`medium` 会被服务端映射为 `high`**（`xhigh` → `max`）；普通请求默认 effort 即为 `high`。后果：
   1. 前端"低/中/高"三档选项中，**低和中实际等效于 high**——用户以为选了省 token 的低档，实际思考量并未降低，档位 UI 产生误导；
   2. 项目记忆中的"low/medium/high、medium 为默认"约定已过时（服务端默认 high）；
   3. 原报告的两层回落不一致（路由层→high、llm 层→medium）在服务端映射下殊途同归（都变 high），降级为代码整洁问题。
-- 修复：前端档位改为与模型实际能力对齐（如"关闭 / 标准(high) / 深度(max)"）；后端 VALID_EFFORTS 同步改为 `{high, max}`；旧会话存储的 low/medium 无需迁移（服务端自动映射为 high）。
+- 修复（已实施）：
+  - 前端档位改为两档「**标准(high) / 深度(max)**」；**未恢复"关闭"档**（v5.20a 已因 effort=0 循环 bug 有意移除，不回退）；旧 localStorage 的 low/medium/关/off 统一归一为 high；
+  - 后端 `VALID_EFFORTS` 统一为 `{high, max}`、未识别值回落 `high`（路由层 query.js、Chat 路径 llm.js buildThinking、Responses 路径 responsesApi.js buildReasoning 三处同步）；
+  - 函数签名注释 `effort: 'low'|'medium'|'high'` → `'high'|'max'`。
+- 验证：`npm run build`（前端 vite）通过；dist 产物已确认含新档位文案、旧文案清除；后端 low/medium 输入经白名单归一为 high，与服务端映射语义一致。
+- 备注：本次修复期间 ChatInput.jsx 与本文档多次被 IDE 旧缓冲区覆盖还原——**请在 IDE 中先关闭或从磁盘重新加载本文件**（右键文件标签 → Revert File），否则下次保存仍会覆盖外部修改。
 
-### B5【低】request_user_choice 重复拦截的提示消息在 v3 契约下取不到 question
+### B5【低】request_user_choice 重复拦截的提示消息在 v3 契约下取不到 question（✅ 2026-09-07 已修复）
 
-- 位置：[llm.js](file:///D:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L694-L701)
-- 问题：`computeUserChoiceSignature` 已兼容 v3 questions[] 数组，但拦截提示消息仍用 `args?.question`（v3 下为 undefined）→ LLM 看到 `已被问过: "undefined..."`（实际显示空串）。功能正确，提示误导。
-- 修复：消息改从 signature 或 questions[0].question 取。
+- 位置：[llm.js](file:///D:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L694-L708)
+- 问题：`computeUserChoiceSignature` 已兼容 v3 `questions[]` 数组（且工具 schema `required: ["questions"]`，v3 下 `args.question` 根本不存在），但拦截提示消息仍用 `args?.question` → LLM 看到 `已被问过: ""`（空串）。功能正确（拦截照常生效），提示误导（缺失问题内容，影响 LLM 重试方向）。
+- 修复（已实施）：消息预览改为兼容两种契约——v3 取 `questions[].question` 以 " / " 拼接、旧版取 `question`，截断 80 字符。`node --check` 通过。
 
-### B6【低】withTimeout 注册监听前 signal 已 aborted 时漏 abort
+### B6【低】withTimeout 注册监听前 signal 已 aborted 时漏 abort（✅ 2026-09-07 已修复）
 
-- 位置：[llm.js](file:///D:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L163-L170)
-- 问题：`addEventListener('abort', ..., {once:true})` 不会重放已发生的 abort；若 externalSignal 在创建 listener 前已 aborted，仅依赖 timeout 兜底。runSqlAgent 循环入口有 `signal?.aborted` 检查（L1314）覆盖了主要路径，但存在竞态窗口。
-- 修复：注册监听前加 `if (externalSignal.aborted) { controller.abort(externalSignal.reason); }`。
+- 位置：[llm.js](file:///D:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L162-L177)
+- 问题：`addEventListener('abort', ..., {once:true})` 不会重放已发生的 abort；若 externalSignal 在创建 listener 前已 aborted，仅依赖 timeout 兜底。runSqlAgent 循环入口有 signal?.aborted 检查（L1314）覆盖了主要路径，但存在竞态窗口。
+- 修复（已实施）：注册监听前加 `if (externalSignal.aborted) { clearTimeout(timeoutId); controller.abort(externalSignal.reason); }`，立即中止并跳过监听注册。验证：[test-b6-b7-fixes.mjs](file:///D:/Ai_Program_Files/XTSQLQueryAgent/backend/test/test-b6-b7-fixes.mjs) 5 断言全过（预中止透传 reason / 调用后 abort 正常 / 不传 signal 兼容）。
 
-### B7【低】sanitizeMessagesForLLM 只修复最后一个 assistant 的 tool_calls
+### B7【低】sanitizeMessagesForLLM 只修复最后一个 assistant 的 tool_calls（✅ 2026-09-07 已修复）
 
-- 位置：[llm.js](file:///D:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L962-L1039)
-- 问题：连续两次中断产生的两处破损，只修最后一处；更早的破损 tool_calls 仍会触发 API 400。实际概率低（首次续问后 sanitized 数组会落库修复），但理论上存在。
-- 修复：循环处理所有含 tool_calls 的 assistant 消息（从后往前逐个补齐）。
+- 位置：[llm.js](file:///D:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/llm.js#L969-L1029)
+- 问题：连续两次中断产生的两处破损，只修最后一处；更早的破损 tool_calls 仍会触发 API 400。实际概率低（首次续问后 sanitized 数组会落库修复），但理论上存在。另发现旧重建逻辑次生缺陷：最后 assistant 之后遇非 tool 消息即 break，会**丢弃**其后消息（如旧数据中破损点后有 user 消息，LLM 将看不到该问题）。
+- 修复（已实施）：单遍顺序扫描重写——对每个含 tool_calls 的 assistant 就地收集紧随其后的 tool 响应、补齐缺失 synthetic 响应（保持在已有响应之后、符合 API 契约顺序）、全部消息保序保留；无破损时返回原数组引用保持语义。验证：[test-b6-b7-fixes.mjs](file:///D:/Ai_Program_Files/XTSQLQueryAgent/backend/test/test-b6-b7-fixes.mjs) 10 断言全过（含双破损补齐、契约顺序校验、user 消息保留、部分响应插入位置）。
 
 ---
 
@@ -206,8 +213,8 @@ llm.js L1233-L1239 注释称"带 tool_calls 的 assistant 必须回传 reasoning
 |--------|------|---------|------|
 | P0 | 历史跨问题"整段替换"压缩 + 最近 K 问题窗口（B1/B2） | 长会话 token 省 50-80% | 中：整段替换（reasoning+tool_calls+tool 结果一起），不可只删 reasoning（官方契约 400） |
 | P1 | get_call_history 历史瘦身（B2） | 每问题省数百-数千 tokens | 低：语义无损 |
-| P1 | R5 LIMIT 校验改 AST（B3） | 质量修复 | 低：有现成测试框架 |
-| P1 | effort 档位对齐模型实际能力 high/max（B4） | 消除"选低档没省 token"的误导 | 低：前端选项 + VALID_EFFORTS |
+| P1 | R5 LIMIT 校验改 AST（B3）✅ 已实施 | 质量修复 | 低：有现成测试框架 |
+| P1 | effort 档位对齐模型实际能力 high/max（B4）✅ 已实施 | 消除"选低档没省 token"的误导 | 低：前端选项 + VALID_EFFORTS |
 | P2 | field_config VA 短键化 + SKILL.md 图例同步 | schema 工具结果省 ~30-40% | 低：serve 层转换，源文件不动 |
 | P2 | common_sqls 审计决策 | 单表最多 ~3KB | 低 |
 | P2 | SKILL.md 精简 25% | 每轮省 ~400-500 tokens（cache miss 时） | 低：纯文案 |

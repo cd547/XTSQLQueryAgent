@@ -162,11 +162,18 @@ export function withTimeout(externalSignal, timeoutMs, label) {
   // externalSignal 可选：未传时只保留内部超时能力，不挂外部 abort 监听
   let onExternalAbort = null;
   if (externalSignal && typeof externalSignal.addEventListener === "function") {
-    onExternalAbort = () => {
+    // ★ 2026-09-07 B6：注册监听前 signal 可能已 aborted——abort 事件不会重放，
+    //   旧实现下这种竞态只能靠 timeout 兜底。这里立即中止并跳过监听注册。
+    if (externalSignal.aborted) {
       clearTimeout(timeoutId);
       controller.abort(externalSignal.reason);
-    };
-    externalSignal.addEventListener("abort", onExternalAbort, { once: true });
+    } else {
+      onExternalAbort = () => {
+        clearTimeout(timeoutId);
+        controller.abort(externalSignal.reason);
+      };
+      externalSignal.addEventListener("abort", onExternalAbort, { once: true });
+    }
   }
 
   return {
@@ -692,10 +699,17 @@ export function checkAndFilterDuplicateCall(toolName, args, sessionId) {
       }
     }
     if (isDupe) {
+      // ★ 2026-09-07 B5 修复：v3 契约下 args.question 不存在（schema 只有 questions[]），
+      //   旧写法 String(args?.question || "") 显示空串误导 LLM；改为兼容两种契约取预览
+      const questions = Array.isArray(args?.questions) ? args.questions : null;
+      const questionPreview =
+        questions && questions.length > 0
+          ? questions.map((q) => String(q?.question || "")).filter(Boolean).join(" / ")
+          : String(args?.question || "");
       return {
         block: true,
         message:
-          `⚠️ 【重复调用已被程序拦截】request_user_choice 中完全相同的问题/选项/类型在本会话中已被问过: "${String(args?.question || "").slice(0, 80)}"。\n` +
+          `⚠️ 【重复调用已被程序拦截】request_user_choice 中完全相同的问题/选项/类型在本会话中已被问过: "${questionPreview.slice(0, 80)}"。\n` +
           `请基于用户上次回复继续生成 SQL；如需追问不同问题，请使用不同 question 或 options。`,
       };
     }
@@ -962,80 +976,63 @@ export function loadMessagesFromDb(sessionId) {
 function sanitizeMessagesForLLM(messages) {
   if (!Array.isArray(messages) || messages.length === 0) return messages;
 
-  // 从后往前找最后一个含 tool_calls 的 assistant 消息
-  let lastAssistantIdx = -1;
-  for (let i = messages.length - 1; i >= 0; i--) {
+  // ★ 2026-09-07 B7 重写：旧实现只修复最后一个含 tool_calls 的 assistant，
+  //   连续两次中断产生的两处破损只修最后一处，更早的破损仍会触发 API 400；
+  //   且旧重建逻辑在最后 assistant 之后遇到非 tool 消息即 break，会丢弃其后消息。
+  //   新实现：单遍顺序扫描，对每个含 tool_calls 的 assistant 就地补齐缺失响应，
+  //   全部消息保序保留。
+  const sanitized = [];
+  let changed = false;
+
+  for (let i = 0; i < messages.length; i++) {
     const m = messages[i];
+    sanitized.push(m);
+
     if (
       m?.role === "assistant" &&
       Array.isArray(m.tool_calls) &&
       m.tool_calls.length > 0
     ) {
-      lastAssistantIdx = i;
-      break;
+      // 复制紧随其后的已有 tool 响应，同时收集已响应的 tool_call_id
+      const responded = new Set();
+      let j = i + 1;
+      while (j < messages.length && messages[j]?.role === "tool") {
+        sanitized.push(messages[j]);
+        if (messages[j].tool_call_id) responded.add(messages[j].tool_call_id);
+        j++;
+      }
+
+      // 补齐未响应的 tool_call（synthetic 响应紧跟已有响应之后，按 tool_calls 顺序）
+      const unresponded = m.tool_calls.filter(
+        (tc) => tc.id && !responded.has(tc.id),
+      );
+      if (unresponded.length > 0) {
+        changed = true;
+        logger.warn(
+          "Sanitizing incomplete assistant tool_calls (interrupted mid-execution)",
+          {
+            assistantIndex: i,
+            unrespondedToolCallIds: unresponded.map((tc) => tc.id),
+            respondedCount: responded.size,
+            totalCount: m.tool_calls.length,
+          },
+        );
+        for (const tc of unresponded) {
+          sanitized.push({
+            role: "tool",
+            tool_call_id: tc.id,
+            content: "[用户中断,工具未完成,调用未返回结果]",
+          });
+        }
+      }
+
+      // 跳过已复制的 tool 响应段
+      i = j - 1;
     }
   }
 
-  // 没有含 tool_calls 的 assistant 消息,无需处理
-  if (lastAssistantIdx === -1) return messages;
-
-  const lastAssistant = messages[lastAssistantIdx];
-  const toolCalls = lastAssistant.tool_calls;
-
-  // 收集所有 tool_call_id 和已有响应的 tool_call_id
-  const respondedIds = new Set();
-  for (let i = lastAssistantIdx + 1; i < messages.length; i++) {
-    const m = messages[i];
-    if (m?.role === "tool" && m.tool_call_id) {
-      respondedIds.add(m.tool_call_id);
-    }
-  }
-
-  // 找出未响应的 tool_call
-  const unresponded = toolCalls.filter(
-    (tc) => tc.id && !respondedIds.has(tc.id),
-  );
-
-  if (unresponded.length === 0) {
-    return messages; // 全部有响应,消息数组合法,直接返回
-  }
-
-  logger.warn(
-    "Sanitizing incomplete assistant tool_calls (interrupted mid-execution)",
-    {
-      lastAssistantIdx,
-      unrespondedToolCallIds: unresponded.map((tc) => tc.id),
-      respondedCount: respondedIds.size,
-      totalCount: toolCalls.length,
-    },
-  );
-
-  // 构造补全后的 messages 数组
-  // 1) 复制到最后一个 assistant 之前的所有消息
-  // 2) 复制最后一个 assistant 消息本身
-  // 3) 复制 assistant 之后的所有 tool 响应（保持原顺序）
-  // 4) 给未响应的 tool_call_id 补 synthetic 响应（按 tool_calls 顺序）
-  const sanitized = [];
-  for (let i = 0; i <= lastAssistantIdx; i++) {
-    sanitized.push(messages[i]);
-  }
-  for (let i = lastAssistantIdx + 1; i < messages.length; i++) {
-    if (messages[i]?.role === "tool") {
-      sanitized.push(messages[i]);
-    } else {
-      // 遇到非 tool 消息,停止（防御性：正常情况不会有）
-      break;
-    }
-  }
-  for (const tc of unresponded) {
-    sanitized.push({
-      role: "tool",
-      tool_call_id: tc.id,
-      content: "[用户中断,工具未完成,调用未返回结果]",
-    });
-  }
-
-  return sanitized;
+  // 无破损时返回原数组引用（保持调用方身份语义，避免无谓复制）
+  return changed ? sanitized : messages;
 }
 
 // 备份原有函数
@@ -1087,7 +1084,7 @@ export async function* runSqlAgent(
   signal,
   sessionId = null,
   username = null,
-  reasoningConfig,  // ★ 用户控件：{ enabled: boolean, effort: 'low'|'medium'|'high' }。undefined → 向后兼容 (enabled)
+  reasoningConfig,  // ★ 用户控件：{ enabled: boolean, effort: 'high'|'max' }。undefined → 向后兼容 (enabled)
   fileIds = null,   // ★ 2026-08-24：DeepSeek Files API 文件 id 列表（仅 deepseek-v4-flash-vision-exp 模型支持）
 ) {
   logger.info("runSqlAgent called", {
@@ -1283,22 +1280,21 @@ export async function* runSqlAgent(
     }
 
     // ★ 用户控件：Chat Completions API 的 thinking 字段
-    //   DeepSeek 文档：type=enabled 时顶层同时传 reasoning_effort (low/medium/high)
-    //     https://api-docs.deepseek.com/zh-cn/api/create-chat-completion
-    //   官方示例: { thinking: { type: "enabled" }, reasoning_effort: "low" }
-    //   - undefined: 向后兼容旧调用 (enabled + medium)
+    //   DeepSeek 文档（2026-09 校对）：type=enabled 时顶层同时传 reasoning_effort (high/max)
+    //     https://api-docs.deepseek.com/zh-cn/guides/thinking_mode
+    //   - undefined: 向后兼容旧调用 (enabled + high，官方普通请求默认 effort 即 high)
     //   - enabled=false: type=disabled,不附带 reasoning_effort
     //   - enabled=true:  type=enabled + 顶层 reasoning_effort
-    //     强度映射：'low'|'medium'|'high'，未识别值回落 medium
-    const VALID_EFFORTS = new Set(['low', 'medium', 'high']);
+    //     强度映射：'high'|'max'；未识别值（含旧 low/medium，服务端本就映射为 high）回落 high
+    const VALID_EFFORTS = new Set(['high', 'max']);
     const buildThinking = (cfg) => {
       if (cfg === null || cfg === undefined) {
-        return { thinking: { type: 'enabled' }, reasoning_effort: 'medium' };
+        return { thinking: { type: 'enabled' }, reasoning_effort: 'high' };
       }
       if (cfg.enabled === false) {
         return { thinking: { type: 'disabled' } };
       }
-      const effort = VALID_EFFORTS.has(cfg.effort) ? cfg.effort : 'medium';
+      const effort = VALID_EFFORTS.has(cfg.effort) ? cfg.effort : 'high';
       return { thinking: { type: 'enabled' }, reasoning_effort: effort };
     };
     const requestParams = {
