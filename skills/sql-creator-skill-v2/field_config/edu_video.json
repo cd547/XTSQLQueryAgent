@@ -1,11 +1,9 @@
 {
   "table_name": "edu_video",
   "field_aliases": {
-    "id": ["视频ID"],
-    "edu_study_id": ["排课ID"]
+    "id": ["视频ID"]
   },
   "field_enums": {
-    "del": {"0": "正常", "1": "删除"}
   },
   "virtual_associations": [
     {

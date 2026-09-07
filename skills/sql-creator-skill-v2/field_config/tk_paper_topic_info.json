@@ -1,0 +1,32 @@
+{
+  "table_name": "tk_paper_topic_info",
+  "field_aliases": {},
+  "field_enums": {
+    "type": {
+      "1": "文本",
+      "2": "图片"
+    },
+    "del": {
+      "0": "正常",
+      "1": "删除"
+    }
+  },
+  "virtual_associations": [
+    {
+      "name": "关联试题",
+      "target_table": "tk_paper_topic",
+      "join_condition": "tk_paper_topic.id = tk_paper_topic_info.topic_id",
+      "type": "many_to_one",
+      "description": "一道试题的题干由多行组成",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "题干多行混排",
+      "description": "一道题的题干拆成多行存储：type=1 取 text_code（代码片段），type=2 取 img_url（图片），完整题干需按 sort 排序后拼接；img_url_back 为原始图片地址"
+    }
+  ]
+}

@@ -1,0 +1,31 @@
+{
+  "table_name": "edu_task",
+  "field_aliases": {},
+  "field_enums": {
+    "type": {
+      "1": "练习",
+      "2": "测试"
+    }
+  },
+  "virtual_associations": [
+    {
+      "name": "关联学生",
+      "target_table": "edu_student",
+      "join_condition": "edu_student.id = edu_task.student_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联教师反馈",
+      "target_table": "edu_feed_teacher",
+      "join_condition": "edu_feed_teacher.id = edu_task.feed_teacher_id",
+      "type": "many_to_one",
+      "description": "作业来源的教学反馈记录，可为空",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}

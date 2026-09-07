@@ -1,0 +1,135 @@
+{
+  "table_name": "edu_achievement",
+  "field_aliases": {},
+  "field_enums": {
+    "achievement_source": {
+      "1": "学通内部",
+      "2": "外部",
+      "3": "暂无考试"
+    },
+    "rel": {
+      "0": "未发布",
+      "1": "已发布"
+    },
+    "del": {
+      "0": "正常",
+      "1": "作废"
+    },
+    "firsted": {
+      "0": "非首考",
+      "1": "首考"
+    },
+    "type":{
+      "1":"模拟测试",
+      "2":"周测",
+      "3":"月测",
+      "4":"大考"
+    }
+  },
+  "virtual_associations": [
+    {
+      "name": "关联学生",
+      "target_table": "edu_student",
+      "join_condition": "edu_student.id = edu_achievement.edu_student_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联考试类型",
+      "target_table": "edu_achievement_type",
+      "join_condition": "edu_achievement_type.id = edu_achievement.type",
+      "type": "many_to_one",
+      "description": "注意：本表的 type 列即考试类型ID（外键）",
+      "business_rule": ""
+    },
+    {
+      "name": "关联一级课程",
+      "target_table": "edu_course",
+      "join_condition": "edu_course.id = edu_achievement.edu_course_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联二级考试局",
+      "target_table": "edu_course_exam",
+      "join_condition": "edu_course_exam.id = edu_achievement.edu_course_exam_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联三级科目",
+      "target_table": "edu_course_exam_subject",
+      "join_condition": "edu_course_exam_subject.id = edu_achievement.edu_course_exam_subject_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联四级科目名称",
+      "target_table": "edu_course_exam_subject_name",
+      "join_condition": "edu_course_exam_subject_name.id = edu_achievement.edu_course_exam_subject_name_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联五级模块",
+      "target_table": "edu_course_exam_module",
+      "join_condition": "edu_course_exam_module.id = edu_achievement.edu_course_exam_module_id",
+      "type": "many_to_one",
+      "description": "可空",
+      "business_rule": ""
+    },
+    {
+      "name": "关联创建人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_achievement.admin_user_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联考试类型分类",
+      "target_table": "exams_year_season_type",
+      "join_condition": "exams_year_season_type.id = edu_achievement.exams_year_season_type_id",
+      "type": "many_to_one",
+      "description": "学科/竞赛分类，可空",
+      "business_rule": ""
+    },
+    {
+      "name": "关联报考季度",
+      "target_table": "exams_year_quarter",
+      "join_condition": "exams_year_quarter.id = edu_achievement.exams_year_quarter_id",
+      "type": "many_to_one",
+      "description": "春/秋/冬季，可空",
+      "business_rule": ""
+    },
+    {
+      "name": "关联分数采集任务",
+      "target_table": "edu_achievement_collect_task",
+      "join_condition": "edu_achievement_collect_task.id = edu_achievement.edu_achievement_collect_task_id",
+      "type": "many_to_one",
+      "description": "测试成绩-分数采集任务表，可空",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "del 是作废位",
+      "description": "本表 del 注释为'是否作废 0正常 1作废'，作废≠删除；rel 为发布位（0未发布 1已发布），对外展示应 rel=1 且 del=0"
+    },
+    {
+      "name": "科目体系五级链",
+      "description": "科目层级为五级链：edu_course(一级)→edu_course_exam(二级考试局)→edu_course_exam_subject(三级)→edu_course_exam_subject_name(四级)→edu_course_exam_module(五级)，本表冗余存储全链，JOIN 后可逐级取名称"
+    },
+    {
+      "name": "时间字段",
+      "description": "time_start/time_end 为考试起止时间（bigint 时间戳）；首考标识用 firsted，首考成绩存 first_achievement"
+    }
+  ]
+}

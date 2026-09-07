@@ -29,6 +29,9 @@ import skillRouter from './routes/skill.js';
 import exportRouter from './routes/export.js';
 import authRouter from './routes/auth.js';
 import favoriteQueryRouter from './routes/favoriteQuery.js';
+import filesRouter from './routes/files.js';
+// ★ 2026-08-25 A6：本地文件缓存目录初始化（不阻塞启动；失败也允许 server 起来，缓存写时会再报错）
+import { ensureFileCacheDir } from './services/files.js';
 
 app.use('/api/auth', authRouter);
 app.use('/api/config', configRouter);
@@ -39,6 +42,7 @@ app.use('/api/table-schema', tableSchemaRouter);
 app.use('/api/skills', skillRouter);
 app.use('/api/export', exportRouter);
 app.use('/api/queries', favoriteQueryRouter);
+app.use('/api/files', filesRouter);
 
 // ★ 兜底（B13 修复）：Express 4 不自动捕获 async 路由的 rejected promise，
 //   漏 try/catch 时 Node 15+ 会以 unhandledRejection 终止进程。
@@ -83,6 +87,7 @@ process.on('uncaughtException', (err) => {
   try {
     await initDatabase();
     await initSkillLogTable();
+    ensureFileCacheDir();   // ★ 2026-08-25 A6：本地文件缓存目录
     console.log('Server running on port ' + PORT);
     app.listen(PORT);
   } catch (e) {

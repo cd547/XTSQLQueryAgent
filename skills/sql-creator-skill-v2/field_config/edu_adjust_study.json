@@ -1,15 +1,32 @@
 {
   "table_name": "edu_adjust_study",
   "field_aliases": {
-    "id": ["调课申请ID"],
-    "old_study_id": ["原排课ID"],
-    "adjust_status": ["调整状态"],
-    "valid": ["审核状态"]
+    "id": [
+      "调课申请ID"
+    ],
+    "old_study_id": [
+      "原排课ID"
+    ],
+    "adjust_status": [
+      "调整状态"
+    ],
+    "valid": [
+      "审核状态"
+    ]
   },
   "field_enums": {
-    "adjust_status": {"1": "待调整", "2": "系统调整成功", "3": "系统调整失败", "4": "手动调整成功"},
-    "valid": {"1": "审核中", "2": "通过", "3": "驳回", "4": "撤销"},
-    "del": {"0": "正常", "1": "删除"}
+    "adjust_status": {
+      "1": "待调整",
+      "2": "系统调整成功",
+      "3": "系统调整失败",
+      "4": "手动调整成功"
+    },
+    "valid": {
+      "1": "审核中",
+      "2": "通过",
+      "3": "驳回",
+      "4": "撤销"
+    }
   },
   "virtual_associations": [
     {
@@ -17,6 +34,30 @@
       "target_table": "edu_study",
       "join_condition": "edu_study.id = edu_adjust_study.old_study_id",
       "type": "many_to_one"
+    },
+    {
+      "name": "关联调课后的排课",
+      "target_table": "edu_study",
+      "join_condition": "edu_study.id = edu_adjust_study.new_study_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联创建人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_adjust_study.admin_user_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联操作人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_adjust_study.operator_admin_user_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
     }
   ],
   "calculated_fields": {},

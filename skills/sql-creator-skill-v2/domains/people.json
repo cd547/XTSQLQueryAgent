@@ -18,6 +18,12 @@
     "crm_tag_definition",
     "crm_target_school",
     "crm_current_school",
-    "sys_dict_item"
+    "sys_dict_item",
+    "admin_teacher_scheme",
+    "edu_teacher_class_type",
+    "edu_teacher_class_subject_name",
+    "edu_teacher_annex",
+    "edu_teacher_school",
+    "edu_teacher_handbook"
   ]
 }

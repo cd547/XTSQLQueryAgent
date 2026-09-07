@@ -1,11 +1,11 @@
 import { getLlmConfig, getAgentConfig } from "./config.js";
+import { isVisionModel } from "./vision.js";
 import { logger } from "../logger.js";
 import {
   loadTableIndex,
   loadSkillMd,
   tools,
   LLM_TOOLS,
-  formatTableInfoCompact,
   sliceTableIndexByDomains,
   buildSystemMessage,
 } from "./toolFuncs.js";
@@ -500,12 +500,12 @@ function buildChecklist(reg) {
   if (!reg) return "（空）";
   // F18: get_domain_index 已从 registry 移除（域清单内嵌 system），
   //   checklist 不再展示该条目。
+  // ★ 2026-08-25：get_tables 行同步移除 —— 该工具已停用（不在 LLM_TOOLS），
+  //   展示"未调用"只会给 LLM 制造噪音、诱导其尝试调用不存在的工具。
   const slicedDomainsList = [...reg.slicedDomains].sort().join(", ") || "无";
   const schemaList = [...reg.tableSchema].sort().join(", ") || "无";
-  const tablesFlag = reg.getTablesCalled ? "已调用" : "未调用";
   return [
     `- get_sliced_index 已覆盖的域: ${slicedDomainsList}`,
-    `- get_tables: ${tablesFlag}`,
     `- 已获取 schema（含 DDL/索引/外键）的表: ${schemaList}`,
   ].join("\n");
 }
@@ -524,7 +524,7 @@ export function buildToolCallChecklistMessage(reg) {
   if (!reg) return null;
   const parts = [];
   // F18: get_domain_index 不再追踪（域清单在 system 中永久可见）
-  if (reg.getTablesCalled) parts.push("get_tables:✓");
+  // ★ 2026-08-25：get_tables 行同步移除（工具已停用，展示只会误导 LLM）
   if (reg.slicedDomains.size > 0)
     parts.push(`get_sliced_index:[${[...reg.slicedDomains].sort().join(",")}]`);
   if (reg.tableSchema.size > 0)
@@ -819,138 +819,12 @@ export function getSessionChecklist(sessionId) {
   return buildChecklist(reg);
 }
 
-/**
- * 折叠已消费的 get_sliced_index tool result，降低已消费历史区的 token 开销与注意力稀释。
- *
- * 折叠策略：
- *   - "当前消费区"（最后一个含 tool_calls 的 assistant 及其之后）不折叠，LLM 需完整信息选表
- *   - "已消费历史区"（该 assistant 之前）：用精简版卡片替换，去掉 related_tables
- *     （schema 的 virtual_associations 可替代），保留 name/description/tags/business_constraints/business_rules
- *     （business_rules/constraints 与 field_config 不完全一致，部分表 field_config 为空）
- *
- * 折叠边界：只折叠 messages 中"最后一个含 tool_calls 的 assistant 之前"的 tool 消息（已消费历史区）。
- *   - 之后的 tool result 属于当前消费区，即将被下一轮 LLM 消费，必须完整
- *
- * 缓存：单请求级 cache-aside。foldedCache 由调用方传入，作用域为单次 /generate 调用。
- *   - key = tool_call_id，value = 折叠后 content
- *   - 缓存命中直接用，丢失则重新加载原始数据折叠并写入缓存
- *   - 函数作用域天然隔离多用户，不可能窜
- *
- * DeepSeek thinking_mode 协议兼容性：
- *   - 只改 tool 消息的 content 字段，不改 role / tool_call_id 结构
- *   - assistant.tool_calls 和 reasoning_content 保持不变（协议要求完整回传）
- *
- * @param {Array} messages - 累积的 messages 数组
- * @param {Map} foldedCache - 折叠缓存（单请求级，由调用方创建并传入）
- * @returns {Array} 折叠后的新数组（不修改原数组）
- */
-// ★ Phase 2 Step 3: 纯加法 export
-export async function compactConsumedToolResults(messages, foldedCache) {
-  if (!Array.isArray(messages) || messages.length === 0 || !foldedCache)
-    return messages;
-
-  // 找到最后一个有 tool_calls 的 assistant 位置
-  let lastToolCallIdx = -1;
-  for (let i = messages.length - 1; i >= 0; i--) {
-    if (
-      messages[i].role === "assistant" &&
-      messages[i].tool_calls &&
-      messages[i].tool_calls.length > 0
-    ) {
-      lastToolCallIdx = i;
-      break;
-    }
-  }
-  // 没有历史 tool_call，或只有当前轮（lastToolCallIdx=0 时前面无历史）→ 不折叠
-  if (lastToolCallIdx <= 0) return messages;
-
-  // 构建 tool_call_id → {toolName, args} 映射（只看 lastToolCallIdx 之前的 assistant）
-  const toolCallInfo = new Map();
-  for (let i = 0; i < lastToolCallIdx; i++) {
-    const m = messages[i];
-    if (m.role === "assistant" && m.tool_calls) {
-      for (const tc of m.tool_calls) {
-        if (tc.id && tc.function?.name) {
-          let args = {};
-          try {
-            args = JSON.parse(tc.function.arguments || "{}");
-          } catch {}
-          toolCallInfo.set(tc.id, { name: tc.function.name, args });
-        }
-      }
-    }
-  }
-
-  let compactedCount = 0;
-  const result = [];
-  for (let i = 0; i < messages.length; i++) {
-    const m = messages[i];
-
-    // 仅折叠 lastToolCallIdx 之前的 tool 消息
-    if (i >= lastToolCallIdx || m.role !== "tool") {
-      result.push(m);
-      continue;
-    }
-
-    const info = m.tool_call_id ? toolCallInfo.get(m.tool_call_id) : null;
-    if (!info || info.name !== "get_sliced_index") {
-      result.push(m);
-      continue;
-    }
-
-    // ★ 2026-08-13 修复（A19）：折叠前跳过"被拦截/失败"的 tool 消息。
-    //   原逻辑只看参数 domain_ids 就重新生成真实表列表，会把"已剪枝/重复拦截"等
-    //   错误消息"复活"成真实结果，让 LLM 误以为工具调用成功。
-    const rawContent = typeof m.content === "string" ? m.content.trim() : "";
-    if (/^(Error:|🚫)/.test(rawContent)) {
-      result.push(m);
-      continue;
-    }
-
-    // cache-aside: 命中直接用
-    if (foldedCache.has(m.tool_call_id)) {
-      result.push({ ...m, content: foldedCache.get(m.tool_call_id) });
-      compactedCount++;
-      continue;
-    }
-
-    // 缓存丢失：从 tool_calls 参数提取 domain_ids，重新加载原始数据折叠
-    const domainIds = info.args?.domain_ids;
-    if (!Array.isArray(domainIds) || domainIds.length === 0) {
-      // 参数解析失败，不折叠（保持原 content）
-      result.push(m);
-      continue;
-    }
-
-    try {
-      const sliced = await sliceTableIndexByDomains(domainIds);
-      if (!sliced.tables || sliced.tables.length === 0) {
-        result.push(m);
-        continue;
-      }
-      const foldedContent = formatTableInfoCompact(sliced.tables);
-      foldedCache.set(m.tool_call_id, foldedContent);
-      result.push({ ...m, content: foldedContent });
-      compactedCount++;
-    } catch (e) {
-      logger.warn("compactConsumedToolResults: fold failed, keep original", {
-        tool_call_id: m.tool_call_id,
-        error: e.message,
-      });
-      result.push(m);
-    }
-  }
-
-  if (compactedCount > 0) {
-    logger.debug("Compacted consumed tool results", {
-      compactedCount,
-      lastToolCallIdx,
-      totalMessages: messages.length,
-    });
-  }
-
-  return result;
-}
+// ★ 2026-08-25 移除 compactConsumedToolResults 折叠机制（方案 B：不折叠）
+//   原因：实测折叠仅省 ~970 tokens/43表（compact 版与完整版唯一差异是 related_tables 一行），
+//   却使模型在 R1 之后/续问场景看不到 related_tables → 无法批量规划 get_table_schema →
+//   渐进式分批多花一整轮 LLM 往返（~10s + 千级 completion tokens）；且折叠造成历史中段字节突变，
+//   破坏 DeepSeek prefix cache。不折叠后历史纯追加，cache 最稳。
+//   详细决策记录：docs/V1/changelog/2026-08-25.md §G。
 
 // ★ Phase 2 Step 2: 纯加法 export
 export function queueLog(content, immediate = false, username = null) {
@@ -991,13 +865,26 @@ export function getProviderConfig(provider, model) {
 }
 
 // ★ Phase 2 Step 2: 纯加法 export
-export function saveMessagesToDb(sessionId, messages, apiMode = "chat_completions") {
+// ★ 2026-08-25 性能修复（方案 3）：message_tokens 改用 API 权威 usage
+//   背景：原实现每轮都对本会话全量上下文跑自研 BPE（同步阻塞事件循环，
+//     实测 100KB 上下文 ≈1.7s、250KB ≈5s，30 轮提问累计可浪费十几秒 CPU，
+//     且单进程下阻塞所有并发请求）。而该值仅用于前端"上下文长度"展示。
+//   新契约：调用方传入 messageTokens（推荐传本轮 usage.prompt_tokens ——
+//     API 权威口径，含全部消息，比本地 BPE 更准）；不传则回落旧 BPE 计算
+//     （兼容 responsesApi 等暂未透传 usage 的调用方）。
+export function saveMessagesToDb(
+  sessionId,
+  messages,
+  apiMode = "chat_completions",
+  messageTokens = null,
+) {
   try {
     const db = getDb();
     const messagesJson = JSON.stringify(messages);
 
-    // 异步计算 token 数
-    const messageTokens = countMessagesTokens(messages);
+    // token 计数：优先用调用方提供的权威值；未提供才走本地 BPE（重计算）
+    const tokens =
+      messageTokens != null ? messageTokens : countMessagesTokens(messages);
 
     const existing = db
       .prepare("SELECT id FROM llm_messages WHERE session_id = ?")
@@ -1007,16 +894,16 @@ export function saveMessagesToDb(sessionId, messages, apiMode = "chat_completion
       //   避免每次 save 都覆盖、让前端看到稳定值
       db.prepare(
         "UPDATE llm_messages SET messages = ?, message_tokens = ?, api_mode = CASE WHEN api_mode IS NULL OR api_mode = '' THEN ? ELSE api_mode END, updated_at = CURRENT_TIMESTAMP WHERE session_id = ?",
-      ).run(messagesJson, messageTokens, apiMode, sessionId);
+      ).run(messagesJson, tokens, apiMode, sessionId);
     } else {
       db.prepare(
         "INSERT INTO llm_messages (session_id, messages, message_tokens, api_mode) VALUES (?, ?, ?, ?)",
-      ).run(sessionId, messagesJson, messageTokens, apiMode);
+      ).run(sessionId, messagesJson, tokens, apiMode);
     }
     logger.debug("Saved messages to database", {
       sessionId,
       messageCount: messages.length,
-      messageTokens,
+      messageTokens: tokens,
     });
   } catch (e) {
     logger.error("Failed to save messages to database", { error: e.message });
@@ -1174,12 +1061,34 @@ function sanitizeMessagesForLLM(messages) {
 //   项目惯例），"Agent" 反映多轮 tool-calling 循环本质，"Sql" 标注领域。
 //   历史可追溯：原名仍出现在 git log / docs/执行流程.md / docs/superpowers/
 //   reviews/ 与 plans/ 中（本注释作为锚点，git blame 可定位到此处）。
+// ★ 2026-08-24：构建 user 消息。
+//   - 无 fileIds → 与旧版一致返回 { role:'user', content: string }
+//   - 有 fileIds → 走 DeepSeek 多模态 content 数组格式（[{type:'text',text}, {type:'file',file_id}, ...]）
+//     文档：https://api-docs.deepseek.com/zh-cn/guides/files_api#%E5%9C%A8%E5%AF%B9%E8%AF%9D%E8%AF%B7%E6%B1%82%E4%B8%AD%E4%BD%BF%E7%94%A8%E5%B7%B2%E4%B8%8A%E4%BC%A0%E7%9A%84%E6%96%87%E4%BB%B6
+//   注：当前 Responses API 路径（responsesApi.js）独立拼装 input items，暂不处理 file_ids
+//     （仅 deepseek-v4-flash-vision-exp 支持，本项目目前主要走 chat_completions）。
+export function buildUserMessage(question, fileIds) {
+  const ids = Array.isArray(fileIds) ? fileIds.filter(id => typeof id === 'string' && id.length > 0) : [];
+  if (ids.length === 0) {
+    return { role: 'user', content: question };
+  }
+  return {
+    role: 'user',
+    content: [
+      { type: 'text', text: question },
+      ...ids.map((id) => ({ type: 'file', file_id: id })),
+    ],
+  };
+}
+
 export async function* runSqlAgent(
   question,
   history = "",
   signal,
   sessionId = null,
   username = null,
+  reasoningConfig,  // ★ 用户控件：{ enabled: boolean, effort: 'low'|'medium'|'high' }。undefined → 向后兼容 (enabled)
+  fileIds = null,   // ★ 2026-08-24：DeepSeek Files API 文件 id 列表（仅 deepseek-v4-flash-vision-exp 模型支持）
 ) {
   logger.info("runSqlAgent called", {
     question,
@@ -1200,6 +1109,19 @@ export async function* runSqlAgent(
   const providerCfg = getProviderConfig(provider, model);
   const baseURL = providerCfg.baseURL;
   const llmModel = providerCfg.llmModel;
+
+  // ★ 2026-08-24 vision：非 vision 模型时静默丢 fileIds + log warn
+  //   - 前端 ChatInput 已做二次确认（用户同意后 onSend 才会发 fileIds）
+  //   - 后端再守一道：万一前端用了老版本或别的入口绕过确认，这里兜底
+  //   - 不抛错：用户已经看过二次确认 → 期望行为就是"只发文本"，warning 即可
+  if (Array.isArray(fileIds) && fileIds.length > 0 && !isVisionModel(model)) {
+    logger.warn('fileIds ignored: model does not support vision', {
+      model,
+      fileIdsCount: fileIds.length,
+      // 不打印具体 id，避免日志含敏感 file_id
+    });
+    fileIds = null;
+  }
 
   const skillMd = await loadSkillMd();
 
@@ -1244,18 +1166,18 @@ export async function* runSqlAgent(
       if (systemIndex >= 0) {
         messages[systemIndex] = { role: "system", content: systemMessage };
       }
-      // 添加新的用户消息
-      messages.push({ role: "user", content: question });
+      // 添加新的用户消息（★ 2026-08-24：支持 file_ids 多模态 content 数组）
+      messages.push(buildUserMessage(question, fileIds));
     } else {
       messages = [
         { role: "system", content: systemMessage },
-        { role: "user", content: question },
+        buildUserMessage(question, fileIds),
       ];
     }
   } else {
     messages = [
       { role: "system", content: systemMessage },
-      { role: "user", content: question },
+      buildUserMessage(question, fileIds),
     ];
   }
 
@@ -1274,6 +1196,9 @@ export async function* runSqlAgent(
   const maxToolCallsInitial = maxToolCalls;
   let responseText = "";
   let sql = "";
+  // ★ 2026-08-25 性能修复（方案 3）：记录最近一轮 API 权威 prompt_tokens，
+  //   传给 saveMessagesToDb 作为 message_tokens（替代每轮全量 BPE 的重计算）
+  let latestPromptTokens = null;
   // ★ request_user_choice 终止信号：检测到该工具被调用后，跳出 while 循环
   // v2 (2026-07-15): 改单值为数组，支持本轮多次调用（链式弹窗）
   //   - LLM 可在一次推理中调 1-3 次 request_user_choice（详见 SKILL.md "多问题上限与链式语义"）
@@ -1282,10 +1207,12 @@ export async function* runSqlAgent(
   let pendingUserChoiceList = [];
   const MAX_USER_CHOICE_PER_TURN = 3;
 
-  // 折叠缓存（单请求级）：跨 LLM 轮次复用折叠结果，请求结束自动 GC。
-  // 作用域为本次 /generate 调用，函数闭包天然隔离多用户，不可能窜。
-  // cache-aside: 缓存命中直接用，丢失则重新折叠并写入缓存。
-  const foldedCache = new Map();
+  // ★ 2026-08-25 移除 compactConsumedToolResults 折叠机制（方案 B：不折叠）
+  //   原因：实测折叠仅省 ~970 tokens/43表（compact 版与完整版唯一差异是 related_tables 一行），
+  //   却使模型在 R1 之后/续问场景看不到 related_tables → 无法批量规划 get_table_schema →
+  //   渐进式分批多花一整轮 LLM 往返（~10s + 千级 completion tokens）；且折叠造成历史中段字节突变，
+  //   破坏 DeepSeek prefix cache。不折叠后历史纯追加，cache 最稳。
+  //   详细决策记录：docs/V1/changelog/2026-08-25.md §G。
 
   while (maxToolCalls > 0) {
     // ★ 本轮 round 编号（前端用于"数轴式"轮次展示）
@@ -1316,13 +1243,10 @@ export async function* runSqlAgent(
     //
     // 保留：所有 tool_calls 的 assistant.reasoning_content（多轮推理链必需）
     // 剥除：无 tool_calls 的 assistant.reasoning_content（节省 token + 减少注意力污染）
-    // 折叠已消费的 get_sliced_index tool result（去掉 related_tables，保留 rules/constraints），
-    // 降低已消费历史区的 token 开销与注意力稀释。不修改原 messages 数组。
-    const compactedMessages = await compactConsumedToolResults(
-      messages,
-      foldedCache,
-    );
-    const requestMessages = compactedMessages.map((m) => {
+    // ★ 2026-08-25 移除折叠步骤（方案 B）：messages 直接作为请求体（仅做 reasoning 剥离），
+    //   历史"纯追加"保证 DeepSeek prefix cache 字节稳定，且 related_tables 全程可见，
+    //   模型可据此一次批量拉取多表 schema（消除分批调用）。
+    const requestMessages = messages.map((m) => {
       if (m.role === "assistant" && m.reasoning_content && !m.tool_calls) {
         const { reasoning_content, ...rest } = m;
         return rest;
@@ -1358,6 +1282,25 @@ export async function* runSqlAgent(
       );
     }
 
+    // ★ 用户控件：Chat Completions API 的 thinking 字段
+    //   DeepSeek 文档：type=enabled 时顶层同时传 reasoning_effort (low/medium/high)
+    //     https://api-docs.deepseek.com/zh-cn/api/create-chat-completion
+    //   官方示例: { thinking: { type: "enabled" }, reasoning_effort: "low" }
+    //   - undefined: 向后兼容旧调用 (enabled + medium)
+    //   - enabled=false: type=disabled,不附带 reasoning_effort
+    //   - enabled=true:  type=enabled + 顶层 reasoning_effort
+    //     强度映射：'low'|'medium'|'high'，未识别值回落 medium
+    const VALID_EFFORTS = new Set(['low', 'medium', 'high']);
+    const buildThinking = (cfg) => {
+      if (cfg === null || cfg === undefined) {
+        return { thinking: { type: 'enabled' }, reasoning_effort: 'medium' };
+      }
+      if (cfg.enabled === false) {
+        return { thinking: { type: 'disabled' } };
+      }
+      const effort = VALID_EFFORTS.has(cfg.effort) ? cfg.effort : 'medium';
+      return { thinking: { type: 'enabled' }, reasoning_effort: effort };
+    };
     const requestParams = {
       model: llmModel,
       messages: requestMessages,
@@ -1365,9 +1308,7 @@ export async function* runSqlAgent(
       stream: true,
       stream_options: { include_usage: true },
       tools: prunedTools,
-      thinking: {
-        type: "enabled",
-      },
+      ...buildThinking(reasoningConfig),
     };
 
     if (signal?.aborted) {
@@ -1472,6 +1413,10 @@ export async function* runSqlAgent(
                   cacheTotal > 0
                     ? ((cacheHit / cacheTotal) * 100).toFixed(1)
                     : "0.0";
+                // ★ 方案 3：记录权威 prompt_tokens（= 本轮请求的完整上下文规模）
+                if (usage.prompt_tokens > 0) {
+                  latestPromptTokens = usage.prompt_tokens;
+                }
                 queueLog(
                   `📊 [Round ${maxToolCallsInitial - maxToolCalls}] LLM usage: ` +
                     `prompt=${usage.prompt_tokens || 0} completion=${usage.completion_tokens || 0} total=${usage.total_tokens || 0} | ` +
@@ -1663,8 +1608,9 @@ export async function* runSqlAgent(
 
       // 保存到数据库（如果有 sessionId）
       // ★ v5.14：CC path 不传 apiMode → 用默认值 'chat_completions'
+      // ★ 2026-08-25 方案 3：message_tokens 传本轮权威 prompt_tokens（省去全量 BPE）
       if (sessionId) {
-        saveMessagesToDb(sessionId, messages);
+        saveMessagesToDb(sessionId, messages, "chat_completions", latestPromptTokens);
       }
 
       if (validToolCalls.length > 0) {
@@ -1796,10 +1742,10 @@ export async function* runSqlAgent(
               const stableContent = JSON.stringify({
                 called_count: callHistory.length,
                 called_tools: callHistory,
+                // ★ 2026-09-01 精简 _instruction（原 ~100 字 → 38 字）：
+                //   每轮新增一条、内容必变 → 恒为 cache miss 尾部，按全价计费
                 _instruction:
-                  "本工具由系统自动注入，每轮 LLM 响应后程序强制调用一次，LLM 不需要主动调用。" +
-                  "如已掌握所有信息请直接输出最终答案；如需继续推理可调用其它工具。" +
-                  "重复调用本工具不会获得新信息。",
+                  "系统自动注入，无需主动调用。",
               });
               return {
                 ...p,
@@ -2212,7 +2158,7 @@ export async function* runSqlAgent(
     let dbSaveOk = true;
     if (sessionId) {
       try {
-        saveMessagesToDb(sessionId, messages);
+        saveMessagesToDb(sessionId, messages, "chat_completions", latestPromptTokens);
       } catch (e) {
         // 现有 saveMessagesToDb 内部已有 try/catch + error 日志
         // 但仍可能因异常路径未覆盖（死锁/超时）走到这里

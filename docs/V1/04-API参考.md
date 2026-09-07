@@ -57,14 +57,14 @@ POST /api/auth/login
 
 | 方法 | 路径 | 说明 |
 |---|---|---|
-| GET | `/` | 分页 `?limit=20&offset=0`（limit 上限 100），返回 `{sessions, total, hasMore}`；每项含 `total_tokens`（SUM usage 行，LEFT JOIN+GROUP BY） |
+| GET | `/` | 分页 `?limit=20&offset=0`（limit 上限 100），返回 `{sessions, total, hasMore}`；每项含 `total_tokens`（SUM usage 行，LEFT JOIN+GROUP BY）与 `summary`（悬停 tooltip 展示用，2026-09-02） |
 | POST | `/` | `{name?}` 创建，名称默认“新对话 N”，`sort_order` 自增 |
 | GET | `/:id/tokens` | `{total_tokens}`（messages 表 role=usage 的 SUM） |
 | GET | `/:id/messages` | 会话全部消息 `{messages}`（无分页，全量） |
 | POST | `/:id/messages` | 手动保存单条 `{role, content, sql, results}` |
 | PUT | `/:id` | `{name}` 重命名 |
 | DELETE | `/:id` | 删除会话（连带 llm_messages/messages 记录 + 释放注册表） |
-| POST | `/:id/summarize` | LLM 总结：返回 `{success, summary(100字), name(20字标签)}` 并自动更新会话 |
+| POST | `/:id/summarize` | LLM 总结：返回 `{success, summary(100字), name(20字标签)}` 并自动更新会话。**仅支持 deepseek**（其他 provider 返回 400）；baseURL/默认模型复用 `getProviderConfig` 单一来源；请求体 `thinking: {type:'disabled'}` 禁用思考模式（2026-09-02） |
 
 ## 6. 查询 /api/query（需登录）
 
@@ -113,9 +113,9 @@ data: {"type":"chunk","content":"…","round":0}
 
 data: {"type":"usage","usage":{"prompt_tokens":1200,"completion_tokens":300,"total_tokens":1500,"cached_tokens":800},"round":0}
 
-data: {"type":"tool","log":"🔧 调用工具: get_domain_index","round":0}
+data: {"type":"tool","log":"🔧 调用工具: get_sliced_index","round":0}
 
-data: {"type":"tool_return","log":"📋 工具 get_domain_index 返回:\n…","round":0}
+data: {"type":"tool_return","log":"📋 工具 get_sliced_index 返回:\n…","round":0}
 
 data: {"type":"done","sql":"SELECT …","message":"…","sessionId":5,"totalTokens":3210,"elapsedMs":18432}
 ```

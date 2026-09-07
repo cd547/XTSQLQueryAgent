@@ -1,0 +1,80 @@
+{
+  "table_name": "exams_year_season_goods",
+  "field_aliases": {},
+  "field_enums": {
+    "make_achievement": {
+      "1": "不组合成绩",
+      "2": "组合成绩"
+    },
+    "center_code": {
+      "1": "不显示",
+      "2": "显示"
+    },
+    "ticket": {
+      "1": "不显示",
+      "2": "显示"
+    },
+    "seconded_info": {
+      "1": "不显示",
+      "2": "显示"
+    },
+    "rel": {
+      "0": "未发布",
+      "1": "已发布"
+    }
+  },
+  "virtual_associations": [
+    {
+      "name": "关联考试季",
+      "target_table": "exams_year_season",
+      "join_condition": "exams_year_season.id = exams_year_season_goods.exams_year_season_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联第一阶段商品",
+      "target_table": "goods_list",
+      "join_condition": "goods_list.id = exams_year_season_goods.entry1_goods_list_id",
+      "type": "many_to_one",
+      "description": "第一阶段报考商品",
+      "business_rule": ""
+    },
+    {
+      "name": "关联第二阶段商品",
+      "target_table": "goods_list",
+      "join_condition": "goods_list.id = exams_year_season_goods.entry2_goods_list_id",
+      "type": "many_to_one",
+      "description": "第二阶段报考商品",
+      "business_rule": ""
+    },
+    {
+      "name": "关联第三阶段商品",
+      "target_table": "goods_list",
+      "join_condition": "goods_list.id = exams_year_season_goods.entry3_goods_list_id",
+      "type": "many_to_one",
+      "description": "第三阶段报考商品",
+      "business_rule": ""
+    },
+    {
+      "name": "关联操作人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = exams_year_season_goods.admin_user_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "同一表三列指向 goods_list",
+      "description": "entry1/entry2/entry3_goods_list_id 三列分别指向三个报考阶段的商品（同表 goods_list），JOIN 时必须按业务阶段选择对应列，禁止同时 JOIN 三列"
+    },
+    {
+      "name": "rel 字段特殊语义",
+      "description": "本表 rel 注释为'是否发布 0未发布 1已发布'，不是预留字段；对外展示应过滤 rel = 1"
+    }
+  ]
+}

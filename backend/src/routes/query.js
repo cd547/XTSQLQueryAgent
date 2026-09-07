@@ -301,7 +301,31 @@ router.delete('/messages/:sessionId', async (req, res) => {
 });
 
 router.post('/generate', async (req, res) => {
-  let { question, sessionId, schemaMode } = req.body;
+  let { question, sessionId, schemaMode, reasoning, fileIds } = req.body;
+
+  // ★ 2026-08-24：DeepSeek Files API 文件 id 白名单清洗
+  //   - 仅接受形如 'file-api-xxx' 的字符串数组
+  //   - 不在白名单 → 静默丢弃（避免前端误传任意字符串污染 LLM message）
+  //   - 持久化由 messages.content 内嵌（多模态 content 数组）承担；此处仅校验后透传
+  if (Array.isArray(fileIds)) {
+    fileIds = fileIds.filter((id) => typeof id === 'string' && /^file-api-[A-Za-z0-9-]+$/.test(id));
+    if (fileIds.length === 0) fileIds = null;
+  } else {
+    fileIds = null;
+  }
+
+  // ★ 用户控件：思考模式参数
+  //   - 前端不传 → undefined → 后端两条路径都按各自默认值（保持向后兼容）
+  //   - enabled=false → 关闭思考
+  //   - enabled=true → 按 effort 启用（low/medium/high）
+  //   这里只做白名单清洗，不做默认值填充（让 handler 内部决定）
+  if (reasoning && typeof reasoning === 'object') {
+    const allowedEffort = ['low', 'medium', 'high'];
+    if (reasoning.effort && !allowedEffort.includes(reasoning.effort)) {
+      reasoning.effort = 'high';
+    }
+    reasoning.enabled = reasoning.enabled !== false;  // 默认 true
+  }
 
   // 如果没有sessionId，自动创建（归属当前用户）
   if (!sessionId) {
@@ -323,8 +347,20 @@ router.post('/generate', async (req, res) => {
     if (sessionId && question) {
       try {
         const db = getDb();
+        // ★ 2026-08-24 vision：content 双向兼容
+        //   - 无 fileIds：原样存 question 字符串
+        //   - 有 fileIds：构造多模态 content 数组并 JSON.stringify 存入
+        //   - 历史回看由 ChatMessage.jsx:contentBlocks 自动 parse（看 startsWith('[') 决定）
+        //   - llm_messages.messages 由 buildUserMessage 直接产数组（saveMessagesToDb 全数组 stringify），
+        //     所以喂给 LLM 的历史是数组形式 → 续接上下文的 file block 不丢
+        const storedContent = (Array.isArray(fileIds) && fileIds.length > 0)
+          ? JSON.stringify([
+              { type: 'text', text: question },
+              ...fileIds.map(id => ({ type: 'file', file_id: id })),
+            ])
+          : question;
         db.prepare('INSERT INTO messages (session_id, role, content, sql, results) VALUES (?, ?, ?, ?, ?)')
-          .run(sessionId, 'user', question, '', '');
+          .run(sessionId, 'user', storedContent, '', '');
       } catch (e) {
         logger.error('保存用户消息失败', { error: e.message });
       }
@@ -424,10 +460,13 @@ router.post('/generate', async (req, res) => {
           tools: LLM_TOOLS,  // F18: RA 路径也用 LLM_TOOLS（已过滤 get_domain_index）
           cfg: llmCfgForDispatch,
           systemMessage,
+          reasoningConfig: reasoning,  // ★ 用户控件：透传到 Responses 路径
+          fileIds,                       // ★ 2026-08-24：DeepSeek Files API（仅 deepseek-v4-flash-vision-exp 支持）
           // ★ Phase 2: max_tool_calls 从 DB agent_config 查（与 runSqlAgent L1182 1:1）
           maxToolCalls: (() => {
             try {
               const db = getDb();
+
               const row = db.prepare('SELECT value FROM configs WHERE key = ?').get('agent_max_tool_calls');
               return row?.value || '30';
             } catch (e) {
@@ -435,28 +474,35 @@ router.post('/generate', async (req, res) => {
             }
           })(),
           logger,
+          reasoningConfig: reasoning,  // ★ 用户控件：透传到 Responses 路径
         });
         return;
       }
       // apiMode === 'chat_completions' 或无配置（旧用户） → 原代码 0 改动
 
+      // ★ 2026-08-25 Bug 修复：流式累积变量必须声明在 try 块之外
+      //   原写法把这些变量声明在 try 内，catch 块（下方）引用它们时抛
+      //   ReferenceError: messageSaved is not defined → ①真实错误信息被吞，
+      //   用户看到"生成失败：messageSaved is not defined"；②catch 分支的
+      //   中断 partial 落库 + token 累计成为死代码。提升到 try 之前。
+      let fullContent = '';
+      let sql = '';
+      let message = '';
+      const allLogs = [];
+      let totalPromptTokens = 0;
+      let totalCompletionTokens = 0;
+      let totalTokens = 0;
+      // ★ 防止 happy path 落库后 catch 块重复插入 partial（流中断 partial 保存时会检查此标志）
+      let messageSaved = false;
+      // ★ 跟踪当前 chunk 的 round，中断时 partial 落库需要正确的 round 用于前端轮次轴分组
+      //   2026-07-29 修复：之前漏写 round 字段，partial 消息 round=0 与第一轮日志混淆
+      let lastRound = 0;
+      // ★ request_user_choice 弹窗请求：捕获 llm.js yield done 中的事件字段
+      // 用于穿透到 SSE doneData，驱动前端 UserChoiceDialog
+      let userChoiceRequestFromStream = null;
+
       try {
-        const generator = runSqlAgent(question, historyText, abortController.signal, sessionId, req.user.username);
-        let fullContent = '';
-        let sql = '';
-        let message = '';
-        const allLogs = [];
-        let totalPromptTokens = 0;
-        let totalCompletionTokens = 0;
-        let totalTokens = 0;
-        // ★ 防止 happy path 落库后 catch 块重复插入 partial（流中断 partial 保存时会检查此标志）
-        let messageSaved = false;
-        // ★ 跟踪当前 chunk 的 round，中断时 partial 落库需要正确的 round 用于前端轮次轴分组
-        //   2026-07-29 修复：之前漏写 round 字段，partial 消息 round=0 与第一轮日志混淆
-        let lastRound = 0;
-        // ★ request_user_choice 弹窗请求：捕获 llm.js yield done 中的事件字段
-        // 用于穿透到 SSE doneData，驱动前端 UserChoiceDialog
-        let userChoiceRequestFromStream = null;
+        const generator = runSqlAgent(question, historyText, abortController.signal, sessionId, req.user.username, reasoning, fileIds);
 
         for await (const chunk of generator) {
           if (abortController.signal.aborted) break;

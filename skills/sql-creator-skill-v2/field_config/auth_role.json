@@ -12,7 +12,8 @@
     "system_type":{
       "1":"CRM",
       "2":"留学",
-      "3":"教资"
+      "3":"教资",
+      "4":"教务"
     }
   },
   "virtual_associations": [
@@ -23,7 +24,7 @@
   "business_rules": [
     {
       "rule_name": "权限名称完整展示",
-      "rule": "system_type+‘-’+org+‘-’+role_name。如果system_type不等于1时，只要system_type+‘-’+role_name。例如：CRM-学通-管理员，留学-管理员，教资-管理员。"
+      "rule": "system_type+‘-’+org+‘-’+role_name。如果system_type不等于1和4时，只要system_type+‘-’+role_name。例如：CRM-学通-管理员，留学-管理员，教资-管理员。"
     }
   ]
 }

@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import { getDb } from '../db/sqlite.js';
 import { logger } from '../logger.js';
-import { getAgentConfig, updateAgentConfig, getTokenWarningLevel } from '../services/config.js';
+import { getAgentConfig, updateAgentConfig, getTokenWarningLevel, getFilesConfig, updateFilesConfig } from '../services/config.js';
 import { authRequired, adminRequired } from '../services/auth.js';
 import asyncHandler from '../utils/asyncHandler.js';
 
@@ -233,5 +233,21 @@ router.put('/agent/:key', adminRequired, async (req, res) => {
     res.json({ success: false, error: e.message });
   }
 });
+
+// ★ 2026-08-24：DeepSeek Files API 配置
+//   GET 普通用户可读（前端附件按钮要拉 allowlist 决定 accept 字符串）
+//   PUT 仅管理员（限流白名单 size 上限）
+router.get('/files', async (req, res) => {
+  try {
+    res.json(getFilesConfig());
+  } catch (e) {
+    res.json({});
+  }
+});
+
+router.put('/files', adminRequired, asyncHandler(async (req, res) => {
+  const next = updateFilesConfig(req.body || {});
+  res.json({ success: true, config: next });
+}));
 
 export default router;

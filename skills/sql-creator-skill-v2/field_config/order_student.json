@@ -128,6 +128,18 @@
     },{
       "name":"主辅订单",
       "description": "主订单：main_order_student_id = NULL。辅订单：main_order_student_id =主订单ID"
+    },{
+      "name":"统计去重",
+      "description": "JOIN 支付单/合同/学员关系等一对多表会产生重复行：列表查询用 SELECT DISTINCT，计数必须 COUNT(DISTINCT a.id)"
+    },{
+      "name":"折扣系数",
+      "description": "discount 存整数，÷100000=折扣小数（如 0.9 存为 90000）；校验关系 transaction_amount ≈ ROUND(total_amount × discount)"
+    },{
+      "name":"学通事业部过滤",
+      "description": "查学通订单需加条件 edu_goods.admin_division = 1（经 a.goods_id = edu_goods.id 关联）"
+    },{
+      "name":"合同签署状态",
+      "description": "order_contract_template_id IS NULL=无合同；模板非空但无 order_contract 记录=未签署；order_contract.contract_url 非空=已签署"
     }
   ],
   "common_sqls": [
@@ -137,6 +149,55 @@
       "main_table": "order_student",
       "tables": ["order_student AS a", "edu_student AS b", "admin_user AS c", "order_entry AS d", "edu_goods AS e", "edu_campus AS f", "order_type AS h", "order_pattern AS m"],
       "sql": "LEFT JOIN edu_student b ON a.student_id = b.id\nLEFT JOIN admin_user c ON a.admin_user_id = c.id\nLEFT JOIN order_entry d ON a.order_entry_id = d.id\nLEFT JOIN edu_goods e ON a.goods_id = e.id\nLEFT JOIN edu_campus f ON a.edu_campus_id = f.id\nLEFT JOIN order_type h ON a.type_id = h.id\nLEFT JOIN order_pattern m ON a.pattern_id = m.id"
+    },
+    {
+      "id": "order_crm_new",
+      "title": "订单关联CRM线索（新数据）",
+      "main_table": "order_student",
+      "tables": ["order_student AS a", "edu_student AS b", "customer_info AS ci", "customer_clue_info AS cci", "crm_channels AS c1", "crm_channels AS c2", "admin_user_channel AS auc", "admin_user AS d"],
+      "sql": "LEFT JOIN customer_info ci ON ci.code = b.student_code\nLEFT JOIN customer_clue_info cci ON ci.code = cci.customer_code AND cci.deleted = 0\nLEFT JOIN crm_channels c1 ON cci.level1_channel_code = c1.channel_code AND c1.channel_type = 1\nLEFT JOIN crm_channels c2 ON cci.level2_channel_code = c2.channel_code AND c2.channel_type = 2\nLEFT JOIN admin_user_channel auc ON cci.level2_channel_code = auc.id\nLEFT JOIN admin_user d ON ci.create_by = d.id"
+    },
+    {
+      "id": "order_approval_reject",
+      "title": "订单审批记录与驳回原因",
+      "main_table": "order_student",
+      "tables": ["order_student AS a", "order_approval_order_student_log AS al", "admin_user AS u", "order_student_reject AS r"],
+      "sql": "LEFT JOIN order_approval_order_student_log al ON al.order_student_id = a.id AND al.del = 0\nLEFT JOIN admin_user u ON al.admin_user_id = u.id\nLEFT JOIN order_student_reject r ON r.order_student_id = a.id"
+    },
+    {
+      "id": "order_refund",
+      "title": "订单退款审批信息",
+      "main_table": "order_student",
+      "tables": ["order_student AS a", "order_student_refund AS rf"],
+      "sql": "LEFT JOIN order_student_refund rf ON rf.order_student_id = a.id AND rf.del = 0"
+    },
+    {
+      "id": "order_contract_status",
+      "title": "订单合同签署记录",
+      "main_table": "order_student",
+      "tables": ["order_student AS a", "order_contract AS oc"],
+      "sql": "LEFT JOIN order_contract oc ON oc.order_student_id = a.id AND oc.del = 0"
+    },
+    {
+      "id": "order_pay_order",
+      "title": "订单关联支付单",
+      "main_table": "order_student",
+      "tables": ["order_student AS a", "admin_pay_order_student AS apos", "admin_pay_order AS apo"],
+      "sql": "LEFT JOIN admin_pay_order_student apos ON apos.order_student_id = a.id\nLEFT JOIN admin_pay_order apo ON apos.admin_pay_order_id = apo.id AND apo.status = 1 AND apo.del = 0"
+    },
+    {
+      "id": "order_assist",
+      "title": "主订单关联辅订单",
+      "main_table": "order_student",
+      "tables": ["order_student AS a", "order_student AS sub"],
+      "sql": "LEFT JOIN order_student sub ON sub.main_order_student_id = a.id AND sub.del = 0"
+    },
+    {
+      "id": "order_creator_department",
+      "title": "订单创建人及部门（一级-二级）",
+      "main_table": "order_student",
+      "tables": ["order_student AS a", "admin_user AS c", "admin_department_children AS n", "admin_department AS n1"],
+      "sql": "LEFT JOIN admin_user c ON a.admin_user_id = c.id\nLEFT JOIN admin_department_children n ON c.department_id = n.id\nLEFT JOIN admin_department n1 ON n.department_id = n1.id"
     }
   ]
 }

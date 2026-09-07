@@ -1,0 +1,74 @@
+{
+  "table_name": "edu_student_timetable",
+  "field_aliases": {},
+  "field_enums": {
+    "teaching_status": {
+      "-1": "失败",
+      "0": "未确定",
+      "1": "成功"
+    },
+    "source": {
+      "1": "排课(study)→course_id=edu_study.id",
+      "2": "活动(activity)→course_id=edu_activities.id",
+      "3": "考试(exams)→course_id=exams_year_apply_info.id"
+    }
+  },
+  "virtual_associations": [
+    {
+      "name": "关联排课(source=1)",
+      "target_table": "edu_study",
+      "join_condition": "edu_study.id = edu_student_timetable.course_id AND edu_student_timetable.source = 1",
+      "type": "conditional_many_to_one",
+      "description": "source=1 时 course_id 指向排课表",
+      "business_rule": ""
+    },
+    {
+      "name": "关联活动(source=2)",
+      "target_table": "edu_activities",
+      "join_condition": "edu_activities.id = edu_student_timetable.course_id AND edu_student_timetable.source = 2",
+      "type": "conditional_many_to_one",
+      "description": "source=2 时 course_id 指向活动表",
+      "business_rule": ""
+    },
+    {
+      "name": "关联考试报考(source=3)",
+      "target_table": "exams_year_apply_info",
+      "join_condition": "exams_year_apply_info.id = edu_student_timetable.course_id AND edu_student_timetable.source = 3",
+      "type": "conditional_many_to_one",
+      "description": "source=3 时 course_id 指向年度报考信息表",
+      "business_rule": ""
+    },
+    {
+      "name": "关联学生",
+      "target_table": "edu_student",
+      "join_condition": "edu_student.id = edu_student_timetable.edu_student_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联教室",
+      "target_table": "edu_campus_school_class",
+      "join_condition": "edu_campus_school_class.id = edu_student_timetable.edu_campus_school_class_id",
+      "type": "many_to_one",
+      "description": "edu_campus_school_class_id 注释为教室ID",
+      "business_rule": ""
+    },
+    {
+      "name": "关联上课老师",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_student_timetable.edu_admin_user_id",
+      "type": "many_to_one",
+      "description": "上课老师（后台账号）",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "course_id 多态关联",
+      "description": "course_id 是多态字段，指向随 source 变化：source=1→edu_study.id，source=2→edu_activities.id，source=3→exams_year_apply_info.id；JOIN 时必须同时带上 source 条件（见 virtual_associations 的三条 conditional 关联）"
+    }
+  ]
+}

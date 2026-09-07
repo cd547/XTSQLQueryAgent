@@ -1,0 +1,63 @@
+{
+  "table_name": "keqiao_study_leave",
+  "field_aliases": {},
+  "field_enums": {
+    "status": {
+      "1": "初始（待审批）",
+      "2": "已通过",
+      "3": "已驳回"
+    },
+    "type": {
+      "1": "事假",
+      "2": "病假"
+    },
+    "call_api": {
+      "0": "不外出",
+      "1": "外出"
+    },
+    "door_authorization_status": {
+      "1": "未授权",
+      "2": "已经授权",
+      "3": "授权失败"
+    }
+  },
+  "virtual_associations": [
+    {
+      "name": "关联学生",
+      "target_table": "edu_student",
+      "join_condition": "edu_student.id = keqiao_study_leave.edu_student_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联审批人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = keqiao_study_leave.admin_user_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联请假创建者(C端用户)",
+      "target_table": "my_user",
+      "join_condition": "my_user.id = keqiao_study_leave.my_user_id",
+      "type": "many_to_one",
+      "description": "C 端发起请假的用户（DDL 外键 ibfk_3），与 created_admin_user_id 二选一：家长/C端自助请假走 my_user_id，班主任代建走 created_admin_user_id",
+      "business_rule": ""
+    },
+    {
+      "name": "关联创建人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = keqiao_study_leave.created_admin_user_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {
+  },
+  "business_rules": [
+  ]
+}

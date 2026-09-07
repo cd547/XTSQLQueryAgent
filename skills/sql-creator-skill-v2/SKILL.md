@@ -11,7 +11,7 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL SQL
    2. `get_sliced_index(domain_ids)` 获取域内全部表卡片信息
    3. 确定目标表后 `get_table_schema` 获取表及字段详情
 
-4. **关联表**：先用候选表的 `related_tables` 确定 JOIN 方向，再用 `field_config` 中的 `virtual_associations` 获取精确 JOIN 条件（含 `join_condition`，必须优先采用）。禁止猜测 JOIN 条件。
+4. **关联表**：先用`get_sliced_index` 确定主表，调 `get_table_schema` 后从 `virtual_associations` 发现关联表并获取精确 JOIN 条件（含 `join_condition`，必须优先采用）；若关联表尚未获取，可再次 `get_table_schema` 调用。禁止猜测 JOIN 条件。
 4.1 当 `virtual_associations` 的 `type` 为 `conditional_many_to_one` 时：
    - 必须 LEFT JOIN `default.target_table` 和每个 `conditions[].target_table`。
    - 使用 `CASE WHEN` 实现字段选择。
@@ -40,14 +40,14 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL SQL
 8. **歧义处理**：一个业务词匹配多个候选表 → 调用 request_user_choice 询问用户，禁止猜测。
 
 9. **【铁律】最终输出前冻结**：
-   - **只调用本轮 tools 列表中的工具（程序会自动拦截列表外调用）**。
+   - **只调用本轮 tools 列表中的工具**。
    - "信息已全"判定（满足以下条件后立即生成 SQL）：
      - 目标表 fields（含 DDL/索引/外键）✓ 
      - 字段别名/枚举 ✓
      - 业务规则 ✓
      - **【必调 `validate_sql_fields`】** 输出 SQL 前必须调用，拿到 errors 必须重写 SQL 后再次校验，valid 才可输出
      - 涉及 JOIN 时还需 virtual_associations ✓（单表查询无需此项）
-   - 调用 get_table_schema 时必须一次性传入所有需要的表名，禁止分批
+   - 调用 get_table_schema 时尽可能传入所有需要的表名，禁止分批
    - 输出 SQL 后不允许补充工具调用或修正
 
 ## 系统约定
@@ -90,7 +90,6 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL SQL
 ## 用户交互
 如有疑问或缺信息时调 `request_user_choice(questions: [...])`，传入 1-3 个完整问题。
 - 调用前在 content 中自然语言描述问题
-- 调用后程序自动结束本轮并弹出对话框
 
 **multi_select 决策**：
 - 互斥（必选其一）→ false，例：`"时间范围：近7天 / 近30天"`

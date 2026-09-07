@@ -1,0 +1,73 @@
+{
+  "table_name": "exams_year_season",
+  "field_aliases": {},
+  "field_enums": {
+    "platform": {
+      "1": "学通",
+      "2": "科桥"
+    },
+    "rel": {
+      "0": "未发布",
+      "1": "已发布"
+    },
+    "exams_year_quarter_id": {
+      "1": "May/Jun (春季)",
+      "2": "Oct/Nov (秋季)",
+      "3": "Jan (冬季)"
+    },
+    "exams_year_season_type_id": {
+      "1": "学科",
+      "2": "竞赛"
+    },
+    "isredo": {
+      "0": "不可以重复考试",
+      "1": "可以重复考试"
+    }
+  },
+  "virtual_associations": [
+    {
+      "name": "关联媒体介绍",
+      "target_table": "cms_article",
+      "join_condition": "cms_article.id = exams_year_season.cms_article_id",
+      "type": "many_to_one",
+      "description": "考试季对应的媒体/文章介绍",
+      "business_rule": ""
+    },
+    {
+      "name": "关联考试分类",
+      "target_table": "exams_year_type",
+      "join_condition": "exams_year_type.id = exams_year_season.exams_year_type_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联季度",
+      "target_table": "exams_year_quarter",
+      "join_condition": "exams_year_quarter.id = exams_year_season.exams_year_quarter_id",
+      "type": "many_to_one",
+      "description": "可为空",
+      "business_rule": ""
+    },
+    {
+      "name": "关联考试类型",
+      "target_table": "exams_year_season_type",
+      "join_condition": "exams_year_season_type.id = exams_year_season.exams_year_season_type_id",
+      "type": "many_to_one",
+      "description": "可为空",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "rel 字段特殊语义",
+      "description": "本表 rel 注释为'是否发布 0未发布 1已发布'，不是预留字段；对外展示的考试季应过滤 rel = 1"
+    },
+    {
+      "name": "三阶段报名时间",
+      "description": "entry1/entry2/entry3_deadline_end 为三个报考阶段的截止时间（时间戳），判断当前所处阶段需与当前时间比较"
+    }
+  ]
+}

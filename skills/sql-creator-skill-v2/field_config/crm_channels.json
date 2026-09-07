@@ -2,37 +2,17 @@
   "table_name": "crm_channels",
   "field_aliases": {
     "channel_code": [
-      "渠道编码",
-      "渠道代码"
-    ],
-    "channel_name": [
-      "渠道名称"
+      "渠道编码"
     ],
     "channel_status": [
       "渠道状态"
-    ],
-    "channel_parent_id": [
-      "父级渠道ID"
     ],
     "channel_type": [
       "渠道类型",
       "渠道级别"
     ],
-    "channel_create_user_id": [
-      "渠道创建人ID"
-    ],
-    "channel_update_user_id": [
-      "渠道更新人ID"
-    ],
     "org": [
-      "所属事业部",
       "组织"
-    ],
-    "sort_num": [
-      "排序字段"
-    ],
-    "version": [
-      "版本号"
     ]
   },
   "field_enums": {

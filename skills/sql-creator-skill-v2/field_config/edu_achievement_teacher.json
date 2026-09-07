@@ -1,0 +1,31 @@
+{
+  "table_name": "edu_achievement_teacher",
+  "field_aliases": {},
+  "field_enums": {},
+  "virtual_associations": [
+    {
+      "name": "关联成绩记录",
+      "target_table": "edu_achievement",
+      "join_condition": "edu_achievement.id = edu_achievement_teacher.edu_achievement_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联任课老师",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_achievement_teacher.admin_user_id",
+      "type": "many_to_one",
+      "description": "一条成绩可有多位任课老师",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "成绩-任课老师桥表",
+      "description": "本表是成绩与任课老师的桥表（一条成绩可多行老师），与 edu_achievement.admin_user_id（成绩录入人）不同，统计老师带出成绩数走本表"
+    }
+  ]
+}

@@ -8,9 +8,7 @@
       "tags": [
         "一级科目"
       ],
-      "related_tables": [
-        "edu_course_exam"
-      ]
+      "related_tables": []
     },
     {
       "name": "edu_course_exam",
@@ -19,8 +17,7 @@
         "二级科目"
       ],
       "related_tables": [
-        "edu_course",
-        "edu_course_exam_subject"
+        "edu_course"
       ]
     },
     {
@@ -30,8 +27,7 @@
         "三级科目"
       ],
       "related_tables": [
-        "edu_course_exam",
-        "edu_course_exam_subject_name"
+        "edu_course_exam"
       ]
     },
     {
@@ -65,22 +61,9 @@
       "tags": [
         "知识点"
       ],
-      "related_tables": [
-        "tk_knowledge_new"
-      ],
-      "business_constraints": [
-        {
-          "name": "关于知识点的层级的限制",
-          "description": "本表目前层级最多4层，第一层：知识点体系，第二层：一级知识点，第三层：二级知识点，第四层：三级知识点"
-        }
-      ],
-      "business_rules": [
-        {
-          "rule": "知识点体系",
-          "description": "parent_id=1的知识点也叫做知识点体系",
-          "query": "SELECT * FROM tk_knowledge_new WHERE parent_id=1"
-        }
-      ]
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
     },
     {
       "name": "tk_knowledge_course",
@@ -90,6 +73,7 @@
         "科目关联知识点"
       ],
       "related_tables": [
+        "tk_knowledge_new",
         "edu_course",
         "edu_course_exam",
         "edu_course_exam_subject",
@@ -153,13 +137,6 @@
       ]
     },
     {
-      "name": "tk_paper_new",
-      "description": "试卷表",
-      "tags": [
-        "试卷"
-      ]
-    },
-    {
       "name": "admin_user_campus",
       "description": "所属校区",
       "tags": [
@@ -177,10 +154,7 @@
       "tags": [
         "一级校区"
       ],
-      "related_tables": [
-        "admin_user_campus",
-        "customer_clue_info"
-      ]
+      "related_tables": []
     },
     {
       "name": "admin_department_type",
@@ -215,7 +189,9 @@
         "edu_student_status",
         "edu_student_type_project",
         "edu_student_certificates_type",
-        "customer_clue_info"
+        "customer_clue_info",
+        "crm_target_school",
+        "crm_tag_definition"
       ]
     },
     {
@@ -611,7 +587,7 @@
       "description": "CRM渠道表",
       "tags": [
         "CRM",
-        "渠道"
+        "渠道管理"
       ],
       "related_tables": [
         "crm_channels",
@@ -629,8 +605,8 @@
       "name": "admin_user_channel",
       "description": "渠道库",
       "tags": [
-        "CRM",
-        "渠道"
+        "渠道",
+        "渠道列表"
       ],
       "related_tables": [
         "admin_user",
@@ -1293,46 +1269,6 @@
       ]
     },
     {
-      "name": "order_student",
-      "description": "订单表",
-      "tags": [
-        "订单"
-      ],
-      "related_tables": [
-        "order_type",
-        "edu_student_type",
-        "order_pattern",
-        "edu_goods",
-        "admin_user",
-        "edu_student",
-        "order_entry",
-        "edu_campus",
-        "order_contract_template",
-        "edu_student_type_project"
-      ],
-      "business_constraints": []
-    },
-    {
-      "name": "edu_student",
-      "description": "学生基础信息表",
-      "tags": [
-        "学生",
-        "基础信息"
-      ],
-      "related_tables": [
-        "my_user",
-        "customer_clue_info",
-        "edu_campus_school",
-        "edu_student_type",
-        "edu_student_status",
-        "edu_student_type_project",
-        "edu_student_certificates_type",
-        "crm_target_school",
-        "crm_tag_definition"
-      ],
-      "business_constraints": []
-    },
-    {
       "name": "auth_role",
       "description": "角色信息表",
       "tags": [
@@ -1649,7 +1585,9 @@
     {
       "name": "edu_room_study",
       "description": "班级-班级排课记录表",
-      "tags": ["班课"],
+      "tags": [
+        "班课"
+      ],
       "related_tables": [
         "edu_course_exam_subject_name",
         "edu_class_type",
@@ -1709,6 +1647,473 @@
         "edu_study",
         "admin_user"
       ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "order_entry",
+      "description": "项目名称",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "order_pattern",
+      "description": "订单模式",
+      "tags": [],
+      "related_tables": [
+        "admin_division"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "order_approval_order_student_log",
+      "description": "订单审批记录",
+      "tags": [],
+      "related_tables": [
+        "order_student",
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "order_student_reject",
+      "description": "订单驳回记录",
+      "tags": [],
+      "related_tables": [
+        "order_student",
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "order_approval_configure_user",
+      "description": "审批流程配置用户",
+      "tags": [],
+      "related_tables": [
+        "admin_user",
+        "order_approval_configure"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "admin_division",
+      "description": "事业部",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "tk_paper_new",
+      "description": "考卷（2025新版）",
+      "tags": [],
+      "related_tables": [
+        "edu_course",
+        "edu_course_exam",
+        "edu_course_exam_subject",
+        "edu_course_exam_subject_name",
+        "edu_course_exam_module",
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "tk_season",
+      "description": "季节表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "order_approval_configure",
+      "description": "审批流程配置",
+      "tags": [],
+      "related_tables": [
+        "edu_campus",
+        "order_entry"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "t_exam_result_rule",
+      "description": "成绩规则表",
+      "tags": [],
+      "related_tables": [
+        "edu_course_exam_subject_name",
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "cms_type",
+      "description": "文章类型",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_goods_year",
+      "description": "产品年份表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "keqiao_study_leave",
+      "description": "排课请假",
+      "tags": [],
+      "related_tables": [
+        "edu_student",
+        "admin_user",
+        "my_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "keqiao_class_category",
+      "description": "班级类别",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_level_mapping",
+      "description": "成绩映射规则-列表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "admin_teacher_scheme",
+      "description": "老师课时规则-方案",
+      "tags": [],
+      "related_tables": [
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "goods_list",
+      "description": "商品表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "order_approval_order_student_received_log",
+      "description": "回款审批记录",
+      "tags": [],
+      "related_tables": [
+        "order_student",
+        "admin_user",
+        "order_student_received"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "order_student_received_annex",
+      "description": "回款附件",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_teacher_class_type",
+      "description": "老师可教班级类型",
+      "tags": [],
+      "related_tables": [
+        "admin_user",
+        "edu_class_type"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_teacher_class_subject_name",
+      "description": "老师可教科目名称",
+      "tags": [],
+      "related_tables": [
+        "admin_user",
+        "edu_course_exam_subject_name"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_teacher_annex",
+      "description": "老师附件",
+      "tags": [],
+      "related_tables": [
+        "edu_teacher",
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_teacher_school",
+      "description": "老师所属校区",
+      "tags": [],
+      "related_tables": [
+        "admin_user",
+        "edu_campus_school"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_teacher_handbook",
+      "description": "老师师资册信息表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_student_timetable",
+      "description": "学生课表",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_course_exam_subject_tag",
+      "description": "# 科目标签",
+      "tags": [],
+      "related_tables": [
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_task",
+      "description": "作业",
+      "tags": [],
+      "related_tables": [
+        "edu_feed_teacher",
+        "edu_student"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_task_feed",
+      "description": "作业反馈",
+      "tags": [],
+      "related_tables": [
+        "edu_task",
+        "edu_feed_teacher"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "exams_year_apply_info",
+      "description": "年度报考-学生报考信息",
+      "tags": [],
+      "related_tables": [
+        "order_list",
+        "exams_year_season",
+        "edu_student",
+        "my_user",
+        "goods_list",
+        "exams_year_season_goods"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_feed_teacher",
+      "description": "课程反馈(老师)（废弃）",
+      "tags": [],
+      "related_tables": [
+        "edu_study",
+        "edu_student",
+        "admin_user",
+        "keqiao_study",
+        "edu_course_exam_subject_name"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "exams_year_season",
+      "description": "年度报考-考试季",
+      "tags": [],
+      "related_tables": [
+        "cms_article",
+        "exams_year_type",
+        "exams_year_quarter",
+        "exams_year_season_type"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "exams_year_season_goods",
+      "description": "年度报考-商品列表",
+      "tags": [],
+      "related_tables": [
+        "goods_list",
+        "admin_user",
+        "exams_year_season"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "exams_year_quarter",
+      "description": "年度报考-季度",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "exams_year_type",
+      "description": "年度报考-考试分类",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "exams_year_season_type",
+      "description": "年度报考-考试类型分类",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_teacher_feedback",
+      "description": "老师反馈（新）",
+      "tags": ["课程反馈"],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_achievement",
+      "description": "测试成绩-成绩",
+      "tags": [],
+      "related_tables": [
+        "edu_student",
+        "edu_achievement_type",
+        "edu_course",
+        "edu_course_exam",
+        "edu_course_exam_subject",
+        "edu_course_exam_subject_name",
+        "admin_user",
+        "exams_year_season_type",
+        "edu_achievement_collect_task",
+        "exams_year_quarter"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_achievement_type",
+      "description": "测试成绩-类型",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_achievement_rule",
+      "description": "测试成绩-规则",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_achievement_annex",
+      "description": "测试成绩-附件",
+      "tags": [],
+      "related_tables": [
+        "edu_achievement"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_achievement_knowledge",
+      "description": "测试成绩-知识点",
+      "tags": [],
+      "related_tables": [
+        "edu_achievement"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_achievement_teacher",
+      "description": "测试成绩-任课老师",
+      "tags": [],
+      "related_tables": [
+        "edu_achievement",
+        "admin_user"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "edu_achievement_collect_task",
+      "description": "测试成绩-分数采集任务表",
+      "tags": [],
+      "related_tables": [
+        "admin_user",
+        "exams_year_season"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "tk_paper_topic",
+      "description": "试题",
+      "tags": [],
+      "related_tables": [],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "tk_paper_topic_info",
+      "description": "题干",
+      "tags": [],
+      "related_tables": [
+        "tk_paper_topic"
+      ],
+      "business_constraints": [],
+      "business_rules": []
+    },
+    {
+      "name": "tk_paper_topic_parsing",
+      "description": "试题解析表",
+      "tags": [],
+      "related_tables": [],
       "business_constraints": [],
       "business_rules": []
     }

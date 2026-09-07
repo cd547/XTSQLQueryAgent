@@ -1,0 +1,23 @@
+{
+  "table_name": "edu_course_exam_subject_tag",
+  "field_aliases": {},
+  "field_enums": {},
+  "virtual_associations": [
+    {
+      "name": "关联创建人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_course_exam_subject_tag.admin_user_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "del 字段特殊语义",
+      "description": "本表 del 的注释为'标签状态 0-已启用；1-已禁用'，表示启用/禁用而非删除标记，勿当删除位过滤"
+    }
+  ]
+}

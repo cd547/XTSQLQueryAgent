@@ -33,6 +33,7 @@ import {
   queueLog,
   flushLogs,
   setLastMessages,
+  buildUserMessage,
 } from "./llm.js";
 import { logger } from "../logger.js";
 
@@ -42,8 +43,8 @@ import { logger } from "../logger.js";
 // 职责：从 DB 加载历史消息（如有）+ 拼接 system+user 消息 → 返回初始 messages 数组
 // ============================================================
 export function initMessagesForRun(ctx) {
-  // ctx: { sessionId, question, systemMessage }
-  const { sessionId, question, systemMessage } = ctx;
+  // ctx: { sessionId, question, systemMessage, fileIds? }
+  const { sessionId, question, systemMessage, fileIds } = ctx;
   let messages;
 
   // 如果有 sessionId，尝试从数据库加载历史消息
@@ -62,18 +63,18 @@ export function initMessagesForRun(ctx) {
       if (systemIndex >= 0) {
         messages[systemIndex] = { role: "system", content: systemMessage };
       }
-      // 添加新的用户消息
-      messages.push({ role: "user", content: question });
+      // 添加新的用户消息（★ 2026-08-24：支持 file_ids 多模态 content 数组）
+      messages.push(buildUserMessage(question, fileIds));
     } else {
       messages = [
         { role: "system", content: systemMessage },
-        { role: "user", content: question },
+        buildUserMessage(question, fileIds),
       ];
     }
   } else {
     messages = [
       { role: "system", content: systemMessage },
-      { role: "user", content: question },
+      buildUserMessage(question, fileIds),
     ];
   }
   return messages;
@@ -121,8 +122,11 @@ export function getPrunedToolsForRun(ctx) {
 // 注：不在 helper 3 内部调，由 generator 在合适时机调（避免重复写盘）
 // ============================================================
 export function saveRunState(ctx) {
-  // ctx: { sessionId, messages, apiMode }
-  const { sessionId, messages, apiMode } = ctx;
+  // ctx: { sessionId, messages, apiMode, messageTokens? }
+  //   ★ 2026-08-25 方案 3：messageTokens 可选 —— 调用方传本轮 API 权威
+  //     usage.prompt_tokens（Responses API 的 input_tokens），省去每轮全量 BPE；
+  //     未传则回落 saveMessagesToDb 内部的旧 BPE 计算。
+  const { sessionId, messages, apiMode, messageTokens } = ctx;
   // 同步一份到全局缓存（仅供开发期 GET /api/query/messages 调试接口使用）
   // ★ 深拷贝（与 CC path L1567 1:1 对齐）
   setLastMessages(messages);
@@ -130,7 +134,7 @@ export function saveRunState(ctx) {
   if (sessionId) {
     // ★ v5.14：Responses path 传 apiMode='responses_api'
     //   saveMessagesToDb 后端默认 chat_completions，Responses path 显式覆盖
-    saveMessagesToDb(sessionId, messages, apiMode || "responses_api");
+    saveMessagesToDb(sessionId, messages, apiMode || "responses_api", messageTokens != null ? messageTokens : null);
   }
 }
 
@@ -250,9 +254,14 @@ export async function executeToolCallsInStages(ctx) {
   //   LLM 若仍"幻觉"调用被剪枝的工具 → 立即拦截，不进入执行阶段。
   //   （F18: get_domain_index 已移至 system，不在剪枝列表）
   // ★ v5.12 修复：prunedTools 在 Responses path 是扁平 schema，复用顶层 getToolName
-  const availableToolNames = new Set(
-    prunedTools.map((t) => getToolName(t)),
-  );
+  // ★ 2026-08-25 与 CC path 对齐（F23 同款）：显式补入 get_call_history ——
+  //   该工具由系统在每轮强制注入（assistant.tool_calls 头部 synthetic），LLM_TOOLS
+  //   故意过滤掉（避免 LLM 主动调），因此不在 prunedTools 中。如果不补入，
+  //   "幻觉调用"拦截会把它误判为非法调用。
+  const availableToolNames = new Set([
+    ...prunedTools.map((t) => getToolName(t)),
+    "get_call_history",
+  ]);
   const prepared = validToolCalls.map((toolCall) => {
     // ★ v5.12 修复：validToolCalls 来源 streamToolCalls.values()，在 Responses path
     //   是嵌套 schema（generator L535-541 显式包了 function.name/arguments），
@@ -356,6 +365,27 @@ export async function executeToolCallsInStages(ctx) {
   //   同步工具也会被 await 正确处理（Promise.resolve 包装）
   const execResults = await Promise.all(
     prepared.map(async (p) => {
+      // ★ 2026-08-25 与 CC path 对齐（F23）：get_call_history 拦截器 ——
+      //   跳过 tool.func 调用，直接构造稳定 JSON（依赖 reg.callHistory）。
+      //   字节稳定性：JSON.stringify 字段顺序固定 → 跨轮同位置同内容 → prefix cache 命中。
+      if (p.toolName === "get_call_history") {
+        const reg = getOrCreateRegistry(sessionId);
+        const callHistory = reg?.callHistory || [];
+        const stableContent = JSON.stringify({
+          called_count: callHistory.length,
+          called_tools: callHistory,
+          // ★ 2026-09-01 精简 _instruction（与 CC path llm.js 同步）：每轮恒为 cache miss 尾部
+          _instruction:
+            "系统自动注入，无需主动调用。",
+        });
+        return {
+          ...p,
+          rawResult: stableContent,
+          toolMessageContent: stableContent,
+          userChoiceId: null,
+          execError: null,
+        };
+      }
       if (!p.tool || (p.dupCheck && p.dupCheck.block)) {
         return {
           ...p,
@@ -507,6 +537,42 @@ export async function executeToolCallsInStages(ctx) {
   return { hadToolCalls: validToolCalls.length > 0, execResults };
 }
 
+/**
+ * ★ 2026-08-25 与 CC path 对齐（F23）：登记本轮成功调用的工具到 reg.callHistory
+ *   （get_call_history 拦截器读取此列表返回给 LLM）。
+ *   - 仅登记"成功执行"的工具（execError / dupCheck.block / get_call_history 自身跳过）
+ *   - 同 tool_name + args 不重复登记（防御性 dedup）
+ *   - 字节稳定：JSON.stringify 字段顺序固定 → 跨轮同位置同字节 → prefix cache 命中
+ *
+ * @param {{execResults: Array, sessionId: string|number, currentRound: number}} ctx
+ */
+export function recordExecResultsToCallHistory(ctx) {
+  const { execResults, sessionId, currentRound } = ctx;
+  const reg = getOrCreateRegistry(sessionId);
+  if (!reg) return;
+  for (const p of execResults) {
+    if (!p.toolName || p.toolName === "get_call_history") continue;
+    if (p.execError) continue;
+    if (p.dupCheck && p.dupCheck.block) continue;
+    const sig = `${p.toolName}::${p.toolCall?.function?.arguments || p.toolCall?.arguments || "{}"}`;
+    if (reg.callHistory.some((h) => h.sig === sig)) continue;
+    let parsedArgs = {};
+    try {
+      parsedArgs = JSON.parse(
+        p.toolCall?.function?.arguments || p.toolCall?.arguments || "{}",
+      );
+    } catch {
+      parsedArgs = p.toolCall?.function?.arguments || "";
+    }
+    reg.callHistory.push({
+      sig,
+      tool: p.toolName,
+      args: parsedArgs,
+      called_at_round: currentRound,
+    });
+  }
+}
+
 // ============================================================
 // helper 6: convertMessagesToInputItems
 // 源：Phase 2 v5.6 修复
@@ -532,11 +598,27 @@ export function convertMessagesToInputItems(messages) {
       continue;
     }
     if (m.role === "user") {
-      items.push({
-        type: "message",
-        role: "user",
-        content: [{ type: "input_text", text: String(m.content || "") }],
-      });
+      // ★ 2026-08-24：支持多模态 content 数组（DeepSeek Files API 透传 file content block）
+      //   - content 是 string → 旧版走 input_text 块
+      //   - content 是 Array → 逐项映射：
+      //       {type:'text'} → {type:'input_text', text}
+      //       {type:'file', file_id} → 原样保留（DeepSeek Responses API 直接接受 file 块）
+      let contentBlocks;
+      if (Array.isArray(m.content)) {
+        contentBlocks = m.content.map((part) => {
+          if (part && part.type === "text") {
+            return { type: "input_text", text: String(part.text || "") };
+          }
+          if (part && part.type === "file" && typeof part.file_id === "string") {
+            return { type: "file", file_id: part.file_id };
+          }
+          // 未知块：兜底为 input_text
+          return { type: "input_text", text: String(part?.text || "") };
+        });
+      } else {
+        contentBlocks = [{ type: "input_text", text: String(m.content || "") }];
+      }
+      items.push({ type: "message", role: "user", content: contentBlocks });
       continue;
     }
     if (m.role === "assistant") {

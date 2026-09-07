@@ -2,7 +2,40 @@
   "table_name": "edu_activities",
   "field_aliases": {},
   "field_enums": {},
-  "virtual_associations": [],
+  "virtual_associations": [
+    {
+      "name": "关联教室",
+      "target_table": "edu_campus_school_class",
+      "join_condition": "edu_campus_school_class.id = edu_activities.edu_campus_school_class_id",
+      "type": "many_to_one",
+      "description": "活动使用的教室；校外活动无教室、用 address 字段",
+      "business_rule": ""
+    },
+    {
+      "name": "关联科目名称",
+      "target_table": "edu_course_exam_subject_name",
+      "join_condition": "edu_course_exam_subject_name.id = edu_activities.edu_course_exam_subject_name_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联负责人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_activities.edu_admin_user_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联操作人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_activities.admin_user_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    }
+  ],
   "calculated_fields": {},
   "business_constraints": {},
   "business_rules": []

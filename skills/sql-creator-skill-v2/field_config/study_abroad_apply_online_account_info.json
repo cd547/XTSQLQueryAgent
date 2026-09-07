@@ -2,18 +2,15 @@
   "table_name": "study_abroad_apply_online_account_info",
   "field_aliases": {
     "email": [
-      "网申邮箱",
       "申请邮箱"
     ],
     "email_pwd": [
       "网申邮箱密码"
     ],
     "ucas_account": [
-      "UCAS账号",
       "UCAS账户"
     ],
     "ucas_pwd": [
-      "UCAS密码",
       "UCAS账户密码"
     ]
   },

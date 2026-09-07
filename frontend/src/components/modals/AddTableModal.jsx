@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Modal, Steps, Input, Button, Spin, Select, Tooltip, message } from 'antd';
+import { Modal, Steps, Input, Button, Spin, Select, Tooltip, App as AntdApp } from 'antd';
 import { checkTableExists, fetchTableDDL, createTableFiles, getDomains } from '../../api';
 
 /**
@@ -14,6 +14,8 @@ import { checkTableExists, fetchTableDDL, createTableFiles, getDomains } from '.
  *   onCreated:   () => void - 创建成功后回调（父组件用于刷新列表）
  */
 export default function AddTableModal({ open, onClose, onCreated }) {
+  // ★ antd AntdApp.useApp()：让 message 走动态主题上下文，消除静态 message 警告
+  const { message: messageApi } = AntdApp.useApp();
   const [step, setStep] = useState(1);
   const [name, setName] = useState('');
   const [checking, setChecking] = useState(false);
@@ -26,6 +28,11 @@ export default function AddTableModal({ open, onClose, onCreated }) {
   const [relatedTables, setRelatedTables] = useState([]);
   const [creating, setCreating] = useState(false);
 
+  // 每次 Modal 打开时重置所有 state，避免显示上次操作的最后一步界面
+  useEffect(() => {
+    if (open) resetForm();
+  }, [open]); // eslint-disable-line react-hooks/exhaustive-deps
+
   // 业务域：进入 step 3 时拉取一次
   useEffect(() => {
     if (step === 3 && domains.length === 0 && !domainsLoading) {
@@ -33,9 +40,9 @@ export default function AddTableModal({ open, onClose, onCreated }) {
       getDomains()
         .then(d => {
           if (d.success) setDomains(d.domains || []);
-          else message.error(d.message || '加载业务域失败');
+          else messageApi.error(d.message || '加载业务域失败');
         })
-        .catch(e => message.error('加载业务域失败: ' + (e.message || e)))
+        .catch(e => messageApi.error('加载业务域失败: ' + (e.message || e)))
         .finally(() => setDomainsLoading(false));
     }
   }, [step]); // eslint-disable-line react-hooks/exhaustive-deps
@@ -53,7 +60,7 @@ export default function AddTableModal({ open, onClose, onCreated }) {
         setDescription(data.tableComment || '');
       }
     } catch (e) {
-      message.error('检查失败: ' + e.message);
+      messageApi.error('检查失败: ' + e.message);
     } finally {
       setChecking(false);
     }
@@ -69,10 +76,10 @@ export default function AddTableModal({ open, onClose, onCreated }) {
         setRelatedTables(data.relatedTables || []);
         setStep(3);
       } else {
-        message.error(data.message || '获取DDL失败');
+        messageApi.error(data.message || '获取DDL失败');
       }
     } catch (e) {
-      message.error('获取DDL失败: ' + e.message);
+      messageApi.error('获取DDL失败: ' + e.message);
     } finally {
       setChecking(false);
     }
@@ -83,14 +90,14 @@ export default function AddTableModal({ open, onClose, onCreated }) {
     try {
       const data = await createTableFiles(name.trim(), ddl, description, selectedDomains);
       if (data.success) {
-        message.success(data.existed ? 'DDL文件已覆盖' : '表格文件创建成功');
+        messageApi.success(data.existed ? 'DDL文件已覆盖' : '表格文件创建成功');
         onClose();
         onCreated && onCreated();
       } else {
-        message.error(data.message || '创建失败');
+        messageApi.error(data.message || '创建失败');
       }
     } catch (e) {
-      message.error('创建失败: ' + e.message);
+      messageApi.error('创建失败: ' + e.message);
     } finally {
       setCreating(false);
     }

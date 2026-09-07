@@ -6,7 +6,7 @@
     {
       "id": "people",
       "name": "人员",
-      "description": "学员、学生、家长、客户等人员基础信息、类型、状态"
+      "description": "学员、老师、家长、客户等人员基础信息、类型、状态"
     },
     {
       "id": "department",
@@ -22,12 +22,12 @@
     {
       "id": "course_edu",
       "name": "课程(学通)",
-      "description": "课程层级、科目、知识点、试卷、排课、班级"
+      "description": "课程、科目、知识点、课程反馈、试卷、排课、班级、考试、大考报名"
     },
     {
       "id": "course_school",
       "name": "课程(科桥/克勒)",
-      "description": "课程层级、科目、知识点、试卷、排课、班级"
+      "description": "课程、科目、知识点、课程反馈、试卷、排课、班级、考试、大考报名"
     },
     {
       "id": "product",

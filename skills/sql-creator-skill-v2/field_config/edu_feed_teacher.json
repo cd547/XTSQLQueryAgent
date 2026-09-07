@@ -1,0 +1,74 @@
+{
+  "table_name": "edu_feed_teacher",
+  "field_aliases": {},
+  "field_enums": {
+    "status": {
+      "1": "草稿",
+      "2": "已发送",
+      "3": "已反馈",
+      "4": "驳回"
+    }
+  },
+  "virtual_associations": [
+    {
+      "name": "关联学生",
+      "target_table": "edu_student",
+      "join_condition": "edu_student.id = edu_feed_teacher.student_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联学通排课",
+      "target_table": "edu_study",
+      "join_condition": "edu_study.id = edu_feed_teacher.study_id",
+      "type": "many_to_one",
+      "description": "学通排课，与科桥排课二选一",
+      "business_rule": ""
+    },
+    {
+      "name": "关联科桥排课",
+      "target_table": "keqiao_study",
+      "join_condition": "keqiao_study.id = edu_feed_teacher.keqiao_study_id",
+      "type": "many_to_one",
+      "description": "科桥排课，与学通排课二选一",
+      "business_rule": ""
+    },
+    {
+      "name": "关联创建老师",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_feed_teacher.admin_user_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联四级科目名称",
+      "target_table": "edu_course_exam_subject_name",
+      "join_condition": "edu_course_exam_subject_name.id = edu_feed_teacher.edu_course_exam_subject_name_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "双排课来源二选一",
+      "description": "study_id（学通排课）与 keqiao_study_id（科桥排课）通常只有一个有值，关联排课时需按 COALESCE 或业务来源判断，禁止两个都 INNER JOIN"
+    },
+    {
+      "name": "多值字段不能直接 JOIN",
+      "description": "tk_knowledge_ids 为逗号分隔的知识点ID串，不能直接与 tk_knowledge_new JOIN，需按业务口径处理"
+    },
+    {
+      "name": "评分字段成对出现",
+      "description": "课堂学习表现/课堂练习各有 num（评分）与 text（说明）一对字段，评分为数值、说明为文本"
+    },
+    {
+      "name": "旧版反馈表",
+      "description": "本表为旧版老师课程反馈；助教反馈 edu_feed_assistant 以同主键与本表 1:1 扩展（该表尚未纳入索引）"
+    }
+  ]
+}

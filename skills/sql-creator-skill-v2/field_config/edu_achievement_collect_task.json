@@ -1,0 +1,55 @@
+{
+  "table_name": "edu_achievement_collect_task",
+  "field_aliases": {},
+  "field_enums": {
+    "status": {
+      "0": "未生成",
+      "1": "生成中",
+      "2": "已生成",
+      "3": "已取消",
+      "4": "异常"
+    }
+  },
+  "virtual_associations": [
+    {
+      "name": "关联创建人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_achievement_collect_task.admin_user_id",
+      "type": "many_to_one",
+      "description": "",
+      "business_rule": ""
+    },
+    {
+      "name": "关联更新人",
+      "target_table": "admin_user",
+      "join_condition": "admin_user.id = edu_achievement_collect_task.update_admin_user_id",
+      "type": "many_to_one",
+      "description": "可空",
+      "business_rule": ""
+    },
+    {
+      "name": "关联考试季",
+      "target_table": "exams_year_season",
+      "join_condition": "exams_year_season.id = edu_achievement_collect_task.exams_year_season_id",
+      "type": "many_to_one",
+      "description": "任务归属的考试季，可空",
+      "business_rule": ""
+    }
+  ],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": [
+    {
+      "name": "多值科目字段",
+      "description": "edu_course_exam_subject_name_ids 为逗号分隔的四级科目ID串，不能直接 JOIN edu_course_exam_subject_name"
+    },
+    {
+      "name": "任务状态流转",
+      "description": "status 从未生成(0)→生成中(1)→已生成(2)，异常看 status=4 + err_msg；已取消(3)为终态"
+    },
+    {
+      "name": "任务与成绩的关联",
+      "description": "采集任务生成的成绩记录通过 edu_achievement.edu_achievement_collect_task_id 回指本表，可查某任务采集了多少条成绩"
+    }
+  ]
+}

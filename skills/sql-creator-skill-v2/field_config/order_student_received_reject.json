@@ -14,5 +14,7 @@
   ],
   "calculated_fields": {},
   "business_constraints": {},
-  "business_rules": []
+  "business_rules": [
+    "查询驳回原因时仅当回款 status=2（驳回）才取，且只取最新一条：ORDER BY created_time DESC LIMIT 0,1"
+  ]
 }

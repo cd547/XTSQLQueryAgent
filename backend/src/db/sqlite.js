@@ -224,6 +224,27 @@ export async function initDatabase() {
   db.exec(`CREATE INDEX IF NOT EXISTS idx_my_queries_user_id ON my_queries(user_id)`);
   db.exec(`CREATE INDEX IF NOT EXISTS idx_my_queries_add_time ON my_queries(add_time)`);
 
+  // ★ 2026-08-25 A10：本地副本的元数据索引表
+  //   背景：DeepSeek 的 `user_data` purpose 的 content 端点永远是 404（即使刚上传），
+  //     必须自建副本才能稳定回显历史图片
+  //   设计：二进制落在 backend/file_cache/<file_id>（A6 目录），DB 只存元数据
+  //     - **不存路径、不存 BLOB**：磁盘路径 = FILE_CACHE_DIR/<file_id>，由 files.js 推导
+  //     - 项目挪目录 / Electron 便携模式换盘符后索引天然有效
+  //   用途：downloadFile 时先查这里拿 mimetype/确认存在，**不再依赖 DeepSeek content 端点**
+  //   历史注记：本表经历过三次 schema 演进（BLOB 版 → 含绝对路径列 → 含相对文件名列），
+  //     对应的一次性迁移代码已在存量数据全部升级后删除（2026-08-25）。
+  //     若仍有极老的库副本未升级，启动会因表结构不匹配报错，手工处理方式见
+  //     docs/V1/changelog/2026-08-25.md §B。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS file_storage (
+      file_id TEXT PRIMARY KEY,
+      mimetype TEXT,
+      bytes INTEGER,
+      saved_at DATETIME DEFAULT CURRENT_TIMESTAMP
+    )
+  `);
+  db.exec(`CREATE INDEX IF NOT EXISTS idx_file_storage_saved_at ON file_storage(saved_at)`);
+
   // 所有迁移完成后才标记为已初始化，getDb() 才允许返回实例
   initialized = true;
   console.log('SQLite initialized');

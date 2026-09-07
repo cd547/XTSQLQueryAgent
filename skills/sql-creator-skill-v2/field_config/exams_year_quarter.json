@@ -1,0 +1,19 @@
+{
+  "table_name": "exams_year_quarter",
+  "field_aliases": {},
+  "field_enums": {
+    "id": {
+      "1": "May/Jun (春季)",
+      "2": "Oct/Nov (秋季)",
+      "3": "Jan (冬季)"
+    },
+    "del": {
+      "0": "正常",
+      "1": "删除"
+    }
+  },
+  "virtual_associations": [],
+  "calculated_fields": {},
+  "business_constraints": {},
+  "business_rules": []
+}

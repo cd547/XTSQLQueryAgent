@@ -2,11 +2,7 @@
   "table_name": "study_abroad_document",
   "field_aliases": {
     "application_major": [
-      "申请专业",
       "专业方向"
-    ],
-    "study_abroad_major_id": [
-      "专业方向ID"
     ]
   },
   "field_enums": {},

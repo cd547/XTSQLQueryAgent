@@ -1,35 +1,43 @@
-import { DynamicTool } from '@langchain/core/tools';
-import fs from 'fs';
-import path from 'path';
-import { fileURLToPath } from 'url';
-import { logger } from '../logger.js';
-import { config } from '../config.js';
-import { validateSqlFields } from './validators.js';
+import { DynamicTool } from "@langchain/core/tools";
+import fs from "fs";
+import path from "path";
+import { fileURLToPath } from "url";
+import { logger } from "../logger.js";
+import { config } from "../config.js";
+import { validateSqlFields } from "./validators.js";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const projectRoot = config.projectRoot;
-const SKILL_V2_PATH = path.join(config.skillPath, 'sql-creator-skill-v2');
+const SKILL_V2_PATH = path.join(config.skillPath, "sql-creator-skill-v2");
+
+/**
+ * DDL 缺失标记：getTableDDL 在表 DDL 文件不存在时返回的占位块。
+ * validators.js 用 includes() 检测哪些表 DDL 缺失，必须用同一字符串。
+ * 抽常量避免硬编码耦合；格式：`-- 表 <name> 的 DDL 不存在`（注：-- + 1 空格是 SQL 注释）。
+ */
+export const MISSING_DDL_BLOCK = (name) =>
+  `-- 表 ${name} 的 DDL 不存在`;
 
 // 读取文件（如不存在返回 null）。单次系统调用，无 TOCTOU 竞态。
 // 每次调用都重新读盘——文件内容可能变化（schema 重建、tag 修改、DDL 变更等），
 // 禁止缓存。
-async function readFileIfExists(filePath, encoding = 'utf-8') {
+async function readFileIfExists(filePath, encoding = "utf-8") {
   try {
     return await fs.promises.readFile(filePath, encoding);
   } catch (e) {
-    if (e.code === 'ENOENT') return null;
+    if (e.code === "ENOENT") return null;
     throw e;
   }
 }
 
 export async function loadTableIndex() {
-  const tableIndexPath = path.join(SKILL_V2_PATH, 'table_index.json');
+  const tableIndexPath = path.join(SKILL_V2_PATH, "table_index.json");
   const content = await readFileIfExists(tableIndexPath);
   return content ? JSON.parse(content) : null;
 }
 
 export async function loadDomainRouterIndex() {
-  const domainIndexPath = path.join(SKILL_V2_PATH, 'domain_router_index.json');
+  const domainIndexPath = path.join(SKILL_V2_PATH, "domain_router_index.json");
   const content = await readFileIfExists(domainIndexPath);
   return content ? JSON.parse(content) : null;
 }
@@ -37,26 +45,26 @@ export async function loadDomainRouterIndex() {
 export async function sliceTableIndex(tableNames) {
   // 1. 规范化输入：转数组、去重、过滤空值和非字符串
   const arr = Array.isArray(tableNames) ? tableNames : [tableNames];
-  const uniqueNames = [...new Set(
-    arr.filter(n => typeof n === 'string' && n.trim())
-  )];
+  const uniqueNames = [
+    ...new Set(arr.filter((n) => typeof n === "string" && n.trim())),
+  ];
 
   // 2. 加载全量索引
   const full = await loadTableIndex();
   if (!full || !Array.isArray(full.tables) || full.tables.length === 0) {
-    logger.warn('sliceTableIndex: 全量索引为空或加载失败', { tableNames });
+    logger.warn("sliceTableIndex: 全量索引为空或加载失败", { tableNames });
     return {
-      version: full?.version || 'unknown',
-      description: 'Sliced index (source empty)',
+      version: full?.version || "unknown",
+      description: "Sliced index (source empty)",
       sliced_at: new Date().toISOString(),
-      source: 'table_index.json',
+      source: "table_index.json",
       request_tables: uniqueNames,
-      tables: []
+      tables: [],
     };
   }
 
   // 3. 建 name → table 映射 (O(1) 查找)
-  const fullByName = Object.fromEntries(full.tables.map(t => [t.name, t]));
+  const fullByName = Object.fromEntries(full.tables.map((t) => [t.name, t]));
 
   // 4. 切片：按入参顺序、跳过不存在的
   const tables = [];
@@ -74,13 +82,16 @@ export async function sliceTableIndex(tableNames) {
     version: full.version,
     description: `Sliced index (${tables.length}/${uniqueNames.length} matched)`,
     sliced_at: new Date().toISOString(),
-    source: 'table_index.json',
+    source: "table_index.json",
     request_tables: uniqueNames,
-    tables
+    tables,
   };
   if (missing.length > 0) {
     result.missing_tables = missing;
-    logger.warn('sliceTableIndex: 部分表名未在索引中找到', { missing, requested: uniqueNames });
+    logger.warn("sliceTableIndex: 部分表名未在索引中找到", {
+      missing,
+      requested: uniqueNames,
+    });
   }
 
   return result;
@@ -89,26 +100,29 @@ export async function sliceTableIndex(tableNames) {
 export async function sliceTableIndexByDomains(domainIds) {
   // 1. 规范化输入
   const arr = Array.isArray(domainIds) ? domainIds : [domainIds];
-  const uniqueIds = [...new Set(
-    arr.filter(id => typeof id === 'string' && id.trim())
-  )];
+  const uniqueIds = [
+    ...new Set(arr.filter((id) => typeof id === "string" && id.trim())),
+  ];
 
   // 2. 并行加载每个域的表名（多域时不再串行读盘）
-  const domainEntries = await Promise.all(uniqueIds.map(async (id) => {
-    const domainPath = path.join(SKILL_V2_PATH, 'domains', `${id}.json`);
-    const content = await readFileIfExists(domainPath);
-    if (!content) return { id, status: 'missing' };
-    const domain = JSON.parse(content);
-    if (!domain.tables || domain.tables.length === 0) return { id, status: 'empty' };
-    return { id, status: 'ok', tables: domain.tables };
-  }));
+  const domainEntries = await Promise.all(
+    uniqueIds.map(async (id) => {
+      const domainPath = path.join(SKILL_V2_PATH, "domains", `${id}.json`);
+      const content = await readFileIfExists(domainPath);
+      if (!content) return { id, status: "missing" };
+      const domain = JSON.parse(content);
+      if (!domain.tables || domain.tables.length === 0)
+        return { id, status: "empty" };
+      return { id, status: "ok", tables: domain.tables };
+    }),
+  );
 
   const tableNames = [];
   const missingDomains = [];
   const emptyDomains = [];
   for (const { id, status, tables } of domainEntries) {
-    if (status === 'missing') missingDomains.push(id);
-    else if (status === 'empty') emptyDomains.push(id);
+    if (status === "missing") missingDomains.push(id);
+    else if (status === "empty") emptyDomains.push(id);
     else tableNames.push(...tables);
   }
 
@@ -127,27 +141,72 @@ export async function sliceTableIndexByDomains(domainIds) {
   return sliced;
 }
 export async function loadSkillMd() {
-  const skillMdPath = path.join(SKILL_V2_PATH, 'SKILL.md');
+  const skillMdPath = path.join(SKILL_V2_PATH, "SKILL.md");
   const content = await readFileIfExists(skillMdPath);
   if (!content) {
-    throw new Error('SKILL.md 未找到，请确保目录存在 skills/sql-creator-skill-v2/SKILL.md');
+    throw new Error(
+      "SKILL.md 未找到，请确保目录存在 skills/sql-creator-skill-v2/SKILL.md",
+    );
   }
-  return content;
+  // ★ 2026-09-01：CRLF → LF 归一化（SKILL.md 在 Windows 下保存为 CRLF，
+  //   实测 97 个 \r 原样进入 system 消息，纯浪费 token；归一化后字节也跨环境稳定）
+  return content.replace(/\r\n/g, "\n");
+}
+
+/**
+ * 工具入参解析器：统一 5 个工具的 string/object 双兼容 + try/catch 模板。
+ *
+ * 用法：
+ *   const { parsed, error, content } = parseToolArgs(input, "get_table_schema");
+ *   if (error) return { error, content };
+ *   const tableNames = parsed?.table_names || [];
+ *
+ * 返回：
+ *   - {parsed: {...}}       成功：input 是 object 时直接返回；string 时 JSON.parse
+ *   - {error, content}      失败：caller 直接 return 给 LLM，error 字段给 caller
+ *                           判断是否"不终止 TURN 1"（content 是给 LLM 看的字符串）
+ *
+ * 设计取舍：
+ *   - 不做字段级校验：每个工具的 schema 不同，由各工具自己校验
+ *   - 不抹平 `null`：parsed?.foo 让 caller 处理 undefined
+ *   - 统一报错前缀 `⚠️ <toolName>`：LLM 看到能直接定位是哪个工具传错
+ */
+function parseToolArgs(input, toolName) {
+  if (input !== null && typeof input === "object") {
+    return { parsed: input };
+  }
+  if (typeof input === "string") {
+    try {
+      return { parsed: JSON.parse(input) };
+    } catch (e) {
+      logger.debug(`Parse ${toolName} params failed`, { error: e.message });
+      return {
+        error: "参数解析失败",
+        content: `⚠️ ${toolName} 参数解析失败，请传入合法 JSON。`,
+      };
+    }
+  }
+  return {
+    error: "参数格式错误",
+    content: `⚠️ ${toolName} 入参必须是 object 或 JSON 字符串。`,
+  };
 }
 
 function removeEmptyProperties(obj) {
   if (obj === null || obj === undefined) return undefined;
-  if (typeof obj !== 'object') {
-    if (typeof obj === 'string' && obj.trim() === '') return undefined;
+  if (typeof obj !== "object") {
+    if (typeof obj === "string" && obj.trim() === "") return undefined;
     return obj;
   }
-  
+
   if (Array.isArray(obj)) {
     if (obj.length === 0) return undefined;
-    const filtered = obj.map(item => removeEmptyProperties(item)).filter(item => item !== undefined);
+    const filtered = obj
+      .map((item) => removeEmptyProperties(item))
+      .filter((item) => item !== undefined);
     return filtered.length === 0 ? undefined : filtered;
   }
-  
+
   const result = {};
   for (const key of Object.keys(obj)) {
     const value = removeEmptyProperties(obj[key]);
@@ -191,7 +250,7 @@ function parseDDLFields(ddlContent) {
   // FK 引用映射：列名 → "target_table.col"（从 CONSTRAINT ... FOREIGN KEY ... REFERENCES 提取）
   const fkRefs = new Map();
 
-  for (const rawLine of ddlContent.split('\n')) {
+  for (const rawLine of ddlContent.split("\n")) {
     const line = rawLine.trim();
     if (!line) continue;
     // 跳过表头 / 表尾 / 分隔行
@@ -204,27 +263,31 @@ function parseDDLFields(ddlContent) {
     const pkMatch = line.match(/^PRIMARY\s+KEY\s*\(([^)]+)\)/i);
     if (pkMatch) {
       for (const col of extractColumnNames(pkMatch[1])) {
-        ensureField(fields, col).k = 'PRI';
+        ensureField(fields, col).k = "PRI";
       }
       continue;
     }
 
     // KEY `idx_name` (`col1`,`col2`)  /  KEY (`col`)
     // UNIQUE KEY `name` (`cols`)
-    const keyMatch = line.match(/^(UNIQUE\s+)?KEY\s+(?:`[^`]+`\s+)?\(([^)]+)\)/i);
+    const keyMatch = line.match(
+      /^(UNIQUE\s+)?KEY\s+(?:`[^`]+`\s+)?\(([^)]+)\)/i,
+    );
     if (keyMatch) {
       const isUnique = !!keyMatch[1];
-      const marker = isUnique ? 'UNI' : 'MUL';
+      const marker = isUnique ? "UNI" : "MUL";
       for (const col of extractColumnNames(keyMatch[2])) {
         // 已被 PRI 标记的不覆盖
-        if (fields[col]?.k === 'PRI') continue;
+        if (fields[col]?.k === "PRI") continue;
         ensureField(fields, col).k = marker;
       }
       continue;
     }
 
     // CONSTRAINT `name` FOREIGN KEY (`col`) REFERENCES `tgt` (`col`)
-    const fkMatch = line.match(/^CONSTRAINT\s+`?[^`\s(]+`?\s+FOREIGN\s+KEY\s*\(([^)]+)\)\s+REFERENCES\s+`?(\w+)`?\s*\(([^)]+)\)/i);
+    const fkMatch = line.match(
+      /^CONSTRAINT\s+`?[^`\s(]+`?\s+FOREIGN\s+KEY\s*\(([^)]+)\)\s+REFERENCES\s+`?(\w+)`?\s*\(([^)]+)\)/i,
+    );
     if (fkMatch) {
       const srcCols = extractColumnNames(fkMatch[1]);
       const tgtTable = fkMatch[2];
@@ -237,7 +300,9 @@ function parseDDLFields(ddlContent) {
 
     // 字段定义行： `col` type [NOT NULL] [DEFAULT ...] [COMMENT '...']
     // 类型可能带 size / unsigned / CHARACTER SET 等
-    const colMatch = line.match(/^`(\w+)`\s+([^\s,']+(?:\s*\([^)]*\))?(?:\s+unsigned|\s+zerofill)*)/i);
+    const colMatch = line.match(
+      /^`(\w+)`\s+([^\s,']+(?:\s*\([^)]*\))?(?:\s+unsigned|\s+zerofill)*)/i,
+    );
     if (colMatch) {
       const colName = colMatch[1];
       const colType = colMatch[2].trim();
@@ -245,7 +310,9 @@ function parseDDLFields(ddlContent) {
       const rest = line.slice(colMatch[0].length);
       const isNotNull = /\bNOT\s+NULL\b/i.test(rest);
       // DEFAULT 后面跟一个字面量（数字 / 字符串 / 关键字如 CURRENT_TIMESTAMP）
-      const defaultMatch = rest.match(/\bDEFAULT\s+((?:'[^']*')|(?:\([^)]*\))|(?:CURRENT_TIMESTAMP(?:\s+ON\s+UPDATE\s+CURRENT_TIMESTAMP)?)|[^\s,]+)/i);
+      const defaultMatch = rest.match(
+        /\bDEFAULT\s+((?:'[^']*')|(?:\([^)]*\))|(?:CURRENT_TIMESTAMP(?:\s+ON\s+UPDATE\s+CURRENT_TIMESTAMP)?)|[^\s,]+)/i,
+      );
       const commentMatch = rest.match(/\bCOMMENT\s+'((?:''|[^'])*)'/i);
 
       const f = ensureField(fields, colName);
@@ -256,7 +323,7 @@ function parseDDLFields(ddlContent) {
         // 字符串默认值去引号（'0' → 0, 'pending' → pending）——LLM 视觉上更干净
         if (/^'.*'$|^".*"$/.test(dv)) dv = dv.slice(1, -1);
         // 跳过空串默认（对 nullable 字段无信息量）+ 跳过 NULL（缺省即 nullable 语义）
-        if (dv !== '' && dv !== 'NULL') f.d = dv;
+        if (dv !== "" && dv !== "NULL") f.d = dv;
       }
       if (commentMatch) f.c = commentMatch[1].replace(/''/g, "'");
       continue;
@@ -275,8 +342,8 @@ function parseDDLFields(ddlContent) {
 function extractColumnNames(colListStr) {
   const names = [];
   const seen = new Set();
-  for (const part of colListStr.split(',')) {
-    const name = part.trim().replace(/^`|`$/g, '');
+  for (const part of colListStr.split(",")) {
+    const name = part.trim().replace(/^`|`$/g, "");
     if (name && !seen.has(name)) {
       seen.add(name);
       names.push(name);
@@ -308,41 +375,51 @@ export async function getTableSchema(tableNames, options = {}) {
   const { verbose = false } = options;
   const names = Array.isArray(tableNames) ? tableNames : [tableNames];
   // 并行读所有表的 field_config + DDL（多表场景下两个盘都并行触发，不再串行）
-  const entries = await Promise.all(names.map(async (name) => {
-    const fieldConfigPath = path.join(SKILL_V2_PATH, 'field_config', `${name}.json`);
-    const ddlPath = path.join(SKILL_V2_PATH, 'ddl', `${name}.sql`);
+  const entries = await Promise.all(
+    names.map(async (name) => {
+      const fieldConfigPath = path.join(
+        SKILL_V2_PATH,
+        "field_config",
+        `${name}.json`,
+      );
+      const ddlPath = path.join(SKILL_V2_PATH, "ddl", `${name}.sql`);
 
-    // 单表内也并行读两个文件（fs.promises 读两个盘比串行快一截）
-    const [fcContent, ddlContent] = await Promise.all([
-      readFileIfExists(fieldConfigPath),
-      readFileIfExists(ddlPath),
-    ]);
+      // 单表内也并行读两个文件（fs.promises 读两个盘比串行快一截）
+      const [fcContent, ddlContent] = await Promise.all([
+        readFileIfExists(fieldConfigPath),
+        readFileIfExists(ddlPath),
+      ]);
 
-    if (!fcContent && !ddlContent) {
-      return [name, { error: `表 ${name} 的 field_config 和 DDL 均不存在` }];
-    }
+      if (!fcContent && !ddlContent) {
+        return [name, { error: `表 ${name} 的 field_config 和 DDL 均不存在` }];
+      }
 
-    const result = {};
+      const result = {};
 
-    // 1. field_config 部分：aliases / enums / associations / rules
-    if (fcContent) {
-      const config = JSON.parse(fcContent);
-      const simplified = removeEmptyProperties(config);
-      if (simplified) Object.assign(result, simplified);
-    }
+      // 1. field_config 部分：aliases / enums / associations / rules
+      if (fcContent) {
+        const config = JSON.parse(fcContent);
+        const simplified = removeEmptyProperties(config);
+        if (simplified) Object.assign(result, simplified);
+        // 外层 key 已是表名，剔除配置文件里冗余的 table_name 字段
+        delete result.table_name;
+      }
 
-    // 2. DDL 部分：fields（含类型/索引/外键）
-    //    放在第一位：LLM 工具 prompt 里把"fields"作为主结构，更显眼
-    if (ddlContent) {
-      result.fields = parseDDLFields(ddlContent);
-    }
+      // 2. DDL 部分：fields（含类型/索引/外键）
+      //    放在第一位：LLM 工具 prompt 里把"fields"作为主结构，更显眼
+      if (ddlContent) {
+        result.fields = parseDDLFields(ddlContent);
+      }
 
-    // table_name 是冗余的：LLM 从工具调用的 args.table_names 已知是哪个表，
-    // 外层 Object.fromEntries 的 key 也已经是表名。删掉每表省 ~15 字符。
-    delete result.table_name;
+      // ★ 2026-08-24：恢复 name 字段（让 JSON 自描述表名）
+      //   早期版本有 `delete result.table_name` 注释说"冗余省 15 字符"，
+      //   但用户在前端读 JSON 时经常困惑"这是哪张表的数据"——LLM 从 args.table_names 知道，
+      //   但人类看不到。name 字段短（一般 10-25 字符），相比可读性收益值得保留。
+      result.name = name;
 
-    return [name, result];
-  }));
+      return [name, result];
+    }),
+  );
   const result = Object.fromEntries(entries);
   // F20 (2026-08)：精简模式（默认）下过滤掉 k/nn/d 三类对 SELECT 几乎无用的属性
   //   verbose=true 时保留全量（EXPLAIN 优化 / 排查默认值等场景）
@@ -360,7 +437,7 @@ export async function getTableSchema(tableNames, options = {}) {
 }
 
 function simplifyDDL(ddlContent) {
-  const lines = ddlContent.split('\n');
+  const lines = ddlContent.split("\n");
   const filtered = [];
 
   const skipPatterns = [
@@ -374,19 +451,19 @@ function simplifyDDL(ddlContent) {
   for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) continue;
-    if (skipPatterns.some(p => p.test(trimmed))) continue;
+    if (skipPatterns.some((p) => p.test(trimmed))) continue;
 
     // 精简字段行：只保留 字段名 + 类型 + COMMENT
     const nameMatch = trimmed.match(/`\w+`/);
     const typeMatch = trimmed.match(/`\w+`\s+(\w+(?:\([^)]*\))?)/);
     const commentMatch = trimmed.match(/(COMMENT\s+'[^']*(?:''[^']*)*')/);
     if (nameMatch && typeMatch) {
-      let simplified = nameMatch[0] + ' ' + typeMatch[1];
+      let simplified = nameMatch[0] + " " + typeMatch[1];
       if (commentMatch) {
-        simplified += ' ' + commentMatch[1];
+        simplified += " " + commentMatch[1];
       }
       if (/,\s*$/.test(trimmed)) {
-        simplified += ',';
+        simplified += ",";
       }
       filtered.push(simplified);
     } else {
@@ -395,38 +472,31 @@ function simplifyDDL(ddlContent) {
   }
 
   if (filtered.length > 0) {
-    filtered[filtered.length - 1] = filtered[filtered.length - 1].replace(/,\s*$/, '');
+    filtered[filtered.length - 1] = filtered[filtered.length - 1].replace(
+      /,\s*$/,
+      "",
+    );
   }
 
-  return filtered.join('\n');
+  return filtered.join("\n");
 }
 
 export async function getTableDDL(tableNames, options = {}) {
   const names = Array.isArray(tableNames) ? tableNames : [tableNames];
   const short = options.short == 1;
   // 并行读所有表的 DDL（多表时不再串行读盘）
-  const blocks = await Promise.all(names.map(async (name) => {
-    const ddlPath = path.join(SKILL_V2_PATH, 'ddl', `${name}.sql`);
-    const content = await readFileIfExists(ddlPath);
-    if (content) {
-      const ddl = short ? simplifyDDL(content) : content;
-      return `-- @@TABLE ${name}\n${ddl}`;
-    }
-    return `-- @@TABLE ${name}\n-- 表 ${name} 的DDL不存在`;
-  }));
-  return blocks.join('\n\n');
-}
-
-export async function getOutputFormat() {
-  const outputFormatPath = path.join(SKILL_V2_PATH, 'templates', 'output_format.md');
-  const content = await readFileIfExists(outputFormatPath);
-  return content || '输出格式模板不存在';
-}
-
-export async function getMysqlLimits() {
-  const mysqlLimitsPath = path.join(SKILL_V2_PATH, 'docs', 'mysql57_limits.md');
-  const content = await readFileIfExists(mysqlLimitsPath);
-  return content || 'MySQL 5.7 限制信息不存在';
+  const blocks = await Promise.all(
+    names.map(async (name) => {
+      const ddlPath = path.join(SKILL_V2_PATH, "ddl", `${name}.sql`);
+      const content = await readFileIfExists(ddlPath);
+      if (content) {
+        const ddl = short ? simplifyDDL(content) : content;
+        return `-- @@TABLE ${name}\n${ddl}`;
+      }
+      return `-- @@TABLE ${name}\n${MISSING_DDL_BLOCK(name)}`;
+    }),
+  );
+  return blocks.join("\n\n");
 }
 
 export function requestTagConfirmation(term, table, description) {
@@ -440,22 +510,24 @@ export function requestTagConfirmation(term, table, description) {
 // 关键：返回结构化对象 {id, marker, payload} —— 让 caller 拿到 id 写入 registry
 // 不返回单纯 marker 字符串（否则 registry 与 marker 的 id 无法关联，reviewer #2 已确认是严重 bug）
 export function makeUserChoiceId() {
-  return 'uc_' + Math.random().toString(36).slice(2, 8);
+  return "uc_" + Math.random().toString(36).slice(2, 8);
 }
 
 export function buildUserChoiceMarker(question, options, multiSelect, header) {
   const id = makeUserChoiceId();
   const payload = {
     id,
-    question: String(question || '').slice(0, 200),
-    options: (Array.isArray(options) ? options : []).slice(0, 4).map(o => String(o).slice(0, 100)),
+    question: String(question || "").slice(0, 200),
+    options: (Array.isArray(options) ? options : [])
+      .slice(0, 4)
+      .map((o) => String(o).slice(0, 100)),
     multi_select: !!multiSelect,
-    header: String(header || '').slice(0, 12)
+    header: String(header || "").slice(0, 12),
   };
   return {
     id,
     marker: `<!--user_choice:${JSON.stringify(payload)}-->`,
-    payload
+    payload,
   };
 }
 
@@ -466,30 +538,45 @@ function validateQuestions(questions) {
     return { ok: false, msg: "questions 必须是非空数组" };
   }
   if (questions.length > 3) {
-    return { ok: false, msg: `questions 最多 3 条（再多弹窗链过长），当前 ${questions.length}` };
+    return {
+      ok: false,
+      msg: `questions 最多 3 条（再多弹窗链过长），当前 ${questions.length}`,
+    };
   }
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i] || {};
     const idx = i + 1;
-    if (!q.question || typeof q.question !== 'string') {
+    if (!q.question || typeof q.question !== "string") {
       return { ok: false, msg: `第 ${idx} 题 question 必填且为字符串` };
     }
     if (q.question.length > 200) {
-      return { ok: false, msg: `第 ${idx} 题 question ≤200 字（当前 ${q.question.length}）` };
+      return {
+        ok: false,
+        msg: `第 ${idx} 题 question ≤200 字（当前 ${q.question.length}）`,
+      };
     }
     if (!Array.isArray(q.options) || q.options.length < 1) {
       return { ok: false, msg: `第 ${idx} 题 options 至少 1 个` };
     }
     if (q.options.length > 4) {
-      return { ok: false, msg: `第 ${idx} 题 options 最多 4 个（当前 ${q.options.length}）` };
+      return {
+        ok: false,
+        msg: `第 ${idx} 题 options 最多 4 个（当前 ${q.options.length}）`,
+      };
     }
     for (let j = 0; j < q.options.length; j++) {
       const opt = q.options[j];
-      if (!opt || typeof opt !== 'string') {
-        return { ok: false, msg: `第 ${idx} 题 第 ${j+1} 个 option 必填且为字符串` };
+      if (!opt || typeof opt !== "string") {
+        return {
+          ok: false,
+          msg: `第 ${idx} 题 第 ${j + 1} 个 option 必填且为字符串`,
+        };
       }
       if (opt.length > 100) {
-        return { ok: false, msg: `第 ${idx} 题 第 ${j+1} 个 option ≤100 字（当前 ${opt.length}）` };
+        return {
+          ok: false,
+          msg: `第 ${idx} 题 第 ${j + 1} 个 option ≤100 字（当前 ${opt.length}）`,
+        };
       }
     }
   }
@@ -510,94 +597,80 @@ export function requestUserChoice(questions) {
   if (!v.ok) {
     return {
       error: v.msg,
-      content: `⚠️ ${v.msg}。请修正后重新调用 request_user_choice(questions: [...])。`
+      content: `⚠️ ${v.msg}。请修正后重新调用 request_user_choice(questions: [...])。`,
     };
   }
-  const items = questions.map(q => {
-    const r = buildUserChoiceMarker(q.question, q.options, q.multi_select, q.header);
+  const items = questions.map((q) => {
+    const r = buildUserChoiceMarker(
+      q.question,
+      q.options,
+      q.multi_select,
+      q.header,
+    );
     return { marker: r.marker, payload: r.payload, id: r.id };
   });
   return {
-    markers: items.map(it => it.marker),
-    payloads: items.map(it => it.payload),
-    ids: items.map(it => it.id),
-    content: items.map(it => it.marker).join(''),
+    markers: items.map((it) => it.marker),
+    payloads: items.map((it) => it.payload),
+    ids: items.map((it) => it.id),
+    content: items.map((it) => it.marker).join(""),
   };
 }
 
 // 表格卡片格式化：与 get_tables 输出保持一致，供 get_sliced_index 共用
+// 注意：business_constraints / business_rules 五分支防御（避免 `${label}: ${desc}`
+//   在任一为空时产生 "undefined: D" / "X: undefined"）。
+// ★ 2026-08-25：formatTableInfoCompact 已随折叠机制移除（方案 B 不折叠），
+//   本函数成为唯一的表格卡片格式化实现。
+// ★ 2026-09-02：related_tables 行改为开关控制（默认关闭）——关联发现职责移交
+//   get_table_schema 的 virtual_associations（含 join_condition，信息更精确），
+//   置 true 可恢复旧格式（恢复前需补齐 37 张空 VA 表的数据，见 06-问题清单.md）。
+const SHOW_RELATED_TABLES_IN_CARDS = false;
+
 function formatTableInfo(tables) {
-  return tables.map(t => {
-    let info = `- ${t.name}: ${t.description || ''}`;
-    if (t.tags?.length) info += `\n  标签: ${t.tags.join(', ')}`;
-    if (t.related_tables?.length) info += `\n  关联表: ${t.related_tables.join(', ')}`;
-    if (t.business_constraints?.length) {
-      info += `\n  业务约束:`;
-      t.business_constraints.forEach(c => {
-        if (typeof c === 'string') {
-          info += `\n    - ${c}`;
-        } else {
-          info += `\n    - ${c.name}: ${c.description}`;
-        }
-      });
-    }
-    if (t.business_rules?.length) {
-      info += `\n  业务规则:`;
-      t.business_rules.forEach(r => {
-        if (typeof r === 'string') {
-          info += `\n    - ${r}`;
-        } else {
-          info += `\n    - ${r.rule || r.description}: ${r.description}`;
+  return tables
+    .map((t) => {
+      let info = `- ${t.name}: ${t.description || ""}`;
+      if (t.tags?.length) info += `\n  标签: ${t.tags.join(", ")}`;
+      if (SHOW_RELATED_TABLES_IN_CARDS && t.related_tables?.length)
+        info += `\n  关联表: ${t.related_tables.join(", ")}`;
+      if (t.business_constraints?.length) {
+        info += `\n  业务约束:`;
+        t.business_constraints.forEach((c) => {
+          if (typeof c === "string") {
+            info += `\n    - ${c}`;
+          } else if (c.name) {
+            info += `\n    - ${c.name}: ${c.description || ""}`;
+          } else if (c.description) {
+            info += `\n    - ${c.description}`;
+          } else {
+            info += `\n    - (空约束)`;
+          }
+        });
+      }
+      if (t.business_rules?.length) {
+        info += `\n  业务规则:`;
+        t.business_rules.forEach((r) => {
+          if (typeof r === "string") {
+            info += `\n    - ${r}`;
+          } else if (r.rule) {
+            info += `\n    - ${r.rule}: ${r.description || ""}`;
+          } else if (r.description) {
+            info += `\n    - ${r.description}`;
+          } else {
+            info += `\n    - (空规则)`;
+          }
           if (r.query) info += `\n      示例: ${r.query}`;
-        }
-      });
-    }
-    return info;
-  }).join('\n\n');
+        });
+      }
+      return info;
+    })
+    .join("\n\n");
 }
 
-// 折叠版表格卡片：去掉 related_tables（schema 的 virtual_associations 可替代），
-// 保留 name/description/tags/business_constraints/business_rules。
-// 供 compactConsumedToolResults 使用，与 formatTableInfo 区别仅在于不输出 related_tables。
-// 注意：business_constraints / business_rules 两处并行修复了 formatTableInfo 的
-//   "label/desc 任一缺失时显示 undefined" 缺陷（原模式 `${label}: ${desc}` 在任一为空时产生 "undefined: D" 或 "X: undefined"）。
-export function formatTableInfoCompact(tables) {
-  return tables.map(t => {
-    let info = `- ${t.name}: ${t.description || ''}`;
-    if (t.tags?.length) info += `\n  标签: ${t.tags.join(', ')}`;
-    // 注意：不输出 related_tables，由 schema 的 virtual_associations 替代
-    if (t.business_constraints?.length) {
-      info += `\n  业务约束:`;
-      t.business_constraints.forEach(c => {
-        if (typeof c === 'string') {
-          info += `\n    - ${c}`;
-        } else if (c.name) {
-          info += `\n    - ${c.name}: ${c.description || ''}`;
-        } else if (c.description) {
-          info += `\n    - ${c.description}`;
-        } else {
-          info += `\n    - (空约束)`;
-        }
-      });
-    }
-    if (t.business_rules?.length) {
-      info += `\n  业务规则:`;
-      t.business_rules.forEach(r => {
-        if (typeof r === 'string') {
-          info += `\n    - ${r}`;
-        } else if (r.rule) {
-          info += `\n    - ${r.rule}: ${r.description || ''}`;
-        } else if (r.description) {
-          info += `\n    - ${r.description}`;
-        } else {
-          info += `\n    - (空规则)`;
-        }
-        if (r.query) info += `\n      示例: ${r.query}`;
-      });
-    }
-    return info;
-  }).join('\n\n');
-}
+// ★ 2026-08-25：formatTableInfoCompact 已删除 —— 它随折叠机制（compactConsumedToolResults）
+//   一起移除（方案 B 不折叠）。它与 formatTableInfo 的唯一差异是不输出 related_tables，
+//   实测该差异仅占完整版 token 的 ~47%，却导致模型无法批量规划多表 schema 调用。
 
 export const tools = [
   // new DynamicTool({
@@ -643,113 +716,124 @@ export const tools = [
   // }),
   new DynamicTool({
     name: "get_table_schema",
-    description: "获取指定表的详细信息：列名/类型/注释/外键 + 字段别名/枚举/虚拟关联/业务规则。",
+    description:
+      "获取指定表的字段信息。返回 JSON：\n" +
+      "• 单表: {fields, aliases?, enums?, virtual_associations?, business_constraints?, business_rules?}\n" +
+      "  - fields: {列名: {t:类型, c?:注释, fk?:外键}}\n" +
+      "  - 失败: {error: '原因'}\n" +
+      "• 多表: {表名: <单表结构>, ...}",
     params: {
-      type: 'object',
+      type: "object",
       properties: {
-        table_names: { type: 'array', items: { type: 'string' }, description: '查询的表名' }
+        table_names: {
+          type: "array",
+          items: { type: "string" },
+          description: "表名数组",
+        },
       },
-      required: ['table_names']
+      required: ["table_names"],
     },
     func: async (input) => {
-      let tableNames = [];
-      try {
-        if (typeof input === 'object' && input !== null) {
-          tableNames = input.table_names || [];
-        } else if (typeof input === 'string') {
-          const parsed = JSON.parse(input);
-          tableNames = parsed.table_names || [];
-        }
-      } catch (e) { logger.debug('Parse tableNames failed', { error: e.message }); }
-      if (!Array.isArray(tableNames) || tableNames.length === 0) return '请提供 table_names 参数（表名数组）';
+      const { parsed, error, content } = parseToolArgs(
+        input,
+        "get_table_schema",
+      );
+      if (error) return { error, content };
+      const tableNames = parsed?.table_names || [];
+      if (!Array.isArray(tableNames) || tableNames.length === 0) {
+        return {
+          error: "table_names 必填",
+          content: "⚠️ get_table_schema 需要 table_names 参数（表名数组）。",
+        };
+      }
       // 紧凑 JSON：无缩进。deepseek-v3 对 JSON 结构化数据解析无差别，
       // 但能省 25-40% token（多表场景节省更显著），且对多轮上下文累积友好。
       // F20：LLM 永远拿到精简版（仅 t/c/fk），无需 verbose 选项
       return JSON.stringify(await getTableSchema(tableNames));
-    }
+    },
   }),
   new DynamicTool({
     name: "request_tag_confirmation",
-    description: "当用户纠正表名或给出术语-表映射时，请求用户确认是否将该术语加入表标签。",
+    description:
+      "当用户纠正表名或给出术语-表映射时，请求用户确认是否将该术语加入表标签。",
     params: {
-      type: 'object',
+      type: "object",
       properties: {
-        term: { type: 'array', items: { type: 'string' }, description: '术语/关键词数组' },
-        table: { type: 'string', description: '关联的表名' },
-        description: { type: 'string', description: '表的描述信息' }
+        term: {
+          type: "array",
+          items: { type: "string" },
+          description: "术语/关键词数组",
+        },
+        table: { type: "string", description: "关联的表名" },
+        description: { type: "string", description: "表的描述信息" },
       },
-      required: ['term', 'table']
+      required: ["term", "table"],
     },
     func: (params) => {
-      let term, table, description;
-      try {
-        if (typeof params === 'object') {
-          term = params.term;
-          table = params.table;
-          description = params.description;
-        } else if (typeof params === 'string') {
-          const parsed = JSON.parse(params);
-          term = parsed.term;
-          table = parsed.table;
-          description = parsed.description;
-        }
-      } catch (e) { logger.debug('Parse params failed', { error: e.message }); }
-
+      const { parsed, error, content } = parseToolArgs(
+        params,
+        "request_tag_confirmation",
+      );
+      if (error) return { error, content };
+      const { term, table, description } = parsed || {};
       if (!term || !table) {
-        return '请提供 term(术语数组) 和 table(表名) 参数';
+        return {
+          error: "term 和 table 必填",
+          content:
+            "⚠️ request_tag_confirmation 需要 term(术语数组) 和 table(表名) 参数。",
+        };
       }
-
-      return requestTagConfirmation(term, table, description || '');
-    }
+      return requestTagConfirmation(term, table, description || "");
+    },
   }),
   // ★ request_user_choice 工具（v3: questions[] 数组契约）
   //   位置：稳定工具组末尾，**严禁放首位**——会破坏 prefix cache
   new DynamicTool({
     name: "request_user_choice",
-    description: "当任务需要用户确认/选择/补充才能继续时调用。\n" +
-      "传 questions: 1-3 个独立问题（每题 question + options 1-4 项，字段约束见 schema）。" +
-      "调用后程序自动结束当前轮次并弹出对话框。",
+    description:
+      "当需要用户确认/选择/补充才能继续时调用。",
     params: {
-      type: 'object',
+      type: "object",
       properties: {
         questions: {
-          type: 'array',
-          description: '问题数组',
-          minItems: 1, maxItems: 3,
+          type: "array",
+          description: "问题数组",
+          minItems: 1,
+          maxItems: 3,
           items: {
-            type: 'object',
+            type: "object",
             properties: {
-              question: { type: 'string', description: '问题，≤200 字' },
-              options: { type: 'array', items: { type: 'string' }, description: '选项，每项 ≤100 字', minItems: 1, maxItems: 4 },
-              multi_select: { type: 'boolean', description: 'true=多选/checkbox，false=单选/radio，默认 false' },
-              header: { type: 'string', description: '问题分类标签，≤12 字' }
+              question: { type: "string", description: "≤200 字" },
+              options: {
+                type: "array",
+                items: { type: "string" },
+                description: "每项 ≤100 字",
+                minItems: 1,
+                maxItems: 4,
+              },
+              multi_select: {
+                type: "boolean",
+                description: "true=多选, false=单选(默认)",
+              },
+              header: { type: "string", description: "问题标签，≤12 字" },
             },
-            required: ['question', 'options']
-          }
-        }
+            required: ["question", "options"],
+          },
+        },
       },
-      required: ['questions']
+      required: ["questions"],
     },
     func: (params) => {
-      // 解析（string/object 双兼容）
-      let questions;
-      try {
-        if (typeof params === 'object' && params !== null) {
-          questions = params.questions;
-        } else if (typeof params === 'string') {
-          const parsed = JSON.parse(params);
-          questions = parsed.questions;
-        }
-      } catch (e) {
-        logger.debug('Parse request_user_choice params failed', { error: e.message });
-        return { error: '参数解析失败', content: '⚠️ request_user_choice 参数解析失败，请传入合法 JSON。' };
-      }
-
+      const { parsed, error, content } = parseToolArgs(
+        params,
+        "request_user_choice",
+      );
+      if (error) return { error, content };
       // ★ 校验 + 单调用拆 N marker
       //   success: {markers, payloads, ids, content} 给后端 phase 3 解析
       //   error:   {error, content} LLM 看到 content 修正后重试
-      return requestUserChoice(questions);
-    }
+      return requestUserChoice(parsed?.questions);
+    },
   }),
   // ===== 可变工具：调用一次后会被剪枝（见 llm.js 中的剪枝逻辑）=====
   // 剪枝顺序：get_sliced_index 后剪（Round 3 后）
@@ -758,96 +842,109 @@ export const tools = [
   //     description 显式标记"已废弃"，LLM 不应再调用。
   new DynamicTool({
     name: "get_domain_index",
-    description: "【已废弃，请勿调用】业务域列表已嵌入系统提示词的「可用业务域」小节，根据问题直接选域后调用 get_sliced_index(domain_ids) 即可。调用本工具将浪费 token 且不会得到新信息。",
+    description:
+      "【已废弃，请勿调用】业务域列表已嵌入系统提示词的「可用业务域」小节，根据问题直接选域后调用 get_sliced_index(domain_ids) 即可。调用本工具将浪费 token 且不会得到新信息。",
     params: {
-      type: 'object',
+      type: "object",
       properties: {},
-      required: []
+      required: [],
     },
     func: async () => {
       const domainIndex = await loadDomainRouterIndex();
-      if (!domainIndex || !domainIndex.domains) return '暂无业务域数据';
-      return domainIndex.domains.map(d =>
-        `- ${d.id} (${d.name}): ${d.description}`
-      ).join('\n');
-    }
+      if (!domainIndex || !domainIndex.domains) {
+        return {
+          error: "domain_index 不存在",
+          content: "⚠️ get_domain_index 暂无业务域数据。",
+        };
+      }
+      return domainIndex.domains
+        .map((d) => `- ${d.id} (${d.name}): ${d.description}`)
+        .join("\n");
+    },
   }),
   new DynamicTool({
     name: "get_sliced_index",
     description: "传入domain_id，返回这些域的候选表。",
     params: {
-      type: 'object',
+      type: "object",
       properties: {
-        domain_ids: { type: 'array', items: { type: 'string' }, description: '业务域 id 数组（1-5 个），如 [\"people\", \"finance\"]' }
+        domain_ids: {
+          type: "array",
+          items: { type: "string" },
+          description: '业务域 id 数组（1-5 个），如 [\"people\", \"finance\"]',
+        },
       },
-      required: ['domain_ids']
+      required: ["domain_ids"],
     },
     func: async (input) => {
-      let domainIds = [];
-      try {
-        if (typeof input === 'object' && input !== null) {
-          domainIds = input.domain_ids || [];
-        } else if (typeof input === 'string') {
-          const parsed = JSON.parse(input);
-          domainIds = parsed.domain_ids || [];
-        }
-      } catch (e) { logger.debug('Parse domainIds failed', { error: e.message }); }
+      const { parsed, error, content } = parseToolArgs(
+        input,
+        "get_sliced_index",
+      );
+      if (error) return { error, content };
+      const domainIds = parsed?.domain_ids || [];
       if (!Array.isArray(domainIds) || domainIds.length === 0) {
-        return '请提供 domain_ids 参数（业务域 id 数组）';
+        return {
+          error: "domain_ids 必填",
+          content: "⚠️ get_sliced_index 需要 domain_ids 参数（业务域 id 数组）。",
+        };
       }
       const sliced = await sliceTableIndexByDomains(domainIds);
       if (!sliced.tables || sliced.tables.length === 0) {
-        return '指定域下未找到任何表';
+        return {
+          error: "域下无表",
+          content: `⚠️ get_sliced_index: 指定域 ${JSON.stringify(domainIds)} 下未找到任何表。`,
+        };
       }
       return formatTableInfo(sliced.tables);
-    }
+    },
   }),
   // ===== 稳定工具（不剪枝，可多次调用）=====
   // validate_sql_fields：LLM 输出 SQL 前的自检工具（不剪枝，LLM 可反复调用直到通过）
   // 详见 docs/superpowers/plans/2026-07-23-validate-sql-fields-tool-final.md
   new DynamicTool({
     name: "validate_sql_fields",
-    description: "【SQL 质量自检】输出 SQL 前必调，校验规则：\n" +
+    description:
+      "【SQL 质量自检】输出 SQL 前必调，校验规则：\n" +
       "  R1 字段-表归属\n" +
       "  R2 字段别名反引号\n" +
       "  R3 MySQL 5.7 限制\n" +
       "  R5 必须含 LIMIT\n" +
-      "返回 {valid, errors, summary}。" ,
+      "  R6 真实库 EXPLAIN 对账\n" +
+      "返回 {valid, errors, summary, explain}。",
     params: {
-      type: 'object',
+      type: "object",
       properties: {
-        sql: { type: 'string', description: '待校验的SQL' }
+        sql: { type: "string", description: "待校验的SQL" },
       },
-      required: ['sql']
+      required: ["sql"],
     },
     func: async (input) => {
-      // 解析（string/object 双兼容，与其他工具一致）
-      let sql = '';
-      try {
-        if (typeof input === 'object' && input !== null) {
-          sql = String(input.sql || '');
-        } else if (typeof input === 'string') {
-          const parsed = JSON.parse(input);
-          sql = String(parsed.sql || '');
-        }
-      } catch (e) {
-        logger.debug('Parse validate_sql_fields params failed', { error: e.message });
-        return { error: '参数解析失败', content: '⚠️ validate_sql_fields 参数解析失败，请传入合法 JSON（{sql: "..."}）。' };
-      }
+      const { parsed, error, content } = parseToolArgs(
+        input,
+        "validate_sql_fields",
+      );
+      if (error) return { error, content };
+      const sql = String(parsed?.sql || "");
       if (!sql.trim()) {
-        return { error: 'sql 必填', content: '⚠️ validate_sql_fields 需要 sql 参数。' };
+        return {
+          error: "sql 必填",
+          content: "⚠️ validate_sql_fields 需要 sql 参数。",
+        };
       }
       // 返回结构化对象（caller 从 rawResult 读 valid / errors 写入 registry）
       //   - content 字段：序列化后的字符串，给 LLM 看的（content 必须是 string/list）
       //   - valid / errors / summary 字段：结构化数据，给 llm.js 写 registry 用
+      //   紧凑 JSON（与 get_table_schema 一致，省 20-30% token）；
+      //   前端 ChatMessage 对紧凑 JSON 会自动 pretty 后再展示，人类阅读不受影响
       const result = await validateSqlFields({ sql });
       return {
-        content: JSON.stringify(result, null, 2),
+        content: JSON.stringify(result),
         valid: result.valid,
         errors: result.errors,
         summary: result.summary,
       };
-    }
+    },
   }),
   // ===== F23 (2026-08): get_call_history =====
   // 由 llm.js 在每轮强制注入到 assistant.tool_calls 最前面的"系统工具"。
@@ -857,17 +954,18 @@ export const tools = [
   // 不放入 LLM_TOOLS（filter 已过滤），LLM 看不到该工具。
   new DynamicTool({
     name: "get_call_history",
-    description: "【系统工具，由程序自动注入】返回本会话已调用的工具历史。无入参。",
+    description:
+      "【系统工具，由程序自动注入】返回本会话已调用的工具历史。无入参。",
     params: {
-      type: 'object',
+      type: "object",
       properties: {},
-      required: []
+      required: [],
     },
     func: async () => {
       // 占位返回：实际值由 llm.js 工具执行循环拦截后构造
       return '{"called_count":0,"called_tools":[],"_note":"interceptor-overridden"}';
-    }
-  })
+    },
+  }),
 ];
 
 // ============================================================
@@ -882,7 +980,7 @@ export const tools = [
 //   - llm.js 强制注入时使用 synthetic tool_call_id
 // ============================================================
 export const LLM_TOOLS = tools.filter(
-  (t) => t.name !== "get_domain_index" && t.name !== "get_call_history"
+  (t) => t.name !== "get_domain_index" && t.name !== "get_call_history",
 );
 
 // ============================================================
@@ -897,14 +995,18 @@ export async function buildSystemMessage(skillMd) {
   const domainIndex = await loadDomainRouterIndex();
   // F19 (2026-08)：id 加反引号 + 中文名用全角括号，结构上让 id 更突出
   //   降低模型把"name"误当成 id 传给 get_sliced_index 的概率
-  const domainList = (domainIndex?.domains || [])
-    .map((d) => `- \`${d.id}\`（${d.name}）: ${d.description}`)
-    .join("\n") || "（暂无业务域）";
+  const domainList =
+    (domainIndex?.domains || [])
+      .map((d) => `- \`${d.id}\`（${d.name}）: ${d.description}`)
+      .join("\n") || "（暂无业务域）";
   return (
     `你是XTSQLQueryAgent。严格遵守以下规则，随后根据用户问题生成SQL。\n` +
     `${skillMd}\n\n` +
     `## 可用业务域\n` +
     `> 传给 get_sliced_index 的 domain_ids 必须是左侧 \`id\`（英文部分），不是括号里的中文名。\n` +
-    `${domainList}`
+    `${domainList}\n\n` +
+    `## 输出风格（硬规则）\n` +
+    `- **遇到信息不足时立即询问用户**：如果连续调用 2 次工具仍无法定位所需字段或表，**必须立刻调 \`request_user_choice\` 询问用户**，不要继续调工具。\n` +
+    `- **每个工具调用前必须明确目的**：在调用工具前先用一句话说明要查什么、为什么查。`
   );
 }

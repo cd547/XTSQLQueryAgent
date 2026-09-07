@@ -1,18 +1,8 @@
 {
   "table_name": "study_abroad_copy_writer",
   "field_aliases": {
-    "transfer_teacher_id": [
-      "转案老师ID"
-    ],
-    "copywriting_teacher_id": [
-      "文案老师ID"
-    ],
     "application_major": [
-      "专业方向",
-      "申请专业"
-    ],
-    "study_abroad_major_id": [
-      "专业方向ID"
+      "专业方向"
     ]
   },
   "field_enums": {

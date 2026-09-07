@@ -32,3 +32,7 @@ Thumbs.db
 
 temp/
 tmp/
+
+# 后端运行时缓存（用户上传附件的本地副本，DeepSeek Files API 不可逆过期后的兜底）
+backend/file_cache/
+

@@ -148,8 +148,7 @@ html.xtsql-dark .ant-form-item-extra {
   color: var(--xtsql-text) !important;
 }
 html.xtsql-dark .ant-typography-secondary { color: var(--xtsql-text-secondary) !important; }
-html.xtsql-dark .ant-tooltip-inner { background-color: #434343 !important; color: #fff !important; }
-html.xtsql-dark .ant-tooltip-arrow::before { background: #434343 !important; }
+/* Tooltip 统一样式见 global.css（半透明 + 高斯模糊） */
 html.xtsql-dark .ant-tag { border-color: var(--xtsql-border-strong) !important; }
 html.xtsql-dark .ant-divider { border-color: var(--xtsql-divider) !important; }
 html.xtsql-dark { color-scheme: dark; }

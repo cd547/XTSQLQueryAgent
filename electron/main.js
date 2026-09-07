@@ -10,7 +10,9 @@ let backendProcess;
 let startupLogFile = null;  // 启动日志文件路径，错误时给前端打开用
 
 // 启动期日志双写：原有 console.log / console.error 仍走终端 / DevTools，
-// 同时落盘到 logs/electron-startup-<时间戳>.log，下次启动失败可直接打开复盘。
+// 同时落盘到 logs/electron-startup-<年-月>.log（按月归档，appendFileSync 追加），
+// 下次启动失败可直接打开复盘。★ 2026-09-02：由"每次启动一个文件"改为按月一个文件，
+// 每次启动追加会话分隔线，避免启动日志文件数量膨胀。
 // 用 appendFileSync 同步落盘：electron 异常退出 / kill -9 时不会丢日志。
 function setupStartupLogging() {
   try {
@@ -19,8 +21,13 @@ function setupStartupLogging() {
       : path.join(__dirname, '..');
     const logsDir = path.join(projectRoot, 'logs');
     fs.mkdirSync(logsDir, { recursive: true });
-    const ts = new Date().toISOString().replace(/[:.]/g, '-').slice(0, 19);
-    startupLogFile = path.join(logsDir, `electron-startup-${ts}.log`);
+    const now = new Date();
+    const ym = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+    startupLogFile = path.join(logsDir, `electron-startup-${ym}.log`);
+    // 会话分隔线：同月多次启动可按此切分
+    try {
+      fs.appendFileSync(startupLogFile, `\n========== Electron 启动 ${now.toISOString()} ==========\n`);
+    } catch {}
 
     const writeLine = (level, args) => {
       const text = args.map(a => {
