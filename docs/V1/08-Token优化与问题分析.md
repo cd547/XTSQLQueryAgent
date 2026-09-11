@@ -84,6 +84,15 @@ llm.js L1233-L1239 注释称"带 tool_calls 的 assistant 必须回传 reasoning
 
 日志中已有每轮 usage（llm.js L1421 附近），建议聚合输出"每问题 prompt_tokens 增量"，便于持续观测优化效果。
 
+#### ~~P3~~ ✅ 已实施（2026-09-11）：表名直查快捷路径（原分析中的 A+C 方案）
+
+"表名明确"的问题（如"查询 admin_user_channel 渠道名称是吴海涛"）不再强制走完整域路由（猜域 → get_sliced_index 整域卡片 → 找表），直接 `get_table_schema` 一步到位，预计此类问题省 30-50% 流程 token：
+
+- **A（SKILL.md 规则 3.1）**：问题已含明确物理表名（下划线英文标识符）→ 跳过选域和 get_sliced_index 直查 `get_table_schema`；俗称/中文词不算。规则 4 措辞同步（"先确定主表（表名直查或 get_sliced_index）"）。
+- **C（[toolFuncs.js](file:///D:/Ai_Program_Files/XTSQLQueryAgent/backend/src/services/toolFuncs.js#L382-L430) `findSimilarTablesBatch`）**：表不存在时 error 响应附 `similar_tables: [{name, description}]`（归一化/子串/标签四级匹配，取前 3），LLM 一次失败调用即可自愈，不必回退昂贵的域路由。批量共享单次索引读盘。
+- **不新增工具**：5 个 LLM 可见工具数量不变（prefix cache 与工具 schema 开销零影响）。
+- 验证：[test-similar-tables.mjs](file:///D:/Ai_Program_Files/XTSQLQueryAgent/backend/test/test-similar-tables.mjs) 13/13（含 Windows NTFS 大小写不敏感直接命中、漏下划线归一化命中、多表混合、重复变体不串结果）。
+
 ---
 
 ## 二、SKILL.md 提示词优化

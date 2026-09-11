@@ -371,6 +371,64 @@ function slimFieldProps(f) {
   return slim;
 }
 
+/**
+ * A+C 方案（2026-09-11）：表名直查失败时的"疑似相似表"匹配
+ * - 触发：get_table_schema 传入的表在 field_config/ddl 均不存在
+ * - 匹配源：table_index.json 的 name/tags/description（单次读盘，批量查询共享）
+ * - 目的：用户写错表名（漏下划线/拼写偏差）时 LLM 一次失败调用即可自愈，
+ *   避免回退到昂贵的域路由（get_sliced_index 整域卡片）
+ * - 返回：Map<查询名, [{name, description?}]>，每查询最多 3 个候选
+ */
+async function findSimilarTablesBatch(queries) {
+  const map = new Map(queries.map((q) => [q, []]));
+  if (queries.length === 0) return map;
+  const full = await loadTableIndex();
+  if (!full || !Array.isArray(full.tables)) return map;
+
+  // norms 携带原始索引：避免重复/仅大小写不同的查询词互相串结果
+  const norms = queries.map((q, idx) => {
+    const lower = String(q || "").toLowerCase().trim();
+    return { idx, q: lower, norm: lower.replace(/[_\s]/g, "") };
+  });
+
+  for (const t of full.tables) {
+    const name = String(t.name || "");
+    const nameLower = name.toLowerCase();
+    if (!nameLower) continue;
+    const nameNorm = nameLower.replace(/_/g, "");
+
+    for (const { idx, q, norm } of norms) {
+      if (!q) continue;
+      let score = 0;
+      if (nameLower === q) score = 100; // 精确（仅大小写差异）
+      else if (nameNorm === norm) score = 90; // 归一化相等（漏/多下划线最常见）
+      else if (q.length >= 4 && nameLower.includes(q)) score = 70; // 表名含查询词
+      else if (nameLower.length >= 4 && q.includes(nameLower)) score = 60; // 查询词含表名
+      else if (
+        Array.isArray(t.tags) &&
+        t.tags.some((tag) => String(tag).toLowerCase() === q)
+      )
+        score = 50; // 标签精确命中
+      if (score > 0) map.get(queries[idx])?.push({ name, score });
+    }
+  }
+
+  // 排序截断 + 附 description（LLM 可据此判断是否为目标表）
+  for (const q of queries) {
+    map.set(
+      q,
+      (map.get(q) || [])
+        .sort((a, b) => b.score - a.score)
+        .slice(0, 3)
+        .map(({ name }) => {
+          const meta = full.tables.find((t) => t.name === name);
+          return { name, ...(meta?.description ? { description: meta.description } : {}) };
+        }),
+    );
+  }
+  return map;
+}
+
 export async function getTableSchema(tableNames, options = {}) {
   const { verbose = false } = options;
   const names = Array.isArray(tableNames) ? tableNames : [tableNames];
@@ -421,6 +479,19 @@ export async function getTableSchema(tableNames, options = {}) {
     }),
   );
   const result = Object.fromEntries(entries);
+  // A+C 方案（2026-09-11）：不存在的表统一补 similar_tables（单次读索引，批量共享）
+  //   格式：{ error: "...", similar_tables: [{name, description?}] }
+  //   无命中时不加字段（保持 error 响应精简）
+  const missingNames = entries
+    .filter(([, v]) => v && v.error)
+    .map(([k]) => k);
+  if (missingNames.length > 0) {
+    const similarMap = await findSimilarTablesBatch(missingNames);
+    for (const n of missingNames) {
+      const similar = similarMap.get(n);
+      if (similar && similar.length > 0) result[n].similar_tables = similar;
+    }
+  }
   // F20 (2026-08)：精简模式（默认）下过滤掉 k/nn/d 三类对 SELECT 几乎无用的属性
   //   verbose=true 时保留全量（EXPLAIN 优化 / 排查默认值等场景）
   //   在聚合前对每表 fields 单独处理，避免对每个字段重复判断
@@ -720,7 +791,7 @@ export const tools = [
       "获取指定表的字段信息。返回 JSON：\n" +
       "• 单表: {fields, field_aliases?, field_enums?, virtual_associations?, business_constraints?, business_rules?}\n" +
       "  - fields: {列名: {t:类型, c?:注释, fk?:外键}}\n" +
-      "  - 失败: {error: '原因'}\n" +
+      "  - 表不存在: {error: '原因', similar_tables?: [{name, description}]}——有 similar_tables 时优先改查命中的表，无命中才回退域路由\n" +
       "• 多表: {表名: <单表结构>, ...}",
     params: {
       type: "object",

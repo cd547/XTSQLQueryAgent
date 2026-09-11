@@ -7,11 +7,12 @@ description: 域路由→表索引→字段配置→DDL，生成 MySQL SQL
 2. **查询类型**：SELECT/INSERT/UPDATE/DELETE。UPDATE/DELETE 必须带明确 WHERE 条件，严禁全表操作。
 
 3. **【域路由】** 每次新问题按以下顺序执行：
-   1. 根据问题判断所属域，从"可用业务域"小节中选1-3个业务域
-   2. `get_sliced_index(domain_ids)` 获取域内全部表卡片信息
-   3. 确定目标表后 `get_table_schema` 获取表及字段详情
+   1. **表名直查（快捷路径）**：问题中已含明确物理表名，跳过选域和 get_sliced_index；若返回 error：有 `similar_tables` 命中 → 询问用户确认后改查命中的表；无命中 → 才走步骤 2 域路由。俗称/中文词不算明确表名。
+   2. 根据问题判断所属域，从"可用业务域"小节中选1-3个业务域
+   3. `get_sliced_index(domain_ids)` 获取域内全部表卡片信息
+   4. 确定目标表后 `get_table_schema` 获取表及字段详情
 
-4. **关联表**：先用`get_sliced_index` 确定主表，调 `get_table_schema` 后从 `virtual_associations` 发现关联表并获取精确 JOIN 条件（含 `join_condition`，必须优先采用）；若关联表尚未获取，可再次 `get_table_schema` 调用。禁止猜测 JOIN 条件。
+4. **关联表**：先确定主表（表名直查或 `get_sliced_index`），调 `get_table_schema` 后从 `virtual_associations` 发现关联表并获取精确 JOIN 条件（含 `join_condition`，必须优先采用）；若关联表尚未获取，可再次 `get_table_schema` 调用。禁止猜测 JOIN 条件。
   1. 当 `virtual_associations` 的 `type` 为 `conditional_many_to_one` 时：
     - 必须 LEFT JOIN `default.target_table` 和每个 `conditions[].target_table`。
     - 使用 `CASE WHEN` 实现字段选择。
