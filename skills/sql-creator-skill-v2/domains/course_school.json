@@ -35,6 +35,9 @@
     "exams_year_quarter",
     "exams_year_type",
     "exams_year_season_type",
-    "edu_teacher_feedback"
+    "edu_teacher_feedback",
+    "keqiao_quiz",
+    "keqiao_quiz_result",
+    "keqiao_quiz_type"
   ]
 }
