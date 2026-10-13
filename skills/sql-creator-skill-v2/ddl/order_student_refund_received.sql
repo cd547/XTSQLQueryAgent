@@ -1,0 +1,20 @@
+CREATE TABLE `order_student_refund_received` (
+  `id` bigint(11) NOT NULL AUTO_INCREMENT,
+  `order_student_refund_id` bigint(11) NOT NULL COMMENT '退款ID',
+  `order_student_received_id` bigint(11) NOT NULL COMMENT '回款ID',
+  `amount` bigint(11) NOT NULL COMMENT '金额（精确到分）',
+  `admin_user_id` int(11) NOT NULL COMMENT '创建人ID',
+  `created_time` bigint(11) NOT NULL COMMENT '创建时间(时间戳)',
+  `update_time` bigint(11) DEFAULT NULL COMMENT '最后修改时间(时间戳)',
+  `del` int(11) NOT NULL DEFAULT '0' COMMENT '是否删除0否；1-是',
+  `admin_department_children_id` bigint(11) DEFAULT NULL COMMENT '创建人二级部门ID',
+  PRIMARY KEY (`id`),
+  KEY `order_student_refund_received_wj_1` (`order_student_refund_id`),
+  KEY `order_student_refund_received_wj_2` (`order_student_received_id`),
+  KEY `order_student_refund_received_wj_3` (`admin_user_id`),
+  KEY `order_student_refund_received_wj_4` (`admin_department_children_id`),
+  CONSTRAINT `order_student_refund_received_wj_1` FOREIGN KEY (`order_student_refund_id`) REFERENCES `order_student_refund` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `order_student_refund_received_wj_2` FOREIGN KEY (`order_student_received_id`) REFERENCES `order_student_received` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `order_student_refund_received_wj_3` FOREIGN KEY (`admin_user_id`) REFERENCES `admin_user` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION,
+  CONSTRAINT `order_student_refund_received_wj_4` FOREIGN KEY (`admin_department_children_id`) REFERENCES `admin_department_children` (`id`) ON DELETE NO ACTION ON UPDATE NO ACTION
+) ENGINE=InnoDB AUTO_INCREMENT=847 DEFAULT CHARSET=utf8mb4 COMMENT='# 订单退款对应的回款'

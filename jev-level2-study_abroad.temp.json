@@ -1,0 +1,37 @@
+{
+  "state": "查询今天的学通排课信息",
+  "questions": {
+    "table_name": {
+      "type": "choice",
+      "instructions": "根据用户的查询意图，最可能查询哪个数据表？",
+      "criteria": {
+        "study_abroad_apply_online_account_info": "留学网申账户信息表，关键词:留学/网申/账户",
+        "study_abroad_apply_online_info": "留学网申信息主表，关键词:留学/网申/申请",
+        "study_abroad_apply_online_person_info": "留学网申个人信息表，关键词:留学/网申/个人信息",
+        "study_abroad_apply_online_school_info": "留学网申信息学校信息，关键词:留学/网申/学校",
+        "study_abroad_attachment": "留学附件表，关键词:留学/附件/文件",
+        "study_abroad_case_closure": "留学结案表，关键词:留学/结案",
+        "study_abroad_copy_writer": "留学文案表，关键词:留学/文案/专业方向",
+        "study_abroad_document": "留学文书表，关键词:留学/文书",
+        "study_abroad_document_attachment": "留学文书类型表，关键词:留学/文书/附件类型",
+        "study_abroad_document_materials": "留学文书材料表，关键词:留学/文书/材料/定校书",
+        "study_abroad_major": "留学专业方向信息表，关键词:留学/专业/方向",
+        "study_abroad_offer_info": "留学offer表，关键词:留学/offer/录取",
+        "study_abroad_operate_log": "操作记录主表，关键词:留学/操作日志",
+        "study_abroad_operate_log_detail": "操作记录详情表，关键词:留学/操作日志/日志详情",
+        "study_abroad_planning_info": "留学规划信息表，关键词:留学/规划/主流程/核心表",
+        "study_abroad_planning_info_operation_log": "规划信息操作日志表，关键词:留学/规划/操作日志",
+        "study_abroad_planning_info_user_operation_record": "规划信息用户操作记录表，关键词:留学/规划/用户操作记录",
+        "study_abroad_proofread_book": "留学定校书，关键词:留学/定校书",
+        "study_abroad_school": "留学学校信息表，关键词:留学/学校/院校库",
+        "study_abroad_school_selection": "留学生成定校书pdf表，关键词:留学/定校/定校书PDF",
+        "study_abroad_school_selection_detail": "留学生成定校书pdf明细表，关键词:留学/定校/定校书PDF/明细",
+        "study_abroad_visa_info": "留学签证表，关键词:留学/签证/offer",
+        "crm_tag_definition": "可复用标签定义表，与存量crm_tags表相互独立",
+        "crm_target_school": "学校库-目标学校主表",
+        "crm_current_school": "学校库-在读学校主表",
+        "sys_dict_item": "字典表"
+      }
+    }
+  }
+}

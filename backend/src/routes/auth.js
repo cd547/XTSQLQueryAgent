@@ -42,6 +42,11 @@ router.post('/register', authRateLimiter, async (req, res) => {
     const token = signToken(user);
     setAuthCookie(res, token);
     logger.info('用户注册成功', { userId: user.id, username });
+    // auth_mode=token：非浏览器客户端（鸿蒙平板壳）跨源访问时 SameSite=Lax cookie 不生效，
+    // 返回 token 由客户端自行携带 Authorization: Bearer。默认不返回，浏览器流程不受影响。
+    if (req.query.auth_mode === 'token') {
+      return res.json({ success: true, user, token });
+    }
     res.json({ success: true, user });
   } catch (e) {
     logger.error('注册失败', { error: e.message });
@@ -74,6 +79,11 @@ router.post('/login', authRateLimiter, async (req, res) => {
     const token = signToken(safeUser);
     setAuthCookie(res, token);
     logger.info('用户登录成功', { userId: safeUser.id, username: safeUser.username });
+    // auth_mode=token：非浏览器客户端（鸿蒙平板壳）跨源访问时 SameSite=Lax cookie 不生效，
+    // 返回 token 由客户端自行携带 Authorization: Bearer。默认不返回，浏览器流程不受影响。
+    if (req.query.auth_mode === 'token') {
+      return res.json({ success: true, user: safeUser, token });
+    }
     res.json({ success: true, user: safeUser });
   } catch (e) {
     logger.error('登录失败', { error: e.message });

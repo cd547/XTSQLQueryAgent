@@ -26,6 +26,7 @@
     "order_approval_configure",
     "goods_list",
     "order_approval_order_student_received_log",
-    "order_student_received_annex"
+    "order_student_received_annex",
+    "order_student_refund_received"
   ]
 }

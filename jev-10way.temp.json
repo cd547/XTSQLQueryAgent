@@ -1,0 +1,21 @@
+{
+  "state": "查询今天的学通排课信息",
+  "questions": {
+    "table_name": {
+      "type": "choice",
+      "instructions": "根据用户的查询意图，最可能查询哪个数据表？",
+      "criteria": {
+        "edu_study": "课程（学通）域·排课表，关键词:学通排课",
+        "keqiao_study": "课程（科桥/克勒）域·排课（日程），关键词:科桥排课/克勒排课",
+        "edu_student_timetable": "课程（学通）域·学生课表",
+        "edu_level_mapping": "课程（学通）/课程（科桥/克勒）域·成绩映射规则-列表",
+        "edu_campus_school": "校区域·分校，关键词:二级校区",
+        "edu_student": "人员域·学生",
+        "edu_course": "课程（学通）/课程（科桥/克勒）域·课程(一级)，关键词:一级科目",
+        "edu_teacher": "人员域·老师",
+        "edu_room_study": "课程（学通）域·班级-班级排课记录表，关键词:班课",
+        "edu_adjust_study": "课程（学通）域·调课申请"
+      }
+    }
+  }
+}

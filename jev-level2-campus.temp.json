@@ -1,0 +1,18 @@
+{
+  "state": "查询今天的学通排课信息",
+  "questions": {
+    "table_name": {
+      "type": "choice",
+      "instructions": "根据用户的查询意图，最可能查询哪个数据表？",
+      "criteria": {
+        "edu_campus": "校区，关键词:一级校区",
+        "edu_campus_school": "分校，关键词:二级校区",
+        "edu_campus_school_class": "教室",
+        "admin_category": "公司名称",
+        "crm_tag_definition": "可复用标签定义表，与存量crm_tags表相互独立",
+        "crm_target_school": "学校库-目标学校主表",
+        "crm_current_school": "学校库-在读学校主表"
+      }
+    }
+  }
+}

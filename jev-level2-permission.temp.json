@@ -1,0 +1,19 @@
+{
+  "state": "查询今天的学通排课信息",
+  "questions": {
+    "table_name": {
+      "type": "choice",
+      "instructions": "根据用户的查询意图，最可能查询哪个数据表？",
+      "criteria": {
+        "admin_user": "后台用户，关键词:管理员/用户/工作人员/CRM",
+        "admin_character": "后台用户角色表，关键词:用户角色/角色",
+        "admin_user_campus": "所属校区，关键词:用户校区/用户所属校区",
+        "admin_department_manage": "部门管理者配置，关键词:二级部门权限配置人员/二级部门权限配置审批人",
+        "admin_department_type": "管理者类型，关键词:权限配置类型",
+        "auth_user_role": "用户角色信息表",
+        "auth_role": "角色信息表，关键词:新系统角色/新系统权限",
+        "admin_campus_rel": "员工-业务校区关系表"
+      }
+    }
+  }
+}

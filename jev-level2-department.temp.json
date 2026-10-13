@@ -1,0 +1,15 @@
+{
+  "state": "查询今天的学通排课信息",
+  "questions": {
+    "table_name": {
+      "type": "choice",
+      "instructions": "根据用户的查询意图，最可能查询哪个数据表？",
+      "criteria": {
+        "admin_department": "一级部门，关键词:部门/一级部门",
+        "admin_department_children": "后台部门子表，关键词:后台部门/子部门/二级部门",
+        "admin_department_manage": "部门管理者配置，关键词:二级部门权限配置人员/二级部门权限配置审批人",
+        "admin_department_type": "管理者类型，关键词:权限配置类型"
+      }
+    }
+  }
+}

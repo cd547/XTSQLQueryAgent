@@ -1,0 +1,25 @@
+{
+  "state": "查询今天的学通排课信息",
+  "questions": {
+    "edu_study": {
+      "type": "noul",
+      "instructions": "用户想要查询的是「排课表（学通业务线的课程排课安排）」这张表的数据吗？"
+    },
+    "keqiao_study": {
+      "type": "noul",
+      "instructions": "用户想要查询的是「排课日程（科桥业务线）」这张表的数据吗？"
+    },
+    "edu_student_timetable": {
+      "type": "noul",
+      "instructions": "用户想要查询的是「学生课表（学生视角的上课时间表）」这张表的数据吗？"
+    },
+    "edu_course": {
+      "type": "noul",
+      "instructions": "用户想要查询的是「课程一级分类」这张表的数据吗？"
+    },
+    "edu_room_study": {
+      "type": "noul",
+      "instructions": "用户想要查询的是「教室占用安排」这张表的数据吗？"
+    }
+  }
+}

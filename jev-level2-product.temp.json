@@ -1,0 +1,16 @@
+{
+  "state": "查询今天的学通排课信息",
+  "questions": {
+    "table_name": {
+      "type": "choice",
+      "instructions": "根据用户的查询意图，最可能查询哪个数据表？",
+      "criteria": {
+        "edu_goods": "产品-主表",
+        "edu_goods_subject_name": "产品-绑定的科目名称",
+        "edu_goods_section": "产品分类表",
+        "admin_division": "事业部",
+        "edu_goods_year": "产品年份表"
+      }
+    }
+  }
+}

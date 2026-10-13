@@ -1,0 +1,56 @@
+{
+  app: {
+    signingConfigs: [
+      {
+        name: 'default',
+        type: 'HarmonyOS',
+        material: {
+          certpath: 'C:\\Users\\wusiq\\.ohos\\config\\default_harmony-tablet_MXpyGnXYWYIrcxWoEpTolAj5cfaem2Hxuza6VnpJaVk=.cer',
+          keyAlias: 'debugKey',
+          keyPassword: '00000019bd3c35ae8bb575257f825db3155242fae9f427160c2d0ac08dfe64d103da91faf3d3be21a8',
+          profile: 'C:\\Users\\wusiq\\.ohos\\config\\default_harmony-tablet_MXpyGnXYWYIrcxWoEpTolAj5cfaem2Hxuza6VnpJaVk=.p7b',
+          signAlg: 'SHA256withECDSA',
+          storeFile: 'C:\\Users\\wusiq\\.ohos\\config\\default_harmony-tablet_MXpyGnXYWYIrcxWoEpTolAj5cfaem2Hxuza6VnpJaVk=.p12',
+          storePassword: '00000019bd3c35ae8bb575257f825db3155242fae9f427160c2d0ac08dfe64d103da91faf3d3be21a8',
+        },
+      },
+    ],
+    products: [
+      {
+        name: 'default',
+        signingConfig: 'default',
+        targetSdkVersion: '6.1.1(24)',
+        compatibleSdkVersion: '6.1.1(24)',
+        runtimeOS: 'HarmonyOS',
+        buildOption: {
+          strictMode: {
+            caseSensitiveCheck: true,
+            useNormalizedOHMUrl: true,
+          },
+        },
+      },
+    ],
+    buildModeSet: [
+      {
+        name: 'debug',
+      },
+      {
+        name: 'release',
+      },
+    ],
+  },
+  modules: [
+    {
+      name: 'entry',
+      srcPath: './entry',
+      targets: [
+        {
+          name: 'default',
+          applyToProducts: [
+            'default',
+          ],
+        },
+      ],
+    },
+  ],
+}

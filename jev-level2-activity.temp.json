@@ -1,0 +1,19 @@
+{
+  "state": "查询今天的学通排课信息",
+  "questions": {
+    "table_name": {
+      "type": "choice",
+      "instructions": "根据用户的查询意图，最可能查询哪个数据表？",
+      "criteria": {
+        "cms_article": "媒体列表",
+        "cms_apply": "活动报名表",
+        "cms_article_event": "活动专场表",
+        "cms_section": "栏目",
+        "cms_session_records": "活动场次报名记录表",
+        "cms_article_sessions": "活动场次表",
+        "admin_my_users": "后台管理员关联用户表",
+        "cms_type": "文章类型"
+      }
+    }
+  }
+}

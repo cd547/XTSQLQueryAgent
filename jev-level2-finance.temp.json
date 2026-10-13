@@ -1,0 +1,36 @@
+{
+  "state": "查询今天的学通排课信息",
+  "questions": {
+    "table_name": {
+      "type": "choice",
+      "instructions": "根据用户的查询意图，最可能查询哪个数据表？",
+      "criteria": {
+        "order_student": "订单",
+        "order_type": "订单类型",
+        "order_list": "订单列表，关键词:C端支付/查询网站支付订单",
+        "order_contract": "合同",
+        "order_contract_template": "合同模版(datasy)",
+        "order_student_class": "订单关联科目",
+        "order_student_refund": "订单退款记录，关键词:退款申请审批表",
+        "order_student_received": "回款计划",
+        "order_student_received_settlement": "回款计划-佣金结算表，关键词:渠道佣金结算",
+        "order_student_received_settlement_log": "回款计划-佣金结算金额修改记录表",
+        "order_student_received_approvalsettlement": "回款计划-佣金结算审批表",
+        "order_student_consume": "订单消耗记录，关键词:课耗",
+        "admin_pay_order": "支付单",
+        "admin_pay_order_student": "支付单—关联学生订单表",
+        "order_student_received_reject": "回款计划驳回记录",
+        "order_entry": "项目名称",
+        "order_pattern": "订单模式",
+        "order_approval_order_student_log": "订单审批记录",
+        "order_student_reject": "订单驳回记录",
+        "order_approval_configure_user": "审批流程配置用户",
+        "admin_division": "事业部",
+        "order_approval_configure": "审批流程配置",
+        "goods_list": "商品表",
+        "order_approval_order_student_received_log": "回款审批记录",
+        "order_student_received_annex": "回款附件"
+      }
+    }
+  }
+}

@@ -1,8 +1,10 @@
 import React, { useState } from 'react';
 import { Form, Input, Button, Tabs, Alert, Typography, Space, ConfigProvider, theme } from 'antd';
-import { UserOutlined, LockOutlined, ThunderboltOutlined, BulbOutlined, BulbFilled } from '@ant-design/icons';
+import { UserOutlined, LockOutlined, ThunderboltOutlined, BulbOutlined, BulbFilled, CloudServerOutlined } from '@ant-design/icons';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useTheme } from '../context/ThemeContext.jsx';
+import { isTablet, getStoredServer } from '../api/index.js';
+import ServerSetup from './ServerSetup.jsx';
 
 const { Title, Text } = Typography;
 const { defaultAlgorithm, darkAlgorithm } = theme;
@@ -13,6 +15,8 @@ export default function LoginPage() {
   const [mode, setMode] = useState('login');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  // 平板模式：通过角落按钮修改服务器地址（web / electron 不显示）
+  const [showServerSetup, setShowServerSetup] = useState(false);
 
   const handleLogin = async (values) => {
     setLoading(true);
@@ -58,6 +62,20 @@ export default function LoginPage() {
       >
         {themeMode === 'dark' ? <BulbFilled style={{ fontSize: 18 }} /> : <BulbOutlined style={{ fontSize: 18 }} />}
       </button>
+      {isTablet && (
+        <button
+          className="xtsql-theme-toggle"
+          style={{ top: 64 }}
+          onClick={() => setShowServerSetup(true)}
+          aria-label="server settings"
+          title={`服务器：${getStoredServer() || '未设置'}`}
+        >
+          <CloudServerOutlined style={{ fontSize: 18 }} />
+        </button>
+      )}
+      {showServerSetup && (
+        <ServerSetup onCancel={() => setShowServerSetup(false)} />
+      )}
       <ConfigProvider theme={{ algorithm: themeMode === 'dark' ? darkAlgorithm : defaultAlgorithm }}>
         <div style={styles.card}>
         <Space direction="vertical" size={8} style={{ width: '100%', textAlign: 'center', marginBottom: 12 }}>

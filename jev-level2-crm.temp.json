@@ -1,0 +1,33 @@
+{
+  "state": "查询今天的学通排课信息",
+  "questions": {
+    "table_name": {
+      "type": "choice",
+      "instructions": "根据用户的查询意图，最可能查询哪个数据表？",
+      "criteria": {
+        "customer_info": "线索主表（CRM核心表），关键词:CRM/线索/客户",
+        "customer_clue_info": "线索扩展表（CRM核心表，存渠道、状态、跟进等信息），关键词:CRM/线索/渠道/跟进",
+        "customer_education_info": "线索教育信息表，关键词:CRM/教育信息",
+        "customer_intention_info": "线索意向表，关键词:CRM/意向信息",
+        "customer_clue_pool": "线索池，关键词:CRM/线索池",
+        "admin_user": "后台用户，关键词:管理员/用户/工作人员/CRM",
+        "crm_channels": "CRM渠道表，关键词:CRM/渠道管理",
+        "admin_user_channel": "渠道库，关键词:渠道/渠道列表",
+        "edu_campus": "校区，关键词:一级校区",
+        "admin_department_children": "后台部门子表，关键词:后台部门/子部门/二级部门",
+        "admin_department": "一级部门，关键词:部门/一级部门",
+        "customer_label_rel": "线索标签关系表，关键词:CRM/标签",
+        "customer_contact": "线索联系方式表，关键词:CRM/联系方式",
+        "customer_auto_assign_result": "线索自动分配结果表，关键词:CRM/自动分配",
+        "customer_label": "线索标签表，关键词:CRM/标签",
+        "effective_customers": "销售有效数据记录（线索）",
+        "customers_new_sign_returned_info": "新签转化率 线索订单回款明细表",
+        "customer_people": "线索家长表",
+        "crm_tag_definition": "可复用标签定义表，与存量crm_tags表相互独立",
+        "crm_target_school": "学校库-目标学校主表",
+        "crm_current_school": "学校库-在读学校主表",
+        "sys_dict_item": "字典表"
+      }
+    }
+  }
+}

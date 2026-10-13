@@ -13,6 +13,7 @@ import SkillDrawer from './components/SkillDrawer';
 import Sider from './components/Sider';
 import ConfigPanel from './components/ConfigPanel';
 import LoginPage from './components/LoginPage';
+import ServerSetup from './components/ServerSetup';
 import SessionMessagesModal from './components/modals/SessionMessagesModal.jsx';
 import ChangePasswordModal from './components/modals/ChangePasswordModal.jsx';
 import AddTableModal from './components/modals/AddTableModal.jsx';
@@ -48,6 +49,17 @@ const { defaultAlgorithm, darkAlgorithm } = theme;
 
 function App() {
   const { isAuthenticated, bootstrapping, user, logout } = useAuth();
+  // 平板模式：未配置服务器地址前显示引导页（web / electron 下 hasServer 恒为 true，不生效）
+  const [hasServer, setHasServer] = useState(!api.isTablet || !!api.getStoredServer());
+  useEffect(() => {
+    const handler = () => setHasServer(!!api.getStoredServer());
+    window.addEventListener('xtsql:server-changed', handler);
+    return () => window.removeEventListener('xtsql:server-changed', handler);
+  }, []);
+
+  if (!hasServer) {
+    return <ServerSetup />;
+  }
 
   // 未登录：渲染登录页（带启动校验 loading 态）
   if (bootstrapping) {

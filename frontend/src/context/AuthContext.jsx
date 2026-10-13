@@ -48,6 +48,16 @@ export function AuthProvider({ children }) {
     return () => window.removeEventListener('xtsql:auth-expired', handler);
   }, []);
 
+  // 平板模式切换服务器地址后，旧服务器的登录态作废（web / electron 不会触发该事件）
+  useEffect(() => {
+    const handler = () => {
+      setUser(null);
+      setStoredUser(null);
+    };
+    window.addEventListener('xtsql:server-changed', handler);
+    return () => window.removeEventListener('xtsql:server-changed', handler);
+  }, []);
+
   const login = useCallback(async (username, password) => {
     setAuthError(null);
     const data = await loginApi({ username, password });

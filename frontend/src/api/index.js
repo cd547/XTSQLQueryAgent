@@ -2,12 +2,79 @@ import axios from 'axios';
 import { message } from 'antd';
 
 const isElectron = window.location.protocol === 'file:';
-const baseURL = isElectron ? 'http://localhost:5002/api' : '/api';
+
+// ===== 鸿蒙平板壳（ArkWeb）旁路分支：不影响 web / electron 现有行为 =====
+// 壳通过 resource://rawfile/web/index.html 加载本地打包前端，协议为 resource:；
+// 壳侧同时注入 window.__XTSQL_TABLET__ = true 作双重标记。
+// 平板模式下：接口地址由用户配置（localStorage），鉴权走 Authorization: Bearer
+//（跨源场景 SameSite=Lax 的 httpOnly cookie 不会随请求发送，后端已支持 Bearer 头）。
+const isTablet = window.location.protocol === 'resource:' || window.__XTSQL_TABLET__ === true;
+const SERVER_KEY = 'xtsql_server';
+const TABLET_TOKEN_KEY = 'xtsql_tablet_token';
+
+function normalizeServer(url) {
+  return String(url || '').trim().replace(/\/+$/, '');
+}
+
+export function getStoredServer() {
+  try { return normalizeServer(localStorage.getItem(SERVER_KEY)); } catch { return ''; }
+}
+
+// 设置/切换服务器地址：更新 localStorage + axios baseURL，并清理旧服务器的登录态
+export function applyServerAddress(url) {
+  const normalized = normalizeServer(url);
+  try {
+    if (normalized) localStorage.setItem(SERVER_KEY, normalized);
+    else localStorage.removeItem(SERVER_KEY);
+  } catch { /* localStorage 不可用时忽略 */ }
+  clearTabletToken();
+  api.defaults.baseURL = resolveBaseURL();
+  window.dispatchEvent(new CustomEvent('xtsql:server-changed', { detail: normalized }));
+  return normalized;
+}
+
+function getStoredToken() {
+  try { return localStorage.getItem(TABLET_TOKEN_KEY) || ''; } catch { return ''; }
+}
+
+function setStoredToken(token) {
+  try { localStorage.setItem(TABLET_TOKEN_KEY, token); } catch { /* ignore */ }
+}
+
+function clearTabletToken() {
+  try { localStorage.removeItem(TABLET_TOKEN_KEY); } catch { /* ignore */ }
+}
+
+// 平板模式下接口地址可配置且运行期可变；web/electron 恒为固定值，行为不变
+function resolveBaseURL() {
+  if (isTablet) return (getStoredServer() || '') + '/api';
+  return isElectron ? 'http://localhost:5002/api' : '/api';
+}
+
+function getBaseURL() {
+  return api.defaults.baseURL || resolveBaseURL();
+}
+
+// 平板模式 SSE / XHR 请求需要手动带 Bearer 头（fetch/XHR 不走 axios 拦截器）
+function tabletAuthHeaders() {
+  if (!isTablet) return {};
+  const t = getStoredToken();
+  return t ? { Authorization: 'Bearer ' + t } : {};
+}
 
 // 鉴权走 httpOnly cookie；axios 必须带 withCredentials 让浏览器自动附加 cookie
 const api = axios.create({
-  baseURL: baseURL,
+  baseURL: resolveBaseURL(),
   withCredentials: true
+});
+
+// 平板模式：axios 请求统一附加 Bearer 头
+api.interceptors.request.use((config) => {
+  if (isTablet) {
+    const t = getStoredToken();
+    if (t) config.headers.Authorization = 'Bearer ' + t;
+  }
+  return config;
 });
 
 // localStorage 中只缓存"用户信息展示"用，不放敏感 token。
@@ -51,6 +118,7 @@ api.interceptors.response.use(
     const status = error.response?.status;
     const data = error.response?.data;
     if (status === 401) {
+      clearTabletToken();
       setStoredUser(null);
       window.dispatchEvent(new CustomEvent('xtsql:auth-expired'));
     } else if (status === 429) {
@@ -98,15 +166,16 @@ export function queryGenerate(data) {
 }
 
 export function queryGenerateStream(data, signal) {
-  return fetch(baseURL + '/query/generate', {
+  return fetch(getBaseURL() + '/query/generate', {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...tabletAuthHeaders() },
     body: JSON.stringify(data),
     signal: signal
   }).then((resp) => {
     if (resp.status === 401) {
       // SSE 不走 axios 拦截器，需手动派发事件让前端切回登录页
+      clearTabletToken();
       setStoredUser(null);
       window.dispatchEvent(new CustomEvent('xtsql:auth-expired'));
     }
@@ -123,14 +192,15 @@ export function explainQuery(data) {
 }
 
 export function explainAnalyze(sql, explainResults, signal) {
-  return fetch(baseURL + '/query/explain-analyze', {
+  return fetch(getBaseURL() + '/query/explain-analyze', {
     method: 'POST',
     credentials: 'include',
-    headers: { 'Content-Type': 'application/json' },
+    headers: { 'Content-Type': 'application/json', ...tabletAuthHeaders() },
     body: JSON.stringify({ sql, explainResults }),
     signal: signal
   }).then((resp) => {
     if (resp.status === 401) {
+      clearTabletToken();
       setStoredUser(null);
       window.dispatchEvent(new CustomEvent('xtsql:auth-expired'));
     }
@@ -280,8 +350,13 @@ export function uploadFileWithProgress(file, opts = {}) {
       const onAbort = () => xhr.abort();
       signal.addEventListener('abort', onAbort, { once: true });
     }
-    xhr.open('POST', baseURL + '/files/upload', true);
+    xhr.open('POST', getBaseURL() + '/files/upload', true);
     xhr.withCredentials = true;
+    // 平板模式：XHR 也不走 axios 拦截器，手动带 Bearer 头
+    if (isTablet) {
+      const headers = tabletAuthHeaders();
+      if (headers.Authorization) xhr.setRequestHeader('Authorization', headers.Authorization);
+    }
     xhr.responseType = 'json';
     xhr.upload.onprogress = (e) => {
       if (e.lengthComputable && onProgress) {
@@ -319,11 +394,20 @@ export function uploadFileWithProgress(file, opts = {}) {
 
 // 鉴权相关 API
 export function loginApi(payload) {
-  return api.post('/auth/login', payload).then(r => r.data);
+  // 平板模式：要求后端返回 token（跨源 cookie 不生效），登录后由本层存入 localStorage
+  const url = isTablet ? '/auth/login?auth_mode=token' : '/auth/login';
+  return api.post(url, payload).then(r => {
+    if (isTablet && r.data && r.data.token) setStoredToken(r.data.token);
+    return r.data;
+  });
 }
 
 export function registerApi(payload) {
-  return api.post('/auth/register', payload).then(r => r.data);
+  const url = isTablet ? '/auth/register?auth_mode=token' : '/auth/register';
+  return api.post(url, payload).then(r => {
+    if (isTablet && r.data && r.data.token) setStoredToken(r.data.token);
+    return r.data;
+  });
 }
 
 export function getMeApi() {
@@ -335,8 +419,21 @@ export function changePasswordApi(payload) {
 }
 
 export function logoutApi() {
+  // 平板模式：本地 token 立即清理（改密后 token_version 已递增，旧 token 天然失效）
+  clearTabletToken();
   return api.post('/auth/logout').then(r => r.data);
 }
+
+// 平板模式：测试服务器地址连通性（/api/health 无需鉴权）
+export function testServerConnection(serverUrl) {
+  const base = normalizeServer(serverUrl);
+  if (!base) return Promise.reject(new Error('请输入服务器地址'));
+  return fetch(base + '/api/health', { method: 'GET' })
+    .then(resp => ({ ok: resp.ok, status: resp.status }))
+    .catch(() => ({ ok: false, status: 0 }));
+}
+
+export { isTablet };
 
 export default api;
 

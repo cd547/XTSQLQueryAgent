@@ -1,0 +1,34 @@
+{
+  "state": "查询今天的学通排课信息",
+  "questions": {
+    "table_name": {
+      "type": "choice",
+      "instructions": "根据用户的查询意图，最可能查询哪个数据表？",
+      "criteria": {
+        "admin_user": "后台用户，关键词:管理员/用户/工作人员/CRM",
+        "edu_student": "学生",
+        "edu_student_parent": "学生家长表",
+        "edu_student_type": "学生类型",
+        "edu_student_status": "学生状态(datasy)",
+        "edu_student_type_project": "报读项目",
+        "edu_student_personnel": "学生相关工作人员表",
+        "my_user": "用户基本表，关键词:c端用户",
+        "edu_student_info": "学籍信息",
+        "edu_student_certificates_type": "证件类型名称\\n",
+        "edu_teacher": "老师",
+        "my_user_openid": "用户openid",
+        "edu_teacher_work": "老师可排班时间",
+        "crm_tag_definition": "可复用标签定义表，与存量crm_tags表相互独立",
+        "crm_target_school": "学校库-目标学校主表",
+        "crm_current_school": "学校库-在读学校主表",
+        "sys_dict_item": "字典表",
+        "admin_teacher_scheme": "老师课时规则-方案",
+        "edu_teacher_class_type": "老师可教班级类型",
+        "edu_teacher_class_subject_name": "老师可教科目名称",
+        "edu_teacher_annex": "老师附件",
+        "edu_teacher_school": "老师所属校区",
+        "edu_teacher_handbook": "老师师资册信息表"
+      }
+    }
+  }
+}

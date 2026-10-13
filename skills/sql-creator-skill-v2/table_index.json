@@ -2151,6 +2151,19 @@
       "related_tables": [],
       "business_constraints": [],
       "business_rules": []
+    },
+    {
+      "name": "order_student_refund_received",
+      "description": "# 订单退款对应的回款",
+      "tags": [],
+      "related_tables": [
+        "order_student_refund",
+        "order_student_received",
+        "admin_user",
+        "admin_department_children"
+      ],
+      "business_constraints": [],
+      "business_rules": []
     }
   ]
 }
